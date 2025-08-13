@@ -11,7 +11,6 @@ type RequestVoteInput struct {
 	ToNode  NodeID
 	Term    TermNum
 	FromPos LogPos
-	Limit   int
 }
 
 type RequestVoteOutput struct {

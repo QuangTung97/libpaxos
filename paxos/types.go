@@ -13,6 +13,8 @@ type InfiniteLogPos struct {
 	Pos      LogPos
 }
 
+type MemLogPos int64
+
 // ----------------------------------------------------------
 
 type TermValue int64
@@ -65,28 +67,49 @@ type MemberInfo struct {
 	ActiveFrom LogPos
 }
 
-func GetAllMembers(members []MemberInfo, pos LogPos) []NodeID {
-	var result []NodeID
-	resultSet := map[NodeID]struct{}{}
+func isQuorumOf(universe []NodeID, checkSet map[NodeID]struct{}) bool {
+	factor := len(universe)/2 + 1
 
-	addNode := func(id NodeID) {
-		_, existed := resultSet[id]
-		if existed {
-			return
-		}
-		resultSet[id] = struct{}{}
-		result = append(result, id)
+	universeSet := map[NodeID]struct{}{}
+	for _, id := range universe {
+		universeSet[id] = struct{}{}
 	}
 
+	numElems := 0
+	for id := range checkSet {
+		_, ok := universeSet[id]
+		if !ok {
+			continue
+		}
+		numElems++
+	}
+
+	return numElems >= factor
+}
+
+func IsQuorum(members []MemberInfo, nodes map[NodeID]struct{}, pos LogPos) bool {
+	for _, info := range members {
+		if pos < info.ActiveFrom {
+			continue
+		}
+		if !isQuorumOf(info.Nodes, nodes) {
+			return false
+		}
+	}
+	return true
+}
+
+func GetAllMembers(members []MemberInfo, pos LogPos) map[NodeID]struct{} {
+	resultSet := map[NodeID]struct{}{}
 	for _, info := range members {
 		if pos < info.ActiveFrom {
 			continue
 		}
 
 		for _, node := range info.Nodes {
-			addNode(node)
+			resultSet[node] = struct{}{}
 		}
 	}
 
-	return result
+	return resultSet
 }
