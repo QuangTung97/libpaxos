@@ -55,9 +55,10 @@ type LogEntry struct {
 type LogType int
 
 const (
-	LogTypeMembership LogType = iota + 1
+	LogTypeNull LogType = iota
+	LogTypeMembership
 	LogTypeCmd
-	LogTypeNull
+	LogTypeNoOp
 )
 
 // ----------------------------------------------------------

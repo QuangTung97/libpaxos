@@ -1,6 +1,9 @@
 package paxos
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type CoreLogic interface {
 	StartElection()
@@ -8,12 +11,20 @@ type CoreLogic interface {
 	GetVoteRequest(toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
-	GetAcceptEntriesRequest(toNode NodeID) (AcceptEntriesInput, bool)
+	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID) (AcceptEntriesInput, bool)
 }
 
-func NewCoreLogic() CoreLogic {
+func NewCoreLogic(
+	persistent PersistentState,
+	log LogStorage,
+	runner NodeRunner,
+) CoreLogic {
 	return &coreLogicImpl{
 		state: StateFollower,
+
+		persistent: persistent,
+		log:        log,
+		runner:     runner,
 	}
 }
 
@@ -25,7 +36,7 @@ type coreLogicImpl struct {
 	leader    *leaderStateInfo
 
 	persistent PersistentState
-	log        ReplicatedLog
+	log        LogStorage
 	runner     NodeRunner
 }
 
@@ -82,6 +93,7 @@ func (c *coreLogicImpl) StartElection() {
 	}
 
 	c.runner.StartVoteRequestRunners(allMembers)
+	c.runner.StartAcceptRequestRunners(allMembers)
 }
 
 func (c *coreLogicImpl) GetVoteRequest(toNode NodeID) (RequestVoteInput, bool) {
@@ -213,7 +225,9 @@ func (c *coreLogicImpl) computeMemPos(pos LogPos) MemLogPos {
 	return MemLogPos(pos - c.leader.lastCommitted)
 }
 
-func (c *coreLogicImpl) GetAcceptEntriesRequest(toNode NodeID) (AcceptEntriesInput, bool) {
+func (c *coreLogicImpl) GetAcceptEntriesRequest(
+	_ context.Context, toNode NodeID,
+) (AcceptEntriesInput, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 

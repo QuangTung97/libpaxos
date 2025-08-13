@@ -1,6 +1,6 @@
 package paxos
 
-type ReplicatedLog interface {
+type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) RequestVoteOutput
 	AcceptEntries(input AcceptEntriesInput)
 
