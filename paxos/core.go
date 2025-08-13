@@ -7,6 +7,8 @@ type CoreLogic interface {
 
 	GetVoteRequest(toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
+
+	GetAcceptEntriesRequest(toNode NodeID) (AcceptEntriesInput, bool)
 }
 
 func NewCoreLogic() CoreLogic {
@@ -128,6 +130,8 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		c.handleVoteResponseEntry(id, entry)
 	}
 
+	c.switchFromCandidateToLeader()
+
 	return true
 }
 
@@ -193,6 +197,10 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 	return true
 }
 
+func (c *coreLogicImpl) switchFromCandidateToLeader() {
+	// TODO
+}
+
 func (c *coreLogicImpl) getMemLogLen() MemLogPos {
 	return MemLogPos(len(c.leader.memLog))
 }
@@ -203,4 +211,48 @@ func (c *coreLogicImpl) getMemLogEntry(memPos MemLogPos) *LogEntry {
 
 func (c *coreLogicImpl) computeMemPos(pos LogPos) MemLogPos {
 	return MemLogPos(pos - c.leader.lastCommitted)
+}
+
+func (c *coreLogicImpl) GetAcceptEntriesRequest(toNode NodeID) (AcceptEntriesInput, bool) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	checkStateOK := func() bool {
+		if c.state == StateCandidate {
+			return true
+		}
+		if c.state == StateLeader {
+			return true
+		}
+		return false
+	}
+
+	if !checkStateOK() {
+		return AcceptEntriesInput{}, false
+	}
+
+	maxMemPos := c.getMemLogLen()
+	if c.state == StateCandidate {
+		maxMemPos = c.computeMemPos(c.candidate.acceptPos)
+	}
+
+	// TODO wait on condition: maxMemPos > 1
+
+	var acceptEntries []AcceptLogEntry
+	for memPos := MemLogPos(1); memPos <= maxMemPos; memPos++ {
+		acceptEntries = append(acceptEntries, AcceptLogEntry{
+			Pos:   c.memPosToLogPos(memPos),
+			Entry: *c.getMemLogEntry(memPos),
+		})
+	}
+
+	return AcceptEntriesInput{
+		ToNode:  toNode,
+		Term:    c.leader.proposeTerm,
+		Entries: acceptEntries,
+	}, true
+}
+
+func (c *coreLogicImpl) memPosToLogPos(memPos MemLogPos) LogPos {
+	return LogPos(memPos) + c.leader.lastCommitted
 }
