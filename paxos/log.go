@@ -3,6 +3,8 @@ package paxos
 type ReplicatedLog interface {
 	HandleRequestVote(input RequestVoteInput) RequestVoteOutput
 	AcceptEntries(input AcceptEntriesInput)
+
+	GetCommittedInfo() CommittedInfo
 }
 
 type RequestVoteInput struct {
@@ -39,4 +41,9 @@ type AcceptEntriesOutput struct {
 	Success bool
 	Term    TermNum
 	PosList []LogPos
+}
+
+type CommittedInfo struct {
+	Members []MemberInfo
+	Pos     LogPos
 }

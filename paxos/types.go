@@ -50,11 +50,6 @@ type LogEntry struct {
 	CmdData []byte
 }
 
-type MemberInfo struct {
-	Nodes      []NodeID
-	ActiveFrom LogPos
-}
-
 type LogType int
 
 const (
@@ -62,3 +57,36 @@ const (
 	LogTypeCmd
 	LogTypeNull
 )
+
+// ----------------------------------------------------------
+
+type MemberInfo struct {
+	Nodes      []NodeID
+	ActiveFrom LogPos
+}
+
+func GetAllMembers(members []MemberInfo, pos LogPos) []NodeID {
+	var result []NodeID
+	resultSet := map[NodeID]struct{}{}
+
+	addNode := func(id NodeID) {
+		_, existed := resultSet[id]
+		if existed {
+			return
+		}
+		resultSet[id] = struct{}{}
+		result = append(result, id)
+	}
+
+	for _, info := range members {
+		if pos < info.ActiveFrom {
+			continue
+		}
+
+		for _, node := range info.Nodes {
+			addNode(node)
+		}
+	}
+
+	return result
+}
