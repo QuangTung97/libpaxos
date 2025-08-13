@@ -21,8 +21,8 @@ type RequestVoteOutput struct {
 
 type VoteLogEntry struct {
 	Pos   LogPos
-	Entry LogEntry
 	More  bool
+	Entry LogEntry
 }
 
 type AcceptEntriesInput struct {

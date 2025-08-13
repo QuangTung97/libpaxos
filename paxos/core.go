@@ -12,6 +12,8 @@ type CoreLogic interface {
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
 	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID) (AcceptEntriesInput, bool)
+
+	InsertCommand(cmdDataList ...[]byte) bool
 }
 
 func NewCoreLogic(
@@ -210,7 +212,17 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 }
 
 func (c *coreLogicImpl) switchFromCandidateToLeader() {
-	// TODO
+	infiniteSet := map[NodeID]struct{}{}
+	for nodeID, remainPos := range c.candidate.remainPosMap {
+		if !remainPos.IsFinite {
+			infiniteSet[nodeID] = struct{}{}
+		}
+	}
+
+	if IsQuorum(c.leader.members, infiniteSet, c.candidate.acceptPos+1) {
+		c.state = StateLeader
+		c.candidate = nil
+	}
 }
 
 func (c *coreLogicImpl) getMemLogLen() MemLogPos {
@@ -269,4 +281,15 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 
 func (c *coreLogicImpl) memPosToLogPos(memPos MemLogPos) LogPos {
 	return LogPos(memPos) + c.leader.lastCommitted
+}
+
+func (c *coreLogicImpl) InsertCommand(...[]byte) bool {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.state != StateLeader {
+		return false
+	}
+
+	return true
 }

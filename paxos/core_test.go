@@ -91,3 +91,37 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 		FromPos: 2,
 	}, voteReq)
 }
+
+func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	voteOutput := RequestVoteOutput{
+		Success: true,
+		Term: TermNum{
+			Num:    21,
+			NodeID: nodeID1,
+		},
+		Entries: []VoteLogEntry{
+			{
+				Pos:  2,
+				More: false,
+			},
+		},
+	}
+
+	// handle vote response
+	c.core.HandleVoteResponse(nodeID1, voteOutput)
+
+	assert.Equal(t, false, c.core.InsertCommand([]byte("cmd 01")))
+
+	// switch to leader state
+	c.core.HandleVoteResponse(nodeID2, voteOutput)
+
+	assert.Equal(t, true, c.core.InsertCommand([]byte("cmd 01")))
+
+	// do nothing
+	c.core.HandleVoteResponse(nodeID3, voteOutput)
+}
