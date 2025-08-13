@@ -12,10 +12,14 @@ func NewCoreLogic() CoreLogic {
 }
 
 type coreLogicImpl struct {
-	mut       sync.Mutex
-	state     State
+	mut   sync.Mutex
+	state State
+
 	candidate *candidateState
 	leader    *leaderState
+
+	persistent PersistentState
+	log        ReplicatedLog
 }
 
 type candidateState struct {
@@ -24,4 +28,12 @@ type candidateState struct {
 }
 
 type leaderState struct {
+	members       []MemberInfo
+	lastCommitted LogPos
+	proposeTerm   TermNum
+
+	memLog   []LogEntry
+	logVoted [][]NodeID
+
+	acceptorCommitted map[NodeID]LogPos
 }

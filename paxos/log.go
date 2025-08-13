@@ -1,25 +1,42 @@
 package paxos
 
 type ReplicatedLog interface {
+	HandleRequestVote(input RequestVoteInput) RequestVoteOutput
+	AcceptEntries(input AcceptEntriesInput)
 }
 
-type LogEntry struct {
-	Type LogType
-	Term InfiniteTerm
-
-	// Members valid only when Type = LogTypeMembership
-	Members []MemberInfo
+type RequestVoteInput struct {
+	ToNode  NodeID
+	Term    TermNum
+	FromPos LogPos
+	Limit   int
 }
 
-type MemberInfo struct {
-	Nodes      []NodeID
-	ActiveFrom LogPos
+type RequestVoteOutput struct {
+	Success bool
+	Term    TermNum
+	Entries []VoteLogEntry
 }
 
-type LogType int
+type VoteLogEntry struct {
+	Pos   LogPos
+	Entry LogEntry
+	More  bool
+}
 
-const (
-	LogTypeMembership LogType = iota + 1
-	LogTypeCmd
-	LogTypeNull
-)
+type AcceptEntriesInput struct {
+	ToNode  NodeID
+	Term    TermNum
+	Entries []AcceptLogEntry
+}
+
+type AcceptLogEntry struct {
+	Pos   LogPos
+	Entry LogEntry
+}
+
+type AcceptEntriesOutput struct {
+	Success bool
+	Term    TermNum
+	PosList []LogPos
+}
