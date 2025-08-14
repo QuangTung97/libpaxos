@@ -30,6 +30,8 @@ func (c *Cond) Wait(ctx context.Context) error {
 
 	case <-ctx.Done():
 		c.locker.Lock()
+
+		c.waitList = removeFromChanList(c.waitList, signalChan)
 		return ctx.Err()
 	}
 }
@@ -49,3 +51,16 @@ var _ sync.Locker = &noCopy{}
 
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
+
+func removeFromChanList(chanList []chan struct{}, ch chan struct{}) []chan struct{} {
+	n := len(chanList)
+	for i := 0; i < n; {
+		if chanList[i] == ch {
+			n--
+			chanList[i] = chanList[n]
+		} else {
+			i++
+		}
+	}
+	return chanList[:n]
+}

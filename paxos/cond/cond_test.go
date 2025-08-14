@@ -74,6 +74,8 @@ func TestCond_With_Context_Cancel(t *testing.T) {
 	err := doWaitFinish()
 	assert.Equal(t, context.Canceled, err)
 
+	assert.Equal(t, 0, len(cond.waitList))
+
 	mut.Lock()
 	waitCount--
 	mut.Unlock()
@@ -144,4 +146,16 @@ func TestCond_Multi_Producers_Consumers(t *testing.T) {
 	const numInc = numThreads * numLoops
 
 	assert.Equal(t, int64((numInc+1)*numInc/2), totalConsumed.Load())
+}
+
+func TestRemoveFromChanList(t *testing.T) {
+	a := make(chan struct{})
+	b := make(chan struct{})
+	c := make(chan struct{})
+
+	result := removeFromChanList([]chan struct{}{a, b, c, a, b, a}, a)
+	assert.Equal(t, 3, len(result))
+	assert.Equal(t, b, result[0])
+	assert.Equal(t, b, result[1])
+	assert.Equal(t, c, result[2])
 }
