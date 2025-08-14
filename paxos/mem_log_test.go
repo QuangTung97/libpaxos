@@ -15,6 +15,7 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 		assert.Equal(t, LogPos(20), m.MaxLogPos())
+		assert.Equal(t, 0, m.GetQueueSize())
 
 		entry1 := LogEntry{
 			Type:    LogTypeCmd,
@@ -33,6 +34,7 @@ func TestMemLog(t *testing.T) {
 		m.Put(24, entry3)
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
+		assert.Equal(t, 4, m.GetQueueSize())
 
 		entry := m.Get(21)
 		assert.Equal(t, entry1, entry)
@@ -76,10 +78,6 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, LogPos(27), m.MaxLogPos())
 
 		entry := m.Get(21)
-		assert.Equal(t, entry1, entry)
-
-		// get front
-		entry = m.Front()
 		assert.Equal(t, entry1, entry)
 
 		entry = m.Get(22)
@@ -133,6 +131,8 @@ func TestMemLog(t *testing.T) {
 
 		entry = m.Get(28)
 		assert.Equal(t, entry4, entry)
+
+		assert.Equal(t, 6, m.GetQueueSize())
 	})
 
 	t.Run("get voted", func(t *testing.T) {
@@ -179,5 +179,13 @@ func TestMemLog(t *testing.T) {
 		}, m.GetVoted(22))
 
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
+
+		// get front
+		pos, voted := m.GetFrontVoted()
+		assert.Equal(t, LogPos(21), pos)
+		assert.Equal(t, map[NodeID]struct{}{
+			node1: {},
+			node2: {},
+		}, voted)
 	})
 }

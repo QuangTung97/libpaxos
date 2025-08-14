@@ -14,6 +14,7 @@ type CoreLogic interface {
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
 	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID) (AcceptEntriesInput, bool)
+	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
 	InsertCommand(cmdDataList ...[]byte) bool
 
@@ -117,7 +118,6 @@ func (c *coreLogicImpl) GetVoteRequest(toNode NodeID) (RequestVoteInput, bool) {
 		return RequestVoteInput{}, false
 	}
 
-	term := c.leader.proposeTerm
 	remainPos, ok := c.candidate.remainPosMap[toNode]
 	if !ok {
 		return RequestVoteInput{}, false
@@ -129,7 +129,7 @@ func (c *coreLogicImpl) GetVoteRequest(toNode NodeID) (RequestVoteInput, bool) {
 
 	return RequestVoteInput{
 		ToNode:  toNode,
-		Term:    term,
+		Term:    c.getLeaderTerm(),
 		FromPos: remainPos.Pos,
 	}, true
 }
@@ -147,7 +147,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		return false
 	}
 
-	if c.leader.proposeTerm != output.Term {
+	if !c.isValidTerm(output.Term) {
 		// TODO testing
 		return false
 	}
@@ -192,7 +192,7 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 		return
 	}
 
-	term := c.leader.proposeTerm
+	term := c.getLeaderTerm()
 
 	putEntry := entry.Entry
 	if putEntry.IsNull() {
@@ -238,7 +238,7 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 
 	c.candidate.acceptPos = pos
 	logEntry := c.leader.memLog.Get(pos)
-	logEntry.Term = c.leader.proposeTerm.ToInf()
+	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
 
 	return true
@@ -265,18 +265,7 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 	defer c.mut.Unlock()
 
 StartFunction:
-	checkStateOK := func() bool {
-		if c.state == StateCandidate {
-			return true
-		}
-		if c.state == StateLeader {
-			return true
-		}
-		// TODO testing
-		return false
-	}
-
-	if !checkStateOK() {
+	if !c.isCandidateOrLeader() {
 		// TODO testing
 		return AcceptEntriesInput{}, false
 	}
@@ -303,9 +292,88 @@ StartFunction:
 
 	return AcceptEntriesInput{
 		ToNode:  toNode,
-		Term:    c.leader.proposeTerm,
+		Term:    c.getLeaderTerm(),
 		Entries: acceptEntries,
 	}, true
+}
+
+func (c *coreLogicImpl) isCandidateOrLeader() bool {
+	if c.state == StateCandidate {
+		return true
+	}
+	if c.state == StateLeader {
+		return true
+	}
+	return false
+}
+
+func (c *coreLogicImpl) HandleAcceptEntriesResponse(
+	fromNode NodeID, output AcceptEntriesOutput,
+) bool {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if !output.Success {
+		// TODO
+		return false
+	}
+
+	if !c.isValidTerm(output.Term) {
+		// TODO testing
+		return false
+	}
+
+	for _, pos := range output.PosList {
+		c.handleAcceptResponseForPos(fromNode, pos)
+	}
+
+	return false
+}
+
+func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
+	if pos <= c.leader.lastCommitted {
+		return false
+	}
+
+	memLog := c.leader.memLog
+
+	maxPos := memLog.MaxLogPos()
+	if pos > maxPos {
+		// TODO testing
+		return false
+	}
+
+	voted := memLog.GetVoted(pos)
+	_, existed := voted[id]
+	if existed {
+		return false
+	}
+
+	voted[id] = struct{}{}
+
+	if IsQuorum(c.leader.members, voted, pos) {
+		entry := memLog.Get(pos)
+		entry.Term = InfiniteTerm{}
+		memLog.Put(pos, entry)
+	}
+
+	c.increaseLastCommitted()
+
+	return true
+}
+
+func (c *coreLogicImpl) increaseLastCommitted() {
+	memLog := c.leader.memLog
+
+	for memLog.GetQueueSize() > 0 {
+		pos, voted := memLog.GetFrontVoted()
+
+		if !IsQuorum(c.leader.members, voted, pos) {
+			break
+		}
+
+		memLog.PopFront()
+	}
 }
 
 func (c *coreLogicImpl) InsertCommand(cmdList ...[]byte) bool {
@@ -321,7 +389,7 @@ func (c *coreLogicImpl) InsertCommand(cmdList ...[]byte) bool {
 		pos := maxPos + 1
 		c.leader.memLog.Put(pos, LogEntry{
 			Type:    LogTypeCmd,
-			Term:    c.leader.proposeTerm.ToInf(),
+			Term:    c.getLeaderTerm().ToInf(),
 			CmdData: cmd,
 		})
 	}
@@ -333,4 +401,12 @@ func (c *coreLogicImpl) GetState() State {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	return c.state
+}
+
+func (c *coreLogicImpl) getLeaderTerm() TermNum {
+	return c.leader.proposeTerm
+}
+
+func (c *coreLogicImpl) isValidTerm(term TermNum) bool {
+	return c.leader.proposeTerm == term
 }
