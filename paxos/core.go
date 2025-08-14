@@ -10,7 +10,7 @@ import (
 type CoreLogic interface {
 	StartElection()
 
-	GetVoteRequest(toNode NodeID) (RequestVoteInput, bool)
+	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
 	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID, from LogPos) (AcceptEntriesInput, bool)
@@ -111,16 +111,22 @@ func (c *coreLogicImpl) StartElection() {
 	c.runner.StartAcceptRequestRunners(allMembers)
 }
 
-func (c *coreLogicImpl) GetVoteRequest(toNode NodeID) (RequestVoteInput, bool) {
+func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateCandidate {
+		// TODO testing
+		return RequestVoteInput{}, false
+	}
+	if !c.isValidTerm(term) {
+		// TODO testing
 		return RequestVoteInput{}, false
 	}
 
 	remainPos, ok := c.candidate.remainPosMap[toNode]
 	if !ok {
+		// TODO testing
 		return RequestVoteInput{}, false
 	}
 
@@ -253,10 +259,13 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 		}
 	}
 
-	if IsQuorum(c.leader.members, infiniteSet, c.candidate.acceptPos+1) {
-		c.state = StateLeader
-		c.candidate = nil
+	if !IsQuorum(c.leader.members, infiniteSet, c.candidate.acceptPos+1) {
+		return
 	}
+
+	c.state = StateLeader
+	c.candidate = nil
+	c.runner.StartVoteRequestRunners(nil)
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(

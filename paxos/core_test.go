@@ -149,7 +149,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
 
 	// get vote request
-	voteReq, ok := c.core.GetVoteRequest(nodeID2)
+	voteReq, ok := c.core.GetVoteRequest(c.currentTerm, nodeID2)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, RequestVoteInput{
 		Term: TermNum{
@@ -161,7 +161,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	}, voteReq)
 
 	// get vote request for leader node
-	voteReq, ok = c.core.GetVoteRequest(nodeID1)
+	voteReq, ok = c.core.GetVoteRequest(c.currentTerm, nodeID1)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, RequestVoteInput{
 		Term: TermNum{
@@ -240,6 +240,10 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 			},
 		},
 	}, acceptReq)
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t *testing.T) {
