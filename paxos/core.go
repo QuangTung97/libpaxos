@@ -13,7 +13,7 @@ type CoreLogic interface {
 	GetVoteRequest(toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
-	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID) (AcceptEntriesInput, bool)
+	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID, from LogPos) (AcceptEntriesInput, bool)
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
 	InsertCommand(cmdDataList ...[]byte) bool
@@ -259,7 +259,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
-	ctx context.Context, toNode NodeID,
+	ctx context.Context, toNode NodeID, fromPos LogPos,
 ) (AcceptEntriesInput, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -275,7 +275,12 @@ StartFunction:
 		maxLogPos = c.candidate.acceptPos
 	}
 
-	if maxLogPos <= c.leader.lastCommitted {
+	afterCommit := c.leader.lastCommitted + 1
+	if fromPos < afterCommit {
+		fromPos = afterCommit
+	}
+
+	if fromPos > maxLogPos {
 		if err := c.getAcceptCond.Wait(ctx); err != nil {
 			return AcceptEntriesInput{}, false
 		}
@@ -283,7 +288,7 @@ StartFunction:
 	}
 
 	var acceptEntries []AcceptLogEntry
-	for pos := c.leader.lastCommitted + 1; pos <= maxLogPos; pos++ {
+	for pos := fromPos; pos <= maxLogPos; pos++ {
 		acceptEntries = append(acceptEntries, AcceptLogEntry{
 			Pos:   pos,
 			Entry: c.leader.memLog.Get(pos),
