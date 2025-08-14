@@ -171,7 +171,22 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	if entry.More {
-		c.leader.memLog.Put(pos, entry.Entry)
+		term := c.leader.proposeTerm
+
+		putEntry := entry.Entry
+		if putEntry.IsNull() {
+			putEntry = NewNoOpLogEntry(term)
+		}
+
+		oldEntry := c.leader.memLog.Get(pos)
+		if oldEntry.IsNull() {
+			c.leader.memLog.Put(pos, putEntry)
+		} else {
+			if CompareInfiniteTerm(oldEntry.Term, putEntry.Term) < 0 {
+				c.leader.memLog.Put(pos, putEntry)
+			}
+		}
+
 		c.candidate.remainPosMap[id] = InfiniteLogPos{
 			IsFinite: true,
 			Pos:      pos + 1,

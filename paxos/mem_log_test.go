@@ -40,13 +40,12 @@ func TestMemLog(t *testing.T) {
 		entry = m.Get(23)
 		assert.Equal(t, LogEntry{}, entry)
 
+		entry = m.Get(25)
+		assert.Equal(t, LogEntry{}, entry)
+
 		// panic when < last committed
 		assert.PanicsWithValue(t, "Invalid log pos in mem log", func() {
 			m.Get(20)
-		})
-		// panic when > max pos
-		assert.PanicsWithValue(t, "Exceeded mem log size", func() {
-			m.Get(25)
 		})
 	})
 

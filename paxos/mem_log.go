@@ -76,7 +76,7 @@ func (m *MemLog) Get(pos LogPos) LogEntry {
 		panic("Invalid log pos in mem log")
 	}
 	if memPos > m.queueLen {
-		panic("Exceeded mem log size")
+		return LogEntry{}
 	}
 
 	index := m.getQueueIndex(memPos - 1)

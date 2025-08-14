@@ -1,5 +1,10 @@
 package paxos
 
+import (
+	"cmp"
+	"slices"
+)
+
 // ----------------------------------------------------------
 
 type NodeID [16]byte
@@ -34,6 +39,24 @@ type InfiniteTerm struct {
 	Term     TermNum
 }
 
+func CompareTermNum(a, b TermNum) int {
+	if a.Num != b.Num {
+		return cmp.Compare(a.Num, b.Num)
+	}
+	return slices.Compare(a.NodeID[:], b.NodeID[:])
+}
+
+func CompareInfiniteTerm(a, b InfiniteTerm) int {
+	if a.IsFinite != b.IsFinite {
+		if !a.IsFinite {
+			return 1
+		} else {
+			return -1
+		}
+	}
+	return CompareTermNum(a.Term, b.Term)
+}
+
 // ----------------------------------------------------------
 
 type State int
@@ -57,6 +80,10 @@ type LogEntry struct {
 	CmdData []byte
 }
 
+func (e LogEntry) IsNull() bool {
+	return e.Type == LogTypeNull
+}
+
 type LogType int
 
 const (
@@ -65,6 +92,14 @@ const (
 	LogTypeCmd
 	LogTypeNoOp
 )
+
+func NewNoOpLogEntry(term TermNum) LogEntry {
+	term.Num = -1
+	return LogEntry{
+		Type: LogTypeNoOp,
+		Term: term.ToInf(),
+	}
+}
 
 // ----------------------------------------------------------
 
