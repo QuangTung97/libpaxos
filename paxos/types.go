@@ -13,6 +13,7 @@ type InfiniteLogPos struct {
 	Pos      LogPos
 }
 
+// MemLogPos TODO remove
 type MemLogPos int64
 
 // ----------------------------------------------------------
