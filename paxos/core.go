@@ -16,9 +16,10 @@ type CoreLogic interface {
 	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID, from LogPos) (AcceptEntriesInput, bool)
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
-	InsertCommand(cmdDataList ...[]byte) bool
+	InsertCommand(term TermNum, cmdDataList ...[]byte) bool
 
 	GetState() State
+	GetLastCommitted() LogPos
 }
 
 func NewCoreLogic(
@@ -332,7 +333,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		c.handleAcceptResponseForPos(fromNode, pos)
 	}
 
-	return false
+	return true
 }
 
 func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
@@ -372,20 +373,22 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 
 	for memLog.GetQueueSize() > 0 {
 		pos, voted := memLog.GetFrontVoted()
-
 		if !IsQuorum(c.leader.members, voted, pos) {
 			break
 		}
-
 		memLog.PopFront()
 	}
 }
 
-func (c *coreLogicImpl) InsertCommand(cmdList ...[]byte) bool {
+func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateLeader {
+		return false
+	}
+
+	if !c.isValidTerm(term) {
 		return false
 	}
 
@@ -414,4 +417,8 @@ func (c *coreLogicImpl) getLeaderTerm() TermNum {
 
 func (c *coreLogicImpl) isValidTerm(term TermNum) bool {
 	return c.leader.proposeTerm == term
+}
+
+func (c *coreLogicImpl) GetLastCommitted() LogPos {
+	return c.leader.lastCommitted
 }

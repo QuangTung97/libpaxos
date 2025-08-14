@@ -128,6 +128,16 @@ func (c *coreLogicTest) startAsLeader() {
 	c.core.HandleVoteResponse(nodeID2, voteOutput)
 }
 
+func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
+	cmdListBytes := make([][]byte, 0, len(cmdList))
+	for _, cmd := range cmdList {
+		cmdListBytes = append(cmdListBytes, []byte(cmd))
+	}
+	if ok := c.core.InsertCommand(c.currentTerm, cmdListBytes...); !ok {
+		panic("can not insert")
+	}
+}
+
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	c := newCoreLogicTest()
 
@@ -186,12 +196,12 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	// handle vote response
 	c.core.HandleVoteResponse(nodeID1, voteOutput)
 
-	assert.Equal(t, false, c.core.InsertCommand([]byte("cmd 01")))
+	assert.Equal(t, false, c.core.InsertCommand(c.currentTerm, []byte("cmd 01")))
 
 	// switch to leader state
 	c.core.HandleVoteResponse(nodeID2, voteOutput)
 
-	assert.Equal(t, true, c.core.InsertCommand([]byte("cmd 01")))
+	assert.Equal(t, true, c.core.InsertCommand(c.currentTerm, []byte("cmd 01")))
 
 	// do nothing
 	c.core.HandleVoteResponse(nodeID3, voteOutput)
@@ -422,8 +432,10 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 	c.startAsLeader()
 
 	// insert 2 commands
-	assert.Equal(t, true, c.core.InsertCommand([]byte("cmd 01")))
-	assert.Equal(t, true, c.core.InsertCommand([]byte("cmd 02")))
+	c.doInsertCmd(
+		"cmd data 01",
+		"cmd data 02",
+	)
 
 	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID2, 1)
 	assert.Equal(t, true, ok)
@@ -436,7 +448,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				Entry: LogEntry{
 					Type:    LogTypeCmd,
 					Term:    c.currentTerm.ToInf(),
-					CmdData: []byte("cmd 01"),
+					CmdData: []byte("cmd data 01"),
 				},
 			},
 			{
@@ -444,9 +456,96 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				Entry: LogEntry{
 					Type:    LogTypeCmd,
 					Term:    c.currentTerm.ToInf(),
-					CmdData: []byte("cmd 02"),
+					CmdData: []byte("cmd data 02"),
 				},
 			},
 		},
 	}, req)
+}
+
+func (c *coreLogicTest) newAcceptOutput(posList ...LogPos) AcceptEntriesOutput {
+	return AcceptEntriesOutput{
+		Success: true,
+		Term:    c.currentTerm,
+		PosList: posList,
+	}
+}
+
+func TestCoreLogic__Insert_Cmd__Then_Handle_Accept_Response(t *testing.T) {
+	c := newCoreLogicTest()
+
+	c.startAsLeader()
+
+	// insert 2 commands
+	c.doInsertCmd(
+		"cmd data 01",
+		"cmd data 02",
+	)
+
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept
+	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept node2
+	ok = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+
+	// do accept node3
+	ok = c.core.HandleAcceptEntriesResponse(nodeID3, c.newAcceptOutput(2))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+}
+
+func TestCoreLogic__Insert_Cmd__Accept_Response_2_Entries(t *testing.T) {
+	c := newCoreLogicTest()
+
+	c.startAsLeader()
+
+	// insert 2 commands
+	c.doInsertCmd(
+		"cmd data 01",
+		"cmd data 02",
+		"cmd data 03",
+	)
+
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept
+	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept node2
+	ok = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2, 3))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
+}
+
+func TestCoreLogic__Insert_Cmd__Then_Accept_Response_Same_Node_Multi_Times(t *testing.T) {
+	c := newCoreLogicTest()
+
+	c.startAsLeader()
+
+	// insert 2 commands
+	c.doInsertCmd(
+		"cmd data 01",
+		"cmd data 02",
+		"cmd data 03",
+	)
+
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept
+	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	// do accept again
+	ok = c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 }
