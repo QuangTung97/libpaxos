@@ -15,7 +15,8 @@ var nodeID2 = fake.NewNodeID(2)
 var nodeID3 = fake.NewNodeID(3)
 
 type coreLogicTest struct {
-	ctx context.Context
+	ctx       context.Context
+	cancelCtx context.Context
 
 	persistent *fake.PersistentStateFake
 	log        *fake.LogStorageFake
@@ -29,6 +30,10 @@ type coreLogicTest struct {
 func newCoreLogicTest() *coreLogicTest {
 	c := &coreLogicTest{}
 	c.ctx = context.Background()
+
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	c.cancelCtx = cancelCtx
 
 	c.persistent = &fake.PersistentStateFake{
 		NodeID:    nodeID1,
@@ -104,6 +109,23 @@ func (c *coreLogicTest) newVoteOutput(
 		Term:    c.currentTerm,
 		Entries: voteEntries,
 	}
+}
+
+func (c *coreLogicTest) startAsLeader() {
+	c.core.StartElection()
+
+	voteOutput := RequestVoteOutput{
+		Success: true,
+		Term:    c.currentTerm,
+		Entries: []VoteLogEntry{
+			{
+				Pos:  2,
+				More: false,
+			},
+		},
+	}
+	c.core.HandleVoteResponse(nodeID1, voteOutput)
+	c.core.HandleVoteResponse(nodeID2, voteOutput)
 }
 
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
@@ -297,21 +319,101 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 	}, acceptReq)
 }
 
-func (c *coreLogicTest) startAsLeader() {
+func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
 	c.core.StartElection()
 
-	voteOutput := RequestVoteOutput{
-		Success: true,
-		Term:    c.currentTerm,
-		Entries: []VoteLogEntry{
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 19)
+
+	voteOutput1 := c.newVoteOutput(2, false, LogEntry{}, entry1)
+	voteOutput2 := c.newVoteOutput(2, false, entry2)
+
+	// handle vote 1
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// handle vote 2
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// check get accept req
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1)
+	assert.Equal(t, true, ok)
+
+	entry2.Term = c.currentTerm.ToInf()
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
 			{
-				Pos:  2,
-				More: false,
+				Pos:   2,
+				Entry: entry2,
 			},
 		},
-	}
-	c.core.HandleVoteResponse(nodeID1, voteOutput)
-	c.core.HandleVoteResponse(nodeID2, voteOutput)
+	}, acceptReq)
+}
+
+func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+
+	voteOutput1 := c.newVoteOutput(2, true)
+	voteOutput2 := c.newVoteOutput(3, false, entry1)
+
+	// handle vote 1
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// check get accept req
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1)
+	assert.Equal(t, false, ok)
+	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
+}
+
+func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 17)
+	entry2 := c.newLogEntry("cmd data 02", 18)
+	entry3 := c.newLogEntry("cmd data 03", 22)
+
+	voteOutput1 := c.newVoteOutput(2, false, entry1)
+	voteOutput2 := c.newVoteOutput(2, false, entry2)
+	voteOutput3 := c.newVoteOutput(2, false, entry3)
+
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	c.core.HandleVoteResponse(nodeID3, voteOutput3)
+
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// check get accept req
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1)
+	assert.Equal(t, true, ok)
+
+	entry2.Term = c.currentTerm.ToInf()
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{
+				Pos:   2,
+				Entry: entry2,
+			},
+		},
+	}, acceptReq)
 }
 
 func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {

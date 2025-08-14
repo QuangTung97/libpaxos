@@ -274,6 +274,9 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 	}
 
 	// TODO wait on condition: maxLogPos > lastCommitted
+	if maxLogPos <= c.leader.lastCommitted {
+		return AcceptEntriesInput{}, false
+	}
 
 	var acceptEntries []AcceptLogEntry
 	for pos := c.leader.lastCommitted + 1; pos <= maxLogPos; pos++ {
