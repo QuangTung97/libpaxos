@@ -140,6 +140,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	}
 
 	if c.leader.proposeTerm != output.Term {
+		// TODO testing
 		return false
 	}
 
@@ -157,6 +158,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 ) {
 	remainPos := c.candidate.remainPosMap[id]
 	if !remainPos.IsFinite {
+		// TODO testing
 		return
 	}
 
@@ -261,10 +263,12 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 		if c.state == StateLeader {
 			return true
 		}
+		// TODO testing
 		return false
 	}
 
 	if !checkStateOK() {
+		// TODO testing
 		return AcceptEntriesInput{}, false
 	}
 
