@@ -11,6 +11,7 @@ func TestMemLog(t *testing.T) {
 		lastCommitted := LogPos(20)
 
 		m := NewMemLog(&lastCommitted, 2)
+		assert.Equal(t, LogPos(20), m.MaxLogPos())
 
 		entry1 := LogEntry{
 			Type:    LogTypeCmd,
@@ -30,17 +31,23 @@ func TestMemLog(t *testing.T) {
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
 
-		entry, ok := m.Get(21)
-		assert.Equal(t, true, ok)
+		entry := m.Get(21)
 		assert.Equal(t, entry1, entry)
 
-		entry, ok = m.Get(22)
-		assert.Equal(t, true, ok)
+		entry = m.Get(22)
 		assert.Equal(t, entry2, entry)
 
-		entry, ok = m.Get(23)
-		assert.Equal(t, false, ok)
+		entry = m.Get(23)
 		assert.Equal(t, LogEntry{}, entry)
+
+		// panic when < last committed
+		assert.PanicsWithValue(t, "Invalid log pos in mem log", func() {
+			m.Get(20)
+		})
+		// panic when > max pos
+		assert.PanicsWithValue(t, "Exceeded mem log size", func() {
+			m.Get(25)
+		})
 	})
 
 	t.Run("queue cap extended", func(t *testing.T) {
@@ -66,25 +73,20 @@ func TestMemLog(t *testing.T) {
 
 		assert.Equal(t, LogPos(27), m.MaxLogPos())
 
-		entry, ok := m.Get(21)
-		assert.Equal(t, true, ok)
+		entry := m.Get(21)
 		assert.Equal(t, entry1, entry)
 
 		// get front
-		entry, ok = m.Front()
-		assert.Equal(t, true, ok)
+		entry = m.Front()
 		assert.Equal(t, entry1, entry)
 
-		entry, ok = m.Get(22)
-		assert.Equal(t, true, ok)
+		entry = m.Get(22)
 		assert.Equal(t, entry2, entry)
 
-		entry, ok = m.Get(26)
-		assert.Equal(t, false, ok)
+		entry = m.Get(26)
 		assert.Equal(t, LogEntry{}, entry)
 
-		entry, ok = m.Get(27)
-		assert.Equal(t, true, ok)
+		entry = m.Get(27)
 		assert.Equal(t, entry3, entry)
 	})
 
@@ -121,16 +123,13 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, LogPos(22), lastCommitted)
 		assert.Equal(t, LogPos(28), m.MaxLogPos())
 
-		entry, ok := m.Get(26)
-		assert.Equal(t, false, ok)
+		entry := m.Get(26)
 		assert.Equal(t, LogEntry{}, entry)
 
-		entry, ok = m.Get(27)
-		assert.Equal(t, true, ok)
+		entry = m.Get(27)
 		assert.Equal(t, entry3, entry)
 
-		entry, ok = m.Get(28)
-		assert.Equal(t, true, ok)
+		entry = m.Get(28)
 		assert.Equal(t, entry4, entry)
 	})
 }

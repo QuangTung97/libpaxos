@@ -52,8 +52,7 @@ type leaderStateInfo struct {
 	lastCommitted LogPos
 	proposeTerm   TermNum
 
-	memLog   []LogEntry
-	logVoted [][]NodeID
+	memLog *MemLog
 
 	acceptorCommitted map[NodeID]LogPos
 }
@@ -77,6 +76,8 @@ func (c *coreLogicImpl) StartElection() {
 
 		// TODO acceptorCommitted
 	}
+
+	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 
 	nextPos := commitInfo.Pos + 1
 	allMembers := GetAllMembers(commitInfo.Members, nextPos)
@@ -168,6 +169,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	if entry.More {
+		c.leader.memLog.Put(pos, entry.Entry)
 		c.candidate.remainPosMap[id] = InfiniteLogPos{
 			IsFinite: true,
 			Pos:      pos + 1,
@@ -180,8 +182,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 }
 
 func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
-	memPos := c.computeMemPos(pos)
-	if memPos > c.getMemLogLen() {
+	if pos > c.leader.memLog.MaxLogPos() {
 		return false
 	}
 
@@ -200,11 +201,12 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 
 	if !IsQuorum(c.leader.members, remainOkSet, pos) {
 		c.candidate.acceptPos = pos
-		logEntry := c.getMemLogEntry(memPos)
+		logEntry := c.leader.memLog.Get(pos)
 		logEntry.Term = InfiniteTerm{
 			IsFinite: true,
 			Term:     c.leader.proposeTerm,
 		}
+		c.leader.memLog.Put(pos, logEntry)
 		return false
 	}
 
@@ -223,18 +225,6 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 		c.state = StateLeader
 		c.candidate = nil
 	}
-}
-
-func (c *coreLogicImpl) getMemLogLen() MemLogPos {
-	return MemLogPos(len(c.leader.memLog))
-}
-
-func (c *coreLogicImpl) getMemLogEntry(memPos MemLogPos) *LogEntry {
-	return &c.leader.memLog[memPos-1]
-}
-
-func (c *coreLogicImpl) computeMemPos(pos LogPos) MemLogPos {
-	return MemLogPos(pos - c.leader.lastCommitted)
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -257,18 +247,18 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 		return AcceptEntriesInput{}, false
 	}
 
-	maxMemPos := c.getMemLogLen()
+	maxLogPos := c.leader.memLog.MaxLogPos()
 	if c.state == StateCandidate {
-		maxMemPos = c.computeMemPos(c.candidate.acceptPos)
+		maxLogPos = c.candidate.acceptPos
 	}
 
-	// TODO wait on condition: maxMemPos > 1
+	// TODO wait on condition: maxLogPos > lastCommitted
 
 	var acceptEntries []AcceptLogEntry
-	for memPos := MemLogPos(1); memPos <= maxMemPos; memPos++ {
+	for pos := c.leader.lastCommitted + 1; pos <= maxLogPos; pos++ {
 		acceptEntries = append(acceptEntries, AcceptLogEntry{
-			Pos:   c.memPosToLogPos(memPos),
-			Entry: *c.getMemLogEntry(memPos),
+			Pos:   pos,
+			Entry: c.leader.memLog.Get(pos),
 		})
 	}
 
@@ -279,16 +269,25 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 	}, true
 }
 
-func (c *coreLogicImpl) memPosToLogPos(memPos MemLogPos) LogPos {
-	return LogPos(memPos) + c.leader.lastCommitted
-}
-
-func (c *coreLogicImpl) InsertCommand(...[]byte) bool {
+func (c *coreLogicImpl) InsertCommand(cmdList ...[]byte) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateLeader {
 		return false
+	}
+
+	for _, cmd := range cmdList {
+		maxPos := c.leader.memLog.MaxLogPos()
+		pos := maxPos + 1
+		c.leader.memLog.Put(pos, LogEntry{
+			Type: LogTypeCmd,
+			Term: InfiniteTerm{
+				IsFinite: true,
+				Term:     c.leader.proposeTerm,
+			},
+			CmdData: cmd,
+		})
 	}
 
 	return true

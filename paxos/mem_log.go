@@ -34,7 +34,7 @@ func (m *MemLog) Put(pos LogPos, entry LogEntry) {
 	m.queueData[index] = entry
 }
 
-func (m *MemLog) Front() (LogEntry, bool) {
+func (m *MemLog) Front() LogEntry {
 	return m.Get(*m.lastCommitted + 1)
 }
 
@@ -70,7 +70,7 @@ func (m *MemLog) pushToQueue(e LogEntry) {
 	m.queueLen++
 }
 
-func (m *MemLog) Get(pos LogPos) (LogEntry, bool) {
+func (m *MemLog) Get(pos LogPos) LogEntry {
 	memPos := int(pos - *m.lastCommitted)
 	if memPos <= 0 {
 		panic("Invalid log pos in mem log")
@@ -80,8 +80,7 @@ func (m *MemLog) Get(pos LogPos) (LogEntry, bool) {
 	}
 
 	index := m.getQueueIndex(memPos - 1)
-	entry := m.queueData[index]
-	return entry, entry.Type != LogTypeNull
+	return m.queueData[index]
 }
 
 func (m *MemLog) MaxLogPos() LogPos {
