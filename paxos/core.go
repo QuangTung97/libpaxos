@@ -3,8 +3,6 @@ package paxos
 import (
 	"context"
 	"sync"
-
-	"github.com/QuangTung97/libpaxos/paxos/cond"
 )
 
 type CoreLogic interface {
@@ -34,7 +32,7 @@ func NewCoreLogic(
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
 ) CoreLogic {
-	c := &coreLogicImpl{
+	return &coreLogicImpl{
 		state:   StateFollower,
 		nowFunc: nowFunc,
 
@@ -42,10 +40,6 @@ func NewCoreLogic(
 		log:        log,
 		runner:     runner,
 	}
-
-	c.getAcceptCond = cond.NewCond(&c.mut)
-
-	return c
 }
 
 type coreLogicImpl struct {
@@ -53,8 +47,6 @@ type coreLogicImpl struct {
 
 	mut   sync.Mutex
 	state State
-
-	getAcceptCond *cond.Cond
 
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
@@ -76,6 +68,8 @@ type leaderStateInfo struct {
 
 	memLog *MemLog
 
+	nodeCondVar *NodeCond
+
 	acceptorCommitted map[NodeID]LogPos
 	acceptorWakeUpAt  map[NodeID]TimestampMilli
 }
@@ -96,6 +90,8 @@ func (c *coreLogicImpl) StartElection() {
 		members:       commitInfo.Members,
 		lastCommitted: commitInfo.Pos,
 		proposeTerm:   c.persistent.NextProposeTerm(),
+
+		nodeCondVar: NewNodeCond(&c.mut),
 
 		// TODO acceptorCommitted
 	}
@@ -303,7 +299,7 @@ StartFunction:
 	}
 
 	if fromPos > maxLogPos && c.leader.lastCommitted <= lastCommittedSent {
-		if err := c.getAcceptCond.Wait(ctx); err != nil {
+		if err := c.leader.nodeCondVar.Wait(ctx, toNode); err != nil {
 			return AcceptEntriesInput{}, false
 		}
 		goto StartFunction

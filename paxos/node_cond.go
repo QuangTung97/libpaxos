@@ -45,11 +45,21 @@ func (c *NodeCond) Wait(ctx context.Context, nodeID NodeID) error {
 
 // Signal must be used in mutex
 func (c *NodeCond) Signal(nodeID NodeID) {
+	signChan, ok := c.waitSet[nodeID]
+	if ok {
+		return
+	}
+
+	delete(c.waitSet, nodeID)
+	close(signChan)
 }
 
 // Broadcast must be used in mutex
 func (c *NodeCond) Broadcast() {
-
+	for nodeID, signChan := range c.waitSet {
+		close(signChan)
+		delete(c.waitSet, nodeID)
+	}
 }
 
 // -----------------------------------------------------
