@@ -1,9 +1,12 @@
-package paxos
+package paxos_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	. "github.com/QuangTung97/libpaxos/paxos"
+	"github.com/QuangTung97/libpaxos/paxos/fake"
 )
 
 func TestMemLog(t *testing.T) {
@@ -130,5 +133,51 @@ func TestMemLog(t *testing.T) {
 
 		entry = m.Get(28)
 		assert.Equal(t, entry4, entry)
+	})
+
+	t.Run("get voted", func(t *testing.T) {
+		lastCommitted := LogPos(20)
+		m := NewMemLog(&lastCommitted, 2)
+
+		entry1 := LogEntry{
+			Type:    LogTypeCmd,
+			CmdData: []byte("cmd 01"),
+		}
+		entry2 := LogEntry{
+			Type:    LogTypeCmd,
+			CmdData: []byte("cmd 02"),
+		}
+		entry3 := LogEntry{
+			Type:    LogTypeCmd,
+			CmdData: []byte("cmd 03"),
+		}
+		m.Put(21, entry1)
+		m.Put(22, entry2)
+		m.Put(24, entry3)
+
+		assert.Equal(t, LogPos(24), m.MaxLogPos())
+
+		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(21))
+		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(22))
+		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
+
+		// add nodes and check
+		node1 := fake.NewNodeID(1)
+		node2 := fake.NewNodeID(2)
+
+		m.AddVoted(21, node1)
+		m.AddVoted(21, node2)
+		m.AddVoted(22, node2)
+
+		assert.Equal(t, map[NodeID]struct{}{
+			node1: {},
+			node2: {},
+		}, m.GetVoted(21))
+
+		assert.Equal(t, map[NodeID]struct{}{
+			node2: {},
+		}, m.GetVoted(22))
+
+		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
 	})
 }
