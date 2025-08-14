@@ -1,8 +1,8 @@
 package paxos
 
 type AcceptorLogic interface {
-	HandleRequestVote(input RequestVoteInput) RequestVoteOutput
-	AcceptEntries(input AcceptEntriesInput)
+	HandleRequestVote(input RequestVoteInput) (RequestVoteOutput, bool)
+	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, bool)
 
 	GetCommittedInfo() CommittedInfo
 }
@@ -26,9 +26,10 @@ type VoteLogEntry struct {
 }
 
 type AcceptEntriesInput struct {
-	ToNode  NodeID
-	Term    TermNum
-	Entries []AcceptLogEntry
+	ToNode    NodeID
+	Term      TermNum
+	Entries   []AcceptLogEntry
+	Committed LogPos
 }
 
 type AcceptLogEntry struct {

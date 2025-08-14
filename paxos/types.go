@@ -154,3 +154,7 @@ func GetAllMembers(members []MemberInfo, pos LogPos) map[NodeID]struct{} {
 
 	return resultSet
 }
+
+// ----------------------------------------------------------
+
+type TimestampMilli int64

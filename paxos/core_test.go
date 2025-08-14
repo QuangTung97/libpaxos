@@ -18,6 +18,8 @@ type coreLogicTest struct {
 	ctx       context.Context
 	cancelCtx context.Context
 
+	now TimestampMilli
+
 	persistent *fake.PersistentStateFake
 	log        *fake.LogStorageFake
 	runner     *fake.NodeRunnerFake
@@ -30,6 +32,7 @@ type coreLogicTest struct {
 func newCoreLogicTest() *coreLogicTest {
 	c := &coreLogicTest{}
 	c.ctx = context.Background()
+	c.now = 10_000
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -70,6 +73,9 @@ func newCoreLogicTest() *coreLogicTest {
 		c.persistent,
 		c.log,
 		c.runner,
+		func() TimestampMilli {
+			return c.now
+		},
 	)
 	return c
 }
@@ -239,6 +245,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 				Entry: entry1,
 			},
 		},
+		Committed: 1,
 	}, acceptReq)
 
 	// check runners
@@ -286,6 +293,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 				Entry: entry2,
 			},
 		},
+		Committed: 1,
 	}, acceptReq)
 }
 
@@ -330,6 +338,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 				Entry: entry2,
 			},
 		},
+		Committed: 1,
 	}, acceptReq)
 }
 
@@ -367,6 +376,7 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 				Entry: entry2,
 			},
 		},
+		Committed: 1,
 	}, acceptReq)
 }
 
@@ -427,6 +437,7 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 				Entry: entry2,
 			},
 		},
+		Committed: 1,
 	}, acceptReq)
 }
 
@@ -464,6 +475,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				},
 			},
 		},
+		Committed: 1,
 	}, req)
 }
 

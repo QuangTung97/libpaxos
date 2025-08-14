@@ -18,6 +18,8 @@ type CoreLogic interface {
 
 	InsertCommand(term TermNum, cmdDataList ...[]byte) bool
 
+	CheckTimeout()
+
 	GetState() State
 	GetLastCommitted() LogPos
 }
@@ -26,9 +28,11 @@ func NewCoreLogic(
 	persistent PersistentState,
 	log LogStorage,
 	runner NodeRunner,
+	nowFunc func() TimestampMilli,
 ) CoreLogic {
 	c := &coreLogicImpl{
-		state: StateFollower,
+		state:   StateFollower,
+		nowFunc: nowFunc,
 
 		persistent: persistent,
 		log:        log,
@@ -41,6 +45,8 @@ func NewCoreLogic(
 }
 
 type coreLogicImpl struct {
+	nowFunc func() TimestampMilli
+
 	mut   sync.Mutex
 	state State
 
@@ -306,9 +312,10 @@ StartFunction:
 	}
 
 	return AcceptEntriesInput{
-		ToNode:  toNode,
-		Term:    c.getLeaderTerm(),
-		Entries: acceptEntries,
+		ToNode:    toNode,
+		Term:      c.getLeaderTerm(),
+		Entries:   acceptEntries,
+		Committed: c.leader.lastCommitted,
 	}, true
 }
 
@@ -412,6 +419,9 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 	}
 
 	return true
+}
+
+func (c *coreLogicImpl) CheckTimeout() {
 }
 
 func (c *coreLogicImpl) GetState() State {
