@@ -66,13 +66,10 @@ func TestLogStorageFake_Membership(t *testing.T) {
 	}
 	entry3 := paxos.LogEntry{
 		Type: paxos.LogTypeCmd,
-		Term: paxos.InfiniteTerm{
-			IsFinite: true,
-			Term: paxos.TermNum{
-				Num:    41,
-				NodeID: NewNodeID(2),
-			},
-		},
+		Term: paxos.TermNum{
+			Num:    41,
+			NodeID: NewNodeID(2),
+		}.ToInf(),
 		CmdData: []byte("hello02"),
 	}
 

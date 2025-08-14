@@ -23,8 +23,7 @@ type coreLogicTest struct {
 
 	core CoreLogic
 
-	currentTerm    TermNum
-	currentTermInf InfiniteTerm
+	currentTerm TermNum
 }
 
 func newCoreLogicTest() *coreLogicTest {
@@ -133,16 +132,83 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	c.core.HandleVoteResponse(nodeID3, voteOutput)
 }
 
+func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	currentTerm := TermNum{
+		Num:    21,
+		NodeID: nodeID1,
+	}
+
+	entry1 := LogEntry{
+		Type: LogTypeCmd,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		CmdData: []byte("Cmd Data 01"),
+	}
+
+	voteOutput1 := RequestVoteOutput{
+		Success: true,
+		Term:    currentTerm,
+		Entries: []VoteLogEntry{
+			{
+				Pos:   2,
+				More:  true,
+				Entry: entry1,
+			},
+			{
+				Pos:  3,
+				More: false,
+			},
+		},
+	}
+	voteOutput2 := RequestVoteOutput{
+		Success: true,
+		Term:    currentTerm,
+		Entries: []VoteLogEntry{
+			{
+				Pos:  2,
+				More: false,
+			},
+		},
+	}
+
+	// handle vote 1
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// handle vote 2
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// get accept req
+	entry1.Term.Term = currentTerm
+
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   currentTerm,
+		Entries: []AcceptLogEntry{
+			{
+				Pos:   2,
+				Entry: entry1,
+			},
+		},
+	}, acceptReq)
+}
+
 func (c *coreLogicTest) startAsLeader() {
 	c.core.StartElection()
 
 	c.currentTerm = TermNum{
 		Num:    21,
 		NodeID: nodeID1,
-	}
-	c.currentTermInf = InfiniteTerm{
-		IsFinite: true,
-		Term:     c.currentTerm,
 	}
 
 	voteOutput := RequestVoteOutput{
@@ -178,7 +244,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				Pos: 2,
 				Entry: LogEntry{
 					Type:    LogTypeCmd,
-					Term:    c.currentTermInf,
+					Term:    c.currentTerm.ToInf(),
 					CmdData: []byte("cmd 01"),
 				},
 			},
@@ -186,7 +252,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				Pos: 3,
 				Entry: LogEntry{
 					Type:    LogTypeCmd,
-					Term:    c.currentTermInf,
+					Term:    c.currentTerm.ToInf(),
 					CmdData: []byte("cmd 02"),
 				},
 			},

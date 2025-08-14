@@ -22,6 +22,13 @@ type TermNum struct {
 	NodeID NodeID
 }
 
+func (t TermNum) ToInf() InfiniteTerm {
+	return InfiniteTerm{
+		IsFinite: true,
+		Term:     t,
+	}
+}
+
 type InfiniteTerm struct {
 	IsFinite bool
 	Term     TermNum

@@ -14,6 +14,8 @@ type CoreLogic interface {
 	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID) (AcceptEntriesInput, bool)
 
 	InsertCommand(cmdDataList ...[]byte) bool
+
+	GetState() State
 }
 
 func NewCoreLogic(
@@ -200,15 +202,13 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 	}
 
 	if !IsQuorum(c.leader.members, remainOkSet, pos) {
-		c.candidate.acceptPos = pos
-		logEntry := c.leader.memLog.Get(pos)
-		logEntry.Term = InfiniteTerm{
-			IsFinite: true,
-			Term:     c.leader.proposeTerm,
-		}
-		c.leader.memLog.Put(pos, logEntry)
 		return false
 	}
+
+	c.candidate.acceptPos = pos
+	logEntry := c.leader.memLog.Get(pos)
+	logEntry.Term = c.leader.proposeTerm.ToInf()
+	c.leader.memLog.Put(pos, logEntry)
 
 	return true
 }
@@ -281,14 +281,17 @@ func (c *coreLogicImpl) InsertCommand(cmdList ...[]byte) bool {
 		maxPos := c.leader.memLog.MaxLogPos()
 		pos := maxPos + 1
 		c.leader.memLog.Put(pos, LogEntry{
-			Type: LogTypeCmd,
-			Term: InfiniteTerm{
-				IsFinite: true,
-				Term:     c.leader.proposeTerm,
-			},
+			Type:    LogTypeCmd,
+			Term:    c.leader.proposeTerm.ToInf(),
 			CmdData: cmd,
 		})
 	}
 
 	return true
+}
+
+func (c *coreLogicImpl) GetState() State {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.state
 }
