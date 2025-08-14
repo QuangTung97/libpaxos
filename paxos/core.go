@@ -170,32 +170,38 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 		return
 	}
 
-	if entry.More {
-		term := c.leader.proposeTerm
+	c.candidatePutVoteEntry(id, entry)
+	c.increaseAcceptPos(pos)
+}
 
-		putEntry := entry.Entry
-		if putEntry.IsNull() {
-			putEntry = NewNoOpLogEntry(term)
-		}
+func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
+	pos := entry.Pos
 
-		oldEntry := c.leader.memLog.Get(pos)
-		if oldEntry.IsNull() {
-			c.leader.memLog.Put(pos, putEntry)
-		} else {
-			if CompareInfiniteTerm(oldEntry.Term, putEntry.Term) < 0 {
-				c.leader.memLog.Put(pos, putEntry)
-			}
-		}
-
-		c.candidate.remainPosMap[id] = InfiniteLogPos{
-			IsFinite: true,
-			Pos:      pos + 1,
-		}
-	} else {
+	if !entry.More {
 		c.candidate.remainPosMap[id] = InfiniteLogPos{}
+		return
 	}
 
-	c.increaseAcceptPos(pos)
+	term := c.leader.proposeTerm
+
+	putEntry := entry.Entry
+	if putEntry.IsNull() {
+		putEntry = NewNoOpLogEntry(term)
+	}
+
+	oldEntry := c.leader.memLog.Get(pos)
+	if oldEntry.IsNull() {
+		c.leader.memLog.Put(pos, putEntry)
+	} else {
+		if CompareInfiniteTerm(oldEntry.Term, putEntry.Term) < 0 {
+			c.leader.memLog.Put(pos, putEntry)
+		}
+	}
+
+	c.candidate.remainPosMap[id] = InfiniteLogPos{
+		IsFinite: true,
+		Pos:      pos + 1,
+	}
 }
 
 func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
