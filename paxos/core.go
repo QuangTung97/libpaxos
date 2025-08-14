@@ -77,6 +77,7 @@ type leaderStateInfo struct {
 	memLog *MemLog
 
 	acceptorCommitted map[NodeID]LogPos
+	acceptorWakeUpAt  map[NodeID]TimestampMilli
 }
 
 func (c *coreLogicImpl) StartElection() {
