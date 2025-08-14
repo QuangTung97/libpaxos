@@ -3,6 +3,8 @@ package paxos
 import (
 	"context"
 	"sync"
+
+	"github.com/QuangTung97/libpaxos/paxos/cond"
 )
 
 type CoreLogic interface {
@@ -23,18 +25,24 @@ func NewCoreLogic(
 	log LogStorage,
 	runner NodeRunner,
 ) CoreLogic {
-	return &coreLogicImpl{
+	c := &coreLogicImpl{
 		state: StateFollower,
 
 		persistent: persistent,
 		log:        log,
 		runner:     runner,
 	}
+
+	c.getAcceptCond = cond.NewCond(&c.mut)
+
+	return c
 }
 
 type coreLogicImpl struct {
 	mut   sync.Mutex
 	state State
+
+	getAcceptCond *cond.Cond
 
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
@@ -251,11 +259,12 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
-	_ context.Context, toNode NodeID,
+	ctx context.Context, toNode NodeID,
 ) (AcceptEntriesInput, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+StartFunction:
 	checkStateOK := func() bool {
 		if c.state == StateCandidate {
 			return true
@@ -277,9 +286,11 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 		maxLogPos = c.candidate.acceptPos
 	}
 
-	// TODO wait on condition: maxLogPos > lastCommitted
 	if maxLogPos <= c.leader.lastCommitted {
-		return AcceptEntriesInput{}, false
+		if err := c.getAcceptCond.Wait(ctx); err != nil {
+			return AcceptEntriesInput{}, false
+		}
+		goto StartFunction
 	}
 
 	var acceptEntries []AcceptLogEntry
