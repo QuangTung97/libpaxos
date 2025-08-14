@@ -13,7 +13,11 @@ type CoreLogic interface {
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
-	GetAcceptEntriesRequest(ctx context.Context, toNode NodeID, from LogPos) (AcceptEntriesInput, bool)
+	GetAcceptEntriesRequest(
+		ctx context.Context, toNode NodeID,
+		fromPos LogPos, lastCommittedSent LogPos,
+	) (AcceptEntriesInput, bool)
+
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
 	InsertCommand(term TermNum, cmdDataList ...[]byte) bool
@@ -275,7 +279,8 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
-	ctx context.Context, toNode NodeID, fromPos LogPos,
+	ctx context.Context, toNode NodeID,
+	fromPos LogPos, lastCommittedSent LogPos,
 ) (AcceptEntriesInput, bool) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -296,7 +301,7 @@ StartFunction:
 		fromPos = afterCommit
 	}
 
-	if fromPos > maxLogPos {
+	if fromPos > maxLogPos && c.leader.lastCommitted <= lastCommittedSent {
 		if err := c.getAcceptCond.Wait(ctx); err != nil {
 			return AcceptEntriesInput{}, false
 		}

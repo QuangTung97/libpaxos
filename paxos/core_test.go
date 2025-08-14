@@ -232,7 +232,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1, 0)
 	assert.Equal(t, true, ok)
 
 	entry1.Term = c.currentTerm.ToInf()
@@ -275,7 +275,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1, 0)
 	assert.Equal(t, true, ok)
 
 	entry1.Term = c.currentTerm.ToInf()
@@ -318,7 +318,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1, 0)
 	assert.Equal(t, true, ok)
 
 	entry2.Term = c.currentTerm.ToInf()
@@ -363,7 +363,7 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1, 0)
 	assert.Equal(t, true, ok)
 
 	entry2.Term = c.currentTerm.ToInf()
@@ -398,7 +398,7 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1, 2, 1)
 	assert.Equal(t, false, ok)
 	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
 }
@@ -424,7 +424,7 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1)
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 1, 0)
 	assert.Equal(t, true, ok)
 
 	entry2.Term = c.currentTerm.ToInf()
@@ -452,7 +452,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 		"cmd data 02",
 	)
 
-	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID2, 1)
+	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID2, 1, 0)
 	assert.Equal(t, true, ok)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID2,
