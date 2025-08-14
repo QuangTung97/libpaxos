@@ -46,7 +46,7 @@ func (c *NodeCond) Wait(ctx context.Context, nodeID NodeID) error {
 // Signal must be used in mutex
 func (c *NodeCond) Signal(nodeID NodeID) {
 	signChan, ok := c.waitSet[nodeID]
-	if ok {
+	if !ok {
 		return
 	}
 

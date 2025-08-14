@@ -94,6 +94,7 @@ func (c *coreLogicImpl) StartElection() {
 		nodeCondVar: NewNodeCond(&c.mut),
 
 		// TODO acceptorCommitted
+		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
 	}
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
@@ -298,7 +299,20 @@ StartFunction:
 		fromPos = afterCommit
 	}
 
-	if fromPos > maxLogPos && c.leader.lastCommitted <= lastCommittedSent {
+	waitCond := func() bool {
+		if fromPos <= maxLogPos {
+			return false
+		}
+		if c.leader.lastCommitted > lastCommittedSent {
+			return false
+		}
+		if c.leader.acceptorWakeUpAt[toNode] <= c.nowFunc() {
+			return false
+		}
+		return true
+	}
+
+	if waitCond() {
 		if err := c.leader.nodeCondVar.Wait(ctx, toNode); err != nil {
 			return AcceptEntriesInput{}, false
 		}
@@ -312,6 +326,8 @@ StartFunction:
 			Entry: c.leader.memLog.Get(pos),
 		})
 	}
+
+	c.leader.acceptorWakeUpAt[toNode] = c.nowFunc() + 5_000 // TODO configurable
 
 	return AcceptEntriesInput{
 		ToNode:    toNode,

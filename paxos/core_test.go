@@ -397,8 +397,17 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
-	// check get accept req
+	// check get accept req, first time not wait
 	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1, 2, 1)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID1,
+		Term:      c.currentTerm,
+		Committed: 1,
+	}, acceptReq)
+
+	// check get accept req, waiting
+	acceptReq, ok = c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1, 2, 1)
 	assert.Equal(t, false, ok)
 	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
 }
