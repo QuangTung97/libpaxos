@@ -12,7 +12,7 @@ type CoreLogic interface {
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
 	GetAcceptEntriesRequest(
-		ctx context.Context, toNode NodeID,
+		ctx context.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, bool)
 
@@ -327,7 +327,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
-	ctx context.Context, toNode NodeID,
+	ctx context.Context, term TermNum, toNode NodeID,
 	fromPos LogPos, lastCommittedSent LogPos,
 ) (AcceptEntriesInput, bool) {
 	c.mut.Lock()
@@ -335,6 +335,11 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 
 StartFunction:
 	if !c.isCandidateOrLeader() {
+		// TODO testing
+		return AcceptEntriesInput{}, false
+	}
+
+	if !c.isValidTerm(term) {
 		// TODO testing
 		return AcceptEntriesInput{}, false
 	}
@@ -350,7 +355,7 @@ StartFunction:
 		if fromPos <= maxLogPos {
 			return false
 		}
-		if c.leader.lastCommitted > lastCommittedSent {
+		if lastCommittedSent < c.leader.lastCommitted {
 			return false
 		}
 		if c.leader.acceptorWakeUpAt[toNode] <= c.nowFunc() {
@@ -459,6 +464,7 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 			break
 		}
 		memLog.PopFront()
+		// TODO broadcast
 	}
 }
 

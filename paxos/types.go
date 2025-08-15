@@ -144,7 +144,6 @@ func GetAllMembers(members []MemberInfo) map[NodeID]struct{} {
 			resultSet[node] = struct{}{}
 		}
 	}
-
 	return resultSet
 }
 
