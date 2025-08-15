@@ -13,9 +13,15 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos/testutil"
 )
 
-var nodeID1 = fake.NewNodeID(1)
-var nodeID2 = fake.NewNodeID(2)
-var nodeID3 = fake.NewNodeID(3)
+var (
+	nodeID1 = fake.NewNodeID(1)
+	nodeID2 = fake.NewNodeID(2)
+	nodeID3 = fake.NewNodeID(3)
+
+	nodeID4 = fake.NewNodeID(4)
+	nodeID5 = fake.NewNodeID(5)
+	nodeID6 = fake.NewNodeID(6)
+)
 
 type coreLogicTest struct {
 	ctx       context.Context
@@ -54,8 +60,8 @@ func newCoreLogicTest() *coreLogicTest {
 		Term: InfiniteTerm{},
 		Members: []MemberInfo{
 			{
-				Nodes:      []NodeID{nodeID1, nodeID2, nodeID3},
-				ActiveFrom: 2,
+				Nodes:     []NodeID{nodeID1, nodeID2, nodeID3},
+				CreatedAt: 1,
 			},
 		},
 	}
@@ -192,10 +198,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 
 	voteOutput := RequestVoteOutput{
 		Success: true,
-		Term: TermNum{
-			Num:    21,
-			NodeID: nodeID1,
-		},
+		Term:    c.currentTerm,
 		Entries: []VoteLogEntry{
 			{
 				Pos:  2,
@@ -206,13 +209,15 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 
 	// handle vote response
 	c.core.HandleVoteResponse(nodeID1, voteOutput)
+	assert.Equal(t, StateCandidate, c.core.GetState())
 
-	assert.Equal(t, false, c.core.InsertCommand(c.currentTerm, []byte("cmd 01")))
+	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.VoteRunners)
 
 	// switch to leader state
 	c.core.HandleVoteResponse(nodeID2, voteOutput)
+	assert.Equal(t, StateLeader, c.core.GetState())
 
-	assert.Equal(t, true, c.core.InsertCommand(c.currentTerm, []byte("cmd 01")))
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
 
 	// do nothing
 	c.core.HandleVoteResponse(nodeID3, voteOutput)
@@ -696,4 +701,24 @@ func TestCoreLogic__Insert_Cmd__Then_Accept_Response_Same_Node_Multi_Times(t *te
 	ok = c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
 	assert.Equal(t, true, ok)
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+}
+
+func TestCoreLogic__Insert_Cmd__Then_Change_Membership(t *testing.T) {
+	c := newCoreLogicTest()
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd data 01",
+		"cmd data 02",
+	)
+
+	// do change
+	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID6})
+	assert.Equal(t, true, ok)
+
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
 }

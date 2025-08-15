@@ -163,8 +163,7 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
 
 		// get front
-		pos, voted := m.GetFrontVoted()
-		assert.Equal(t, LogPos(21), pos)
+		voted := m.GetFrontVoted()
 		assert.Equal(t, map[NodeID]struct{}{
 			node1: {},
 			node2: {},

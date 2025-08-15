@@ -22,7 +22,7 @@ type CoreLogic interface {
 
 	CheckTimeout()
 
-	ChangeMembership(term TermNum, newMembers []NodeID) bool
+	ChangeMembership(term TermNum, newNodes []NodeID) bool
 
 	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) bool
 
@@ -103,10 +103,10 @@ func (c *coreLogicImpl) StartElection() {
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 
-	nextPos := commitInfo.Pos + 1
-	allMembers := GetAllMembers(commitInfo.Members, nextPos)
+	allMembers := GetAllMembers(commitInfo.Members)
 
 	remainPosMap := map[NodeID]InfiniteLogPos{}
+	nextPos := commitInfo.Pos + 1
 	for member := range allMembers {
 		remainPosMap[member] = InfiniteLogPos{
 			IsFinite: true,
@@ -119,8 +119,36 @@ func (c *coreLogicImpl) StartElection() {
 		acceptPos:    commitInfo.Pos,
 	}
 
+	c.updateVoteRunners()
+	c.updateAcceptRunners()
+}
+
+func (c *coreLogicImpl) updateVoteRunners() {
+	if c.state == StateLeader {
+		c.runner.StartVoteRequestRunners(c.leader.proposeTerm, nil)
+		return
+	}
+
+	allMembers := GetAllMembers(c.leader.members)
+	for nodeID, remainPos := range c.candidate.remainPosMap {
+		if !remainPos.IsFinite {
+			// if +infinity => remove from runnable voters
+			delete(allMembers, nodeID)
+		}
+	}
 	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, allMembers)
+}
+
+func (c *coreLogicImpl) updateAcceptRunners() {
+	allMembers := GetAllMembers(c.leader.members)
 	c.runner.StartAcceptRequestRunners(c.leader.proposeTerm, allMembers)
+}
+
+func (c *coreLogicImpl) getMaxValidLogPos() LogPos {
+	if c.state == StateCandidate {
+		return c.candidate.acceptPos
+	}
+	return c.leader.memLog.MaxLogPos()
 }
 
 func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool) {
@@ -208,6 +236,7 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 
 	if !entry.More {
 		c.candidate.remainPosMap[id] = InfiniteLogPos{}
+		c.updateVoteRunners()
 		return
 	}
 
@@ -266,7 +295,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 		}
 	}
 
-	if !IsQuorum(c.leader.members, remainOkSet, pos) {
+	if !IsQuorum(c.leader.members, remainOkSet) {
 		return false
 	}
 
@@ -288,13 +317,13 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 		}
 	}
 
-	if !IsQuorum(c.leader.members, infiniteSet, c.candidate.acceptPos+1) {
+	if !IsQuorum(c.leader.members, infiniteSet) {
 		return
 	}
 
 	c.state = StateLeader
 	c.candidate = nil
-	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, nil)
+	c.updateVoteRunners()
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -310,10 +339,7 @@ StartFunction:
 		return AcceptEntriesInput{}, false
 	}
 
-	maxLogPos := c.leader.memLog.MaxLogPos()
-	if c.state == StateCandidate {
-		maxLogPos = c.candidate.acceptPos
-	}
+	maxLogPos := c.getMaxValidLogPos()
 
 	afterCommit := c.leader.lastCommitted + 1
 	if fromPos < afterCommit {
@@ -412,7 +438,8 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 
 	voted[id] = struct{}{}
 
-	if IsQuorum(c.leader.members, voted, pos) {
+	if IsQuorum(c.leader.members, voted) {
+		// set log entry term as +infinity
 		entry := memLog.Get(pos)
 		entry.Term = InfiniteTerm{}
 		memLog.Put(pos, entry)
@@ -427,8 +454,8 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 	memLog := c.leader.memLog
 
 	for memLog.GetQueueSize() > 0 {
-		pos, voted := memLog.GetFrontVoted()
-		if !IsQuorum(c.leader.members, voted, pos) {
+		voted := memLog.GetFrontVoted()
+		if !IsQuorum(c.leader.members, voted) {
 			break
 		}
 		memLog.PopFront()
@@ -450,14 +477,20 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 	for _, cmd := range cmdList {
 		maxPos := c.leader.memLog.MaxLogPos()
 		pos := maxPos + 1
-		c.leader.memLog.Put(pos, LogEntry{
+		entry := LogEntry{
 			Type:    LogTypeCmd,
 			Term:    c.getLeaderTerm().ToInf(),
 			CmdData: cmd,
-		})
+		}
+		c.appendNewEntry(pos, entry)
 	}
 
 	return true
+}
+
+func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {
+	c.leader.memLog.Put(pos, entry)
+	// TODO broadcast acceptors
 }
 
 func (c *coreLogicImpl) CheckTimeout() {
@@ -490,14 +523,39 @@ func (c *coreLogicImpl) broadcastAllAcceptors() {
 	c.leader.nodeCondVar.Broadcast()
 }
 
-func (c *coreLogicImpl) ChangeMembership(term TermNum, newMembers []NodeID) bool {
-	return false
+func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) bool {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.state != StateLeader {
+		return false
+	}
+
+	if !c.isValidTerm(term) {
+		return false
+	}
+
+	pos := c.leader.memLog.MaxLogPos() + 1
+	c.leader.members = append(c.leader.members, MemberInfo{
+		Nodes:     newNodes,
+		CreatedAt: pos,
+	})
+
+	entry := LogEntry{
+		Type:    LogTypeMembership,
+		Term:    c.leader.proposeTerm.ToInf(),
+		Members: c.leader.members,
+	}
+	c.appendNewEntry(pos, entry)
+	c.updateAcceptRunners()
+
+	return true
 }
 
 func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 	term TermNum, nodeID NodeID, pos LogPos,
 ) bool {
-	return false
+	return true
 }
 
 // ---------------------------------------------------------------------------

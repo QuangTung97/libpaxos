@@ -104,8 +104,8 @@ func NewNoOpLogEntry(term TermNum) LogEntry {
 // ----------------------------------------------------------
 
 type MemberInfo struct {
-	Nodes      []NodeID
-	ActiveFrom LogPos
+	Nodes     []NodeID
+	CreatedAt LogPos
 }
 
 func isQuorumOf(universe []NodeID, checkSet map[NodeID]struct{}) bool {
@@ -128,11 +128,8 @@ func isQuorumOf(universe []NodeID, checkSet map[NodeID]struct{}) bool {
 	return numElems >= factor
 }
 
-func IsQuorum(members []MemberInfo, nodes map[NodeID]struct{}, pos LogPos) bool {
+func IsQuorum(members []MemberInfo, nodes map[NodeID]struct{}) bool {
 	for _, info := range members {
-		if pos < info.ActiveFrom {
-			continue
-		}
 		if !isQuorumOf(info.Nodes, nodes) {
 			return false
 		}
@@ -140,13 +137,9 @@ func IsQuorum(members []MemberInfo, nodes map[NodeID]struct{}, pos LogPos) bool 
 	return true
 }
 
-func GetAllMembers(members []MemberInfo, pos LogPos) map[NodeID]struct{} {
+func GetAllMembers(members []MemberInfo) map[NodeID]struct{} {
 	resultSet := map[NodeID]struct{}{}
 	for _, info := range members {
-		if pos < info.ActiveFrom {
-			continue
-		}
-
 		for _, node := range info.Nodes {
 			resultSet[node] = struct{}{}
 		}

@@ -51,7 +51,7 @@ func TestLogStorageFake_Membership(t *testing.T) {
 				NewNodeID(2),
 				NewNodeID(3),
 			},
-			ActiveFrom: 2,
+			CreatedAt: 1,
 		},
 	}
 
