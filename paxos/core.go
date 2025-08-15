@@ -22,6 +22,10 @@ type CoreLogic interface {
 
 	CheckTimeout()
 
+	ChangeMembership(term TermNum, newMembers []NodeID) bool
+
+	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) bool
+
 	GetState() State
 	GetLastCommitted() LogPos
 }
@@ -68,10 +72,10 @@ type leaderStateInfo struct {
 
 	memLog *MemLog
 
-	nodeCondVar *NodeCond
+	acceptorWakeUpAt map[NodeID]TimestampMilli
+	nodeCondVar      *NodeCond
 
-	acceptorCommitted map[NodeID]LogPos
-	acceptorWakeUpAt  map[NodeID]TimestampMilli
+	acceptorFullyReplicated map[NodeID]LogPos
 }
 
 func (c *coreLogicImpl) StartElection() {
@@ -91,10 +95,10 @@ func (c *coreLogicImpl) StartElection() {
 		lastCommitted: commitInfo.Pos,
 		proposeTerm:   c.persistent.NextProposeTerm(),
 
-		nodeCondVar: NewNodeCond(&c.mut),
-
-		// TODO acceptorCommitted
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
+		nodeCondVar:      NewNodeCond(&c.mut),
+
+		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
@@ -115,8 +119,8 @@ func (c *coreLogicImpl) StartElection() {
 		acceptPos:    commitInfo.Pos,
 	}
 
-	c.runner.StartVoteRequestRunners(allMembers)
-	c.runner.StartAcceptRequestRunners(allMembers)
+	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, allMembers)
+	c.runner.StartAcceptRequestRunners(c.leader.proposeTerm, allMembers)
 }
 
 func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool) {
@@ -271,6 +275,8 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
 
+	// TODO step down to Follower when current candidate is no longer in membership list
+
 	return true
 }
 
@@ -288,8 +294,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 
 	c.state = StateLeader
 	c.candidate = nil
-	c.runner.StartVoteRequestRunners(nil)
-	// TODO broadcast
+	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, nil)
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -473,12 +478,6 @@ func (c *coreLogicImpl) CheckTimeout() {
 	}
 }
 
-func (c *coreLogicImpl) GetState() State {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-	return c.state
-}
-
 func (c *coreLogicImpl) getLeaderTerm() TermNum {
 	return c.leader.proposeTerm
 }
@@ -487,10 +486,30 @@ func (c *coreLogicImpl) isValidTerm(term TermNum) bool {
 	return c.leader.proposeTerm == term
 }
 
-func (c *coreLogicImpl) GetLastCommitted() LogPos {
-	return c.leader.lastCommitted
-}
-
 func (c *coreLogicImpl) broadcastAllAcceptors() {
 	c.leader.nodeCondVar.Broadcast()
+}
+
+func (c *coreLogicImpl) ChangeMembership(term TermNum, newMembers []NodeID) bool {
+	return false
+}
+
+func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
+	term TermNum, nodeID NodeID, pos LogPos,
+) bool {
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Utility Functions for testing
+// ---------------------------------------------------------------------------
+
+func (c *coreLogicImpl) GetState() State {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.state
+}
+
+func (c *coreLogicImpl) GetLastCommitted() LogPos {
+	return c.leader.lastCommitted
 }

@@ -156,6 +156,8 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	// check runners
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.VoteRunners)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
+	assert.Equal(t, c.currentTerm, c.runner.VoteTerm)
+	assert.Equal(t, c.currentTerm, c.runner.AcceptTerm)
 
 	// get vote request
 	voteReq, ok := c.core.GetVoteRequest(c.currentTerm, nodeID2)

@@ -7,18 +7,35 @@ import (
 )
 
 type NodeRunnerFake struct {
-	VoteRunners   []paxos.NodeID
+	VoteTerm    paxos.TermNum
+	VoteRunners []paxos.NodeID
+
+	AcceptTerm    paxos.TermNum
 	AcceptRunners []paxos.NodeID
+
+	LeaderTerm paxos.TermNum
+	IsLeader   bool
 }
 
 var _ paxos.NodeRunner = &NodeRunnerFake{}
 
-func (r *NodeRunnerFake) StartVoteRequestRunners(nodes map[paxos.NodeID]struct{}) {
+func (r *NodeRunnerFake) StartVoteRequestRunners(
+	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+) {
+	r.VoteTerm = term
 	r.VoteRunners = nodeSetToSlice(nodes)
 }
 
-func (r *NodeRunnerFake) StartAcceptRequestRunners(nodes map[paxos.NodeID]struct{}) {
+func (r *NodeRunnerFake) StartAcceptRequestRunners(
+	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+) {
+	r.AcceptTerm = term
 	r.AcceptRunners = nodeSetToSlice(nodes)
+}
+
+func (r *NodeRunnerFake) SetLeader(term paxos.TermNum, isLeader bool) {
+	r.LeaderTerm = term
+	r.IsLeader = isLeader
 }
 
 func nodeSetToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {

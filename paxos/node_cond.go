@@ -7,7 +7,8 @@ import (
 
 // NodeCond is a condition variable for a set of nodes
 type NodeCond struct {
-	noCopy
+	_ noCopy
+
 	mut     *sync.Mutex
 	waitSet map[NodeID]chan struct{}
 }
