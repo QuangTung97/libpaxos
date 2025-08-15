@@ -48,9 +48,13 @@ func (m *MemLog) GetFrontVoted() (LogPos, map[NodeID]struct{}) {
 }
 
 func (m *MemLog) PopFront() {
+	index := m.getQueueIndex(0)
+	m.queueData[index] = memLogEntry{}
+
 	mask := len(m.queueData) - 1
 	m.frontIndex = (m.frontIndex + 1) & mask
 	*m.lastCommitted++
+	m.queueLen--
 }
 
 func (m *MemLog) getQueueIndex(offset int) int {

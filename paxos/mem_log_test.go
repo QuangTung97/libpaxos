@@ -10,6 +10,13 @@ import (
 )
 
 func TestMemLog(t *testing.T) {
+	newEntry := func(cmd string) LogEntry {
+		return LogEntry{
+			Type:    LogTypeCmd,
+			CmdData: []byte(cmd),
+		}
+	}
+
 	t.Run("normal", func(t *testing.T) {
 		lastCommitted := LogPos(20)
 
@@ -17,18 +24,10 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, LogPos(20), m.MaxLogPos())
 		assert.Equal(t, 0, m.GetQueueSize())
 
-		entry1 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 01"),
-		}
-		entry2 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 02"),
-		}
-		entry3 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 03"),
-		}
+		entry1 := newEntry("cmd 01")
+		entry2 := newEntry("cmd 02")
+		entry3 := newEntry("cmd 03")
+
 		m.Put(21, entry1)
 		m.Put(22, entry2)
 		m.Put(24, entry3)
@@ -45,6 +44,9 @@ func TestMemLog(t *testing.T) {
 		entry = m.Get(23)
 		assert.Equal(t, LogEntry{}, entry)
 
+		entry = m.Get(24)
+		assert.Equal(t, entry3, entry)
+
 		entry = m.Get(25)
 		assert.Equal(t, LogEntry{}, entry)
 
@@ -59,18 +61,10 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 01"),
-		}
-		entry2 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 02"),
-		}
-		entry3 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 03"),
-		}
+		entry1 := newEntry("cmd 01")
+		entry2 := newEntry("cmd 02")
+		entry3 := newEntry("cmd 03")
+
 		m.Put(21, entry1)
 		m.Put(22, entry2)
 		m.Put(27, entry3)
@@ -95,27 +89,18 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 01"),
-		}
-		entry2 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 02"),
-		}
-		entry3 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 03"),
-		}
-		entry4 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 04"),
-		}
+		entry1 := newEntry("cmd 01")
+		entry2 := newEntry("cmd 02")
+		entry3 := newEntry("cmd 03")
+		entry4 := newEntry("cmd 04")
+
 		m.Put(21, entry1)
 		m.Put(22, entry2)
+		assert.Equal(t, 2, m.GetQueueSize())
 
 		m.PopFront()
 		m.PopFront()
+		assert.Equal(t, 0, m.GetQueueSize())
 
 		m.Put(27, entry3)
 		m.Put(28, entry4)
@@ -123,7 +108,12 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, LogPos(22), lastCommitted)
 		assert.Equal(t, LogPos(28), m.MaxLogPos())
 
-		entry := m.Get(26)
+		entry := m.Get(23)
+		assert.Equal(t, LogEntry{}, entry)
+		entry = m.Get(24)
+		assert.Equal(t, LogEntry{}, entry)
+
+		entry = m.Get(26)
 		assert.Equal(t, LogEntry{}, entry)
 
 		entry = m.Get(27)
@@ -139,18 +129,10 @@ func TestMemLog(t *testing.T) {
 		lastCommitted := LogPos(20)
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 01"),
-		}
-		entry2 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 02"),
-		}
-		entry3 := LogEntry{
-			Type:    LogTypeCmd,
-			CmdData: []byte("cmd 03"),
-		}
+		entry1 := newEntry("cmd 01")
+		entry2 := newEntry("cmd 02")
+		entry3 := newEntry("cmd 03")
+
 		m.Put(21, entry1)
 		m.Put(22, entry2)
 		m.Put(24, entry3)

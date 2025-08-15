@@ -440,6 +440,8 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 }
 
 func (c *coreLogicImpl) CheckTimeout() {
+	c.mut.Lock()
+	defer c.mut.Unlock()
 }
 
 func (c *coreLogicImpl) GetState() State {
