@@ -2,6 +2,7 @@ package paxos_test
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ type coreLogicTest struct {
 	ctx       context.Context
 	cancelCtx context.Context
 
-	now TimestampMilli
+	now atomic.Int64
 
 	persistent *fake.PersistentStateFake
 	log        *fake.LogStorageFake
@@ -34,7 +35,7 @@ type coreLogicTest struct {
 func newCoreLogicTest() *coreLogicTest {
 	c := &coreLogicTest{}
 	c.ctx = context.Background()
-	c.now = 10_000
+	c.now.Store(10_000)
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -76,7 +77,7 @@ func newCoreLogicTest() *coreLogicTest {
 		c.log,
 		c.runner,
 		func() TimestampMilli {
-			return c.now
+			return TimestampMilli(c.now.Load())
 		},
 	)
 	return c
@@ -502,6 +503,34 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 	voteOutput2 := c.newVoteOutput(2, true)
 	c.core.HandleVoteResponse(nodeID1, voteOutput1)
 	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+}
+
+func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	c.firstGetAcceptToSetTimeout()
+
+	testutil.RunInBackground(t, func() {
+		// check get accept req, waiting
+		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 2, 1)
+		assert.Equal(t, true, ok)
+
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode:    nodeID1,
+			Term:      c.currentTerm,
+			Entries:   nil,
+			Committed: 1,
+		}, acceptReq)
+	})
+
+	time.Sleep(10 * time.Millisecond)
+
+	c.now.Add(6_000)
+
+	c.core.CheckTimeout()
 }
 
 func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *testing.T) {

@@ -230,11 +230,17 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 }
 
 func (c *coreLogicImpl) increaseAcceptPos() {
+	needBroadcast := false
 	for {
 		ok := c.tryIncreaseAcceptPosAt(c.candidate.acceptPos + 1)
 		if !ok {
 			break
 		}
+		needBroadcast = true
+	}
+
+	if needBroadcast {
+		c.broadcastAllAcceptors()
 	}
 }
 
@@ -264,8 +270,6 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
-
-	c.broadcastAllAcceptors()
 
 	return true
 }
@@ -454,6 +458,19 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 func (c *coreLogicImpl) CheckTimeout() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
+
+	if !c.isCandidateOrLeader() {
+		// TODO testing
+		return
+	}
+
+	now := c.nowFunc()
+	for nodeID, weakUpAt := range c.leader.acceptorWakeUpAt {
+		if weakUpAt <= now {
+			delete(c.leader.acceptorWakeUpAt, nodeID)
+			c.leader.nodeCondVar.Signal(nodeID)
+		}
+	}
 }
 
 func (c *coreLogicImpl) GetState() State {
