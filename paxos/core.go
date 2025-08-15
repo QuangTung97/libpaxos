@@ -83,6 +83,7 @@ func (c *coreLogicImpl) StartElection() {
 	defer c.mut.Unlock()
 
 	if c.state != StateFollower {
+		// TODO testing
 		return
 	}
 
@@ -103,19 +104,8 @@ func (c *coreLogicImpl) StartElection() {
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 
-	allMembers := GetAllMembers(commitInfo.Members)
-
-	remainPosMap := map[NodeID]InfiniteLogPos{}
-	nextPos := commitInfo.Pos + 1
-	for member := range allMembers {
-		remainPosMap[member] = InfiniteLogPos{
-			IsFinite: true,
-			Pos:      nextPos,
-		}
-	}
-
 	c.candidate = &candidateStateInfo{
-		remainPosMap: remainPosMap,
+		remainPosMap: map[NodeID]InfiniteLogPos{},
 		acceptPos:    commitInfo.Pos,
 	}
 
@@ -130,6 +120,18 @@ func (c *coreLogicImpl) updateVoteRunners() {
 	}
 
 	allMembers := GetAllMembers(c.leader.members)
+
+	for nodeID := range allMembers {
+		_, ok := c.candidate.remainPosMap[nodeID]
+		if ok {
+			continue
+		}
+		c.candidate.remainPosMap[nodeID] = InfiniteLogPos{
+			IsFinite: true,
+			Pos:      c.candidate.acceptPos + 1,
+		}
+	}
+
 	for nodeID, remainPos := range c.candidate.remainPosMap {
 		if !remainPos.IsFinite {
 			// if +infinity => remove from runnable voters
@@ -203,6 +205,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		c.handleVoteResponseEntry(id, entry)
 	}
 
+	c.increaseAcceptPos()
 	c.switchFromCandidateToLeader()
 
 	return true
@@ -228,7 +231,6 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	c.candidatePutVoteEntry(id, entry)
-	c.increaseAcceptPos()
 }
 
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
@@ -303,6 +305,12 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
+
+	if logEntry.Type == LogTypeMembership {
+		c.leader.members = logEntry.Members
+		c.updateVoteRunners()
+		c.updateAcceptRunners()
+	}
 
 	// TODO step down to Follower when current candidate is no longer in membership list
 

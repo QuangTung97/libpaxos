@@ -100,9 +100,9 @@ func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
 	}
 }
 
-func (c *coreLogicTest) newVoteOutput(
-	fromPos LogPos, withFinal bool, entries ...LogEntry,
-) RequestVoteOutput {
+func (c *coreLogicTest) doHandleVoteResp(
+	nodeID NodeID, fromPos LogPos, withFinal bool, entries ...LogEntry,
+) {
 	voteEntries := make([]VoteLogEntry, 0, len(entries)+1)
 	for index, e := range entries {
 		voteEntries = append(voteEntries, VoteLogEntry{
@@ -119,10 +119,15 @@ func (c *coreLogicTest) newVoteOutput(
 		})
 	}
 
-	return RequestVoteOutput{
+	voteOutput := RequestVoteOutput{
 		Success: true,
 		Term:    c.currentTerm,
 		Entries: voteEntries,
+	}
+
+	ok := c.core.HandleVoteResponse(nodeID, voteOutput)
+	if !ok {
+		panic("Should handle vote response ok")
 	}
 }
 
@@ -230,16 +235,9 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	c.core.StartElection()
 
 	entry1 := c.newLogEntry("cmd test 01", 19)
-	voteOutput1 := c.newVoteOutput(2, true, entry1)
-	voteOutput2 := c.newVoteOutput(2, true)
 
-	// handle vote 1
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	assert.Equal(t, StateCandidate, c.core.GetState())
-
-	// handle vote 2
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
-	assert.Equal(t, StateLeader, c.core.GetState())
+	c.doHandleVoteResp(nodeID1, 2, true, entry1)
+	c.doHandleVoteResp(nodeID2, 2, true)
 
 	// check get accept req
 	acceptReq, ok := c.core.GetAcceptEntriesRequest(
@@ -275,16 +273,8 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	entry2 := c.newLogEntry("cmd data 02", 19)
 	entry3 := c.newLogEntry("cmd data 03", 18)
 
-	voteOutput1 := c.newVoteOutput(2, false, entry1, entry2)
-	voteOutput2 := c.newVoteOutput(2, true, LogEntry{}, entry3)
-
-	// handle vote 1
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	assert.Equal(t, StateCandidate, c.core.GetState())
-
-	// handle vote 2
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
-	assert.Equal(t, StateCandidate, c.core.GetState())
+	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
+	c.doHandleVoteResp(nodeID2, 2, true, LogEntry{}, entry3)
 
 	// check get accept req
 	acceptReq, ok := c.core.GetAcceptEntriesRequest(
@@ -320,16 +310,8 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
 
-	voteOutput1 := c.newVoteOutput(2, false, LogEntry{}, entry1)
-	voteOutput2 := c.newVoteOutput(2, false, LogEntry{}, entry2)
-
-	// handle vote 1
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	assert.Equal(t, StateCandidate, c.core.GetState())
-
-	// handle vote 2
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
-	assert.Equal(t, StateCandidate, c.core.GetState())
+	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, LogEntry{}, entry2)
 
 	// check get accept req
 	acceptReq, ok := c.core.GetAcceptEntriesRequest(
@@ -367,16 +349,8 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
 
-	voteOutput1 := c.newVoteOutput(2, false, LogEntry{}, entry1)
-	voteOutput2 := c.newVoteOutput(2, false, entry2)
-
-	// handle vote 1
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	assert.Equal(t, StateCandidate, c.core.GetState())
-
-	// handle vote 2
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
-	assert.Equal(t, StateCandidate, c.core.GetState())
+	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, entry2)
 
 	// check get accept req
 	acceptReq, ok := c.core.GetAcceptEntriesRequest(
@@ -406,12 +380,8 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 
-	voteOutput1 := c.newVoteOutput(2, true)
-	voteOutput2 := c.newVoteOutput(3, false, entry1)
-
-	// handle vote 1
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	c.doHandleVoteResp(nodeID1, 2, true)
+	c.doHandleVoteResp(nodeID2, 3, false, entry1)
 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
@@ -476,10 +446,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 	time.Sleep(10 * time.Millisecond)
 
 	// vote response full for entry1
-	voteOutput1 := c.newVoteOutput(2, false, entry1)
-	voteOutput2 := c.newVoteOutput(2, false, entry1)
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	c.doHandleVoteResp(nodeID1, 2, false, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, entry1)
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_Inf(t *testing.T) {
@@ -518,10 +486,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 	time.Sleep(10 * time.Millisecond)
 
 	// vote response full for entry1
-	voteOutput1 := c.newVoteOutput(2, false, entry1, entry2)
-	voteOutput2 := c.newVoteOutput(2, true)
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
+	c.doHandleVoteResp(nodeID2, 2, true)
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
@@ -562,13 +528,9 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 	entry2 := c.newLogEntry("cmd data 02", 18)
 	entry3 := c.newLogEntry("cmd data 03", 22)
 
-	voteOutput1 := c.newVoteOutput(2, false, entry1)
-	voteOutput2 := c.newVoteOutput(2, false, entry2)
-	voteOutput3 := c.newVoteOutput(2, false, entry3)
-
-	c.core.HandleVoteResponse(nodeID1, voteOutput1)
-	c.core.HandleVoteResponse(nodeID2, voteOutput2)
-	c.core.HandleVoteResponse(nodeID3, voteOutput3)
+	c.doHandleVoteResp(nodeID1, 2, false, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, entry2)
+	c.doHandleVoteResp(nodeID3, 2, false, entry3)
 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
@@ -790,4 +752,46 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 	c := newCoreLogicTest()
 
 	c.core.StartElection()
+
+	newMembers := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 4},
+	}
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 18)
+	entry3 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers,
+	}
+
+	c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2, entry3)
+
+	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
+
+	c.doHandleVoteResp(nodeID2, 2, true)
+
+	assert.Equal(t, []NodeID{
+		nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.VoteRunners)
+
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
+
+	// state is still candidate
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	c.doHandleVoteResp(nodeID4, 5, true)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	c.doHandleVoteResp(nodeID5, 5, true)
+	assert.Equal(t, StateLeader, c.core.GetState())
 }
