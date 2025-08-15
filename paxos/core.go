@@ -196,7 +196,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	c.candidatePutVoteEntry(id, entry)
-	c.increaseAcceptPos(pos)
+	c.increaseAcceptPos()
 }
 
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
@@ -229,7 +229,16 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 	}
 }
 
-func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
+func (c *coreLogicImpl) increaseAcceptPos() {
+	for {
+		ok := c.tryIncreaseAcceptPosAt(c.candidate.acceptPos + 1)
+		if !ok {
+			break
+		}
+	}
+}
+
+func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	if pos > c.leader.memLog.MaxLogPos() {
 		return false
 	}
@@ -256,6 +265,8 @@ func (c *coreLogicImpl) increaseAcceptPos(pos LogPos) bool {
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
 
+	c.broadcastAllAcceptors()
+
 	return true
 }
 
@@ -274,6 +285,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 	c.state = StateLeader
 	c.candidate = nil
 	c.runner.StartVoteRequestRunners(nil)
+	// TODO broadcast
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -460,4 +472,8 @@ func (c *coreLogicImpl) isValidTerm(term TermNum) bool {
 
 func (c *coreLogicImpl) GetLastCommitted() LogPos {
 	return c.leader.lastCommitted
+}
+
+func (c *coreLogicImpl) broadcastAllAcceptors() {
+	c.leader.nodeCondVar.Broadcast()
 }

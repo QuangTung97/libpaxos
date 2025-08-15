@@ -3,11 +3,13 @@ package paxos_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
+	"github.com/QuangTung97/libpaxos/paxos/testutil"
 )
 
 var nodeID1 = fake.NewNodeID(1)
@@ -410,6 +412,96 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	acceptReq, ok = c.core.GetAcceptEntriesRequest(c.cancelCtx, nodeID1, 2, 1)
 	assert.Equal(t, false, ok)
 	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
+}
+
+func (c *coreLogicTest) firstGetAcceptToSetTimeout() {
+	// check get accept req, first time not wait
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 2, 1)
+	if !ok {
+		panic("Should be ok here")
+	}
+	if len(acceptReq.Entries) > 0 {
+		panic("Should be empty here")
+	}
+}
+
+func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+
+	c.firstGetAcceptToSetTimeout()
+
+	testutil.RunInBackground(t, func() {
+		// check get accept req, waiting
+		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 2, 1)
+		assert.Equal(t, true, ok)
+
+		acceptEntry1 := entry1
+		acceptEntry1.Term = c.currentTerm.ToInf()
+
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID1,
+			Term:   c.currentTerm,
+			Entries: []AcceptLogEntry{
+				{Pos: 2, Entry: acceptEntry1},
+			},
+			Committed: 1,
+		}, acceptReq)
+	})
+
+	time.Sleep(10 * time.Millisecond)
+
+	// vote response full for entry1
+	voteOutput1 := c.newVoteOutput(2, false, entry1)
+	voteOutput2 := c.newVoteOutput(2, false, entry1)
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
+}
+
+func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_Inf(t *testing.T) {
+	c := newCoreLogicTest()
+
+	// start election
+	c.core.StartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 19)
+
+	c.firstGetAcceptToSetTimeout()
+
+	testutil.RunInBackground(t, func() {
+		// check get accept req, waiting
+		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, nodeID1, 2, 1)
+		assert.Equal(t, true, ok)
+
+		acceptEntry1 := entry1
+		acceptEntry1.Term = c.currentTerm.ToInf()
+
+		acceptEntry2 := entry2
+		acceptEntry2.Term = c.currentTerm.ToInf()
+
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID1,
+			Term:   c.currentTerm,
+			Entries: []AcceptLogEntry{
+				{Pos: 2, Entry: acceptEntry1},
+				{Pos: 3, Entry: acceptEntry2},
+			},
+			Committed: 1,
+		}, acceptReq)
+	})
+
+	time.Sleep(10 * time.Millisecond)
+
+	// vote response full for entry1
+	voteOutput1 := c.newVoteOutput(2, false, entry1, entry2)
+	voteOutput2 := c.newVoteOutput(2, true)
+	c.core.HandleVoteResponse(nodeID1, voteOutput1)
+	c.core.HandleVoteResponse(nodeID2, voteOutput2)
 }
 
 func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *testing.T) {
