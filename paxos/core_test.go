@@ -688,6 +688,56 @@ func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
 	}
 }
 
+func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *testing.T) {
+	t.Run("normal", func(t *testing.T) {
+		c := newCoreLogicTest()
+
+		c.core.StartElection()
+
+		entry1 := c.newLogEntry("cmd data 01", 18)
+		entry2 := c.newLogEntry("cmd data 02", 18)
+
+		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
+		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
+		assert.Equal(t, StateCandidate, c.core.GetState())
+
+		c.doHandleVoteResp(nodeID3, 2, true)
+		assert.Equal(t, StateLeader, c.core.GetState())
+	})
+
+	t.Run("pos max", func(t *testing.T) {
+		c := newCoreLogicTest()
+
+		c.core.StartElection()
+
+		entry1 := c.newLogEntry("cmd data 01", 18)
+		entry2 := c.newLogEntry("cmd data 02", 18)
+
+		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
+		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
+		assert.Equal(t, StateCandidate, c.core.GetState())
+
+		c.doHandleVoteResp(nodeID3, 4, true) // max possible
+		assert.Equal(t, StateLeader, c.core.GetState())
+	})
+
+	t.Run("greater than pos max", func(t *testing.T) {
+		c := newCoreLogicTest()
+
+		c.core.StartElection()
+
+		entry1 := c.newLogEntry("cmd data 01", 18)
+		entry2 := c.newLogEntry("cmd data 02", 18)
+
+		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
+		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
+		assert.Equal(t, StateCandidate, c.core.GetState())
+
+		c.doHandleVoteResp(nodeID3, 5, true)
+		assert.Equal(t, StateCandidate, c.core.GetState())
+	})
+}
+
 func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	c := newCoreLogicTest()
 

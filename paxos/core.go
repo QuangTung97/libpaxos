@@ -137,6 +137,8 @@ func (c *coreLogicImpl) updateVoteRunners() {
 			// if +infinity => remove from runnable voters
 			delete(allMembers, nodeID)
 		}
+
+		// TODO remove nodeID no longer in allMembers
 	}
 	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, allMembers)
 }
@@ -216,18 +218,23 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 ) {
 	remainPos := c.candidate.remainPosMap[id]
 	if !remainPos.IsFinite {
+		// is infinite => do nothing
 		// TODO testing
 		return
 	}
 
 	pos := entry.Pos
-
-	if remainPos.Pos != pos {
-		return
-	}
-
-	if pos <= c.candidate.acceptPos {
-		return
+	if entry.More {
+		if remainPos.Pos != pos {
+			return
+		}
+		if pos <= c.candidate.acceptPos {
+			return
+		}
+	} else {
+		if pos > remainPos.Pos {
+			return
+		}
 	}
 
 	c.candidatePutVoteEntry(id, entry)
@@ -305,6 +312,16 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
+
+	for nodeID, remainPos := range c.candidate.remainPosMap {
+		if !remainPos.IsFinite {
+			continue
+		}
+		if remainPos.Pos < pos {
+			remainPos.Pos = pos + 1
+			c.candidate.remainPosMap[nodeID] = remainPos
+		}
+	}
 
 	if logEntry.Type == LogTypeMembership {
 		c.leader.members = logEntry.Members
