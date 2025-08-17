@@ -845,3 +845,107 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 	c.doHandleVoteResp(nodeID5, 5, true)
 	assert.Equal(t, StateLeader, c.core.GetState())
 }
+
+func (c *coreLogicTest) doGetAcceptReq(
+	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
+) AcceptEntriesInput {
+	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
+	if !ok {
+		panic("Get accept entries req should return ok")
+	}
+	return req
+}
+
+func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
+	t.Run("2 consecutive member changes", func(t *testing.T) {
+		c := newCoreLogicTest()
+
+		c.core.StartElection()
+
+		newMembers1 := []MemberInfo{
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 4},
+		}
+		newMembers2 := []MemberInfo{
+			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
+		}
+
+		entry1 := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    19,
+				NodeID: nodeID3,
+			}.ToInf(),
+			Members: newMembers1,
+		}
+		entry2 := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    19,
+				NodeID: nodeID3,
+			}.ToInf(),
+			Members: newMembers2,
+		}
+		entry3 := c.newLogEntry("cmd data 03", 18)
+
+		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
+		c.doHandleVoteResp(nodeID2, 2, true)
+
+		// state is still candidate
+		assert.Equal(t, StateCandidate, c.core.GetState())
+
+		assert.Equal(t, []NodeID{nodeID3, nodeID4, nodeID5, nodeID6}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{
+			nodeID1, nodeID2, nodeID3,
+			nodeID4, nodeID5, nodeID6,
+		}, c.runner.AcceptRunners)
+
+		// handle for node 4
+		c.doHandleVoteResp(nodeID4, 3, true)
+		assert.Equal(t, StateCandidate, c.core.GetState())
+
+		assert.Equal(t, []NodeID{nodeID3, nodeID5, nodeID6}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{
+			nodeID1, nodeID2, nodeID3,
+			nodeID4, nodeID5, nodeID6,
+		}, c.runner.AcceptRunners)
+
+		// handle for node 5
+		c.doHandleVoteResp(nodeID5, 3, true, entry2, entry3)
+		assert.Equal(t, StateLeader, c.core.GetState())
+
+		assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{
+			nodeID4, nodeID5, nodeID6,
+		}, c.runner.AcceptRunners)
+
+		// get accept requests
+		entry1.Term = c.currentTerm.ToInf()
+		entry2.Term = c.currentTerm.ToInf()
+		entry3.Term = c.currentTerm.ToInf()
+
+		accReq := c.doGetAcceptReq(nodeID6, 2, 0)
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID6,
+			Term:   c.currentTerm,
+			Entries: []AcceptLogEntry{
+				{Pos: 2, Entry: entry1},
+				{Pos: 3, Entry: entry2},
+				{Pos: 4, Entry: entry3},
+			},
+			Committed: 1,
+		}, accReq)
+
+		// put entries
+		c.doHandleAccept(nodeID4, 2, 3, 4)
+		c.doHandleAccept(nodeID5, 2, 3, 4)
+
+		// get again empty but not wait
+		accReq = c.doGetAcceptReq(nodeID6, 5, 1)
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode:    nodeID6,
+			Term:      c.currentTerm,
+			Committed: 4,
+		}, accReq)
+	})
+}

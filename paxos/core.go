@@ -137,8 +137,6 @@ func (c *coreLogicImpl) updateVoteRunners() {
 			// if +infinity => remove from runnable voters
 			delete(allMembers, nodeID)
 		}
-
-		// TODO remove nodeID no longer in allMembers
 	}
 	c.runner.StartVoteRequestRunners(c.leader.proposeTerm, allMembers)
 }
