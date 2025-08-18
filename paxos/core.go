@@ -469,7 +469,23 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
 		return true
 	}
 
-	// TODO implement
+	// when state = candidate / leader
+	c.state = StateFollower
+	c.candidate = nil
+
+	c.broadcastAllAcceptors()
+	c.leader = nil
+
+	c.follower = &followerStateInfo{
+		wakeUpAt: c.computeNextWakeUp(),
+		waitCond: NewNodeCond(&c.mut),
+	}
+
+	c.runner.StartVoteRequestRunners(c.getCurrentTerm(), nil)
+	c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), nil)
+	c.runner.StartFollowerRunner(true, c.getCurrentTerm())
+	c.runner.SetLeader(c.getCurrentTerm(), false)
+
 	return true
 }
 
