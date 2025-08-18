@@ -159,6 +159,12 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	c := newCoreLogicTest(t)
 
+	// check leader & follower runners before election
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.LeaderTerm)
+	assert.Equal(t, false, c.runner.IsLeader)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FollowerTerm)
+	assert.Equal(t, true, c.runner.FollowerRunning)
+
 	// start election
 	ok := c.core.StartElection(c.persistent.GetLastTerm())
 	assert.Equal(t, true, ok)
@@ -168,6 +174,12 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
 	assert.Equal(t, c.currentTerm, c.runner.VoteTerm)
 	assert.Equal(t, c.currentTerm, c.runner.AcceptTerm)
+
+	// check leader & follower runners
+	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
+	assert.Equal(t, false, c.runner.IsLeader)
+	assert.Equal(t, c.currentTerm, c.runner.FollowerTerm)
+	assert.Equal(t, false, c.runner.FollowerRunning)
 
 	// get vote request
 	voteReq, ok := c.core.GetVoteRequest(c.currentTerm, nodeID2)
@@ -222,6 +234,8 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
+	assert.Equal(t, true, c.runner.IsLeader)
 
 	// do nothing
 	c.core.HandleVoteResponse(nodeID3, voteOutput)

@@ -47,10 +47,15 @@ func NewCoreLogic(
 		runner:     runner,
 	}
 
+	lastTerm := c.persistent.GetLastTerm()
+
 	c.follower = &followerStateInfo{
-		lastTerm: c.persistent.GetLastTerm(),
+		lastTerm: lastTerm,
 		wakeUpAt: c.nowFunc(),
 	}
+
+	c.runner.SetLeader(lastTerm, false)
+	c.runner.StartFollowerRunner(true, lastTerm)
 
 	return c
 }
@@ -132,6 +137,8 @@ func (c *coreLogicImpl) StartElection(term TermNum) bool {
 
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
+	c.runner.SetLeader(c.leader.proposeTerm, false)
+	c.runner.StartFollowerRunner(false, c.leader.proposeTerm)
 
 	return true
 }
@@ -365,6 +372,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 	c.state = StateLeader
 	c.candidate = nil
 	c.updateVoteRunners()
+	c.runner.SetLeader(c.leader.proposeTerm, true)
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(

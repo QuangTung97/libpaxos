@@ -15,6 +15,9 @@ type NodeRunnerFake struct {
 
 	LeaderTerm paxos.TermNum
 	IsLeader   bool
+
+	FollowerTerm    paxos.TermNum
+	FollowerRunning bool
 }
 
 var _ paxos.NodeRunner = &NodeRunnerFake{}
@@ -36,6 +39,11 @@ func (r *NodeRunnerFake) StartAcceptRequestRunners(
 func (r *NodeRunnerFake) SetLeader(term paxos.TermNum, isLeader bool) {
 	r.LeaderTerm = term
 	r.IsLeader = isLeader
+}
+
+func (r *NodeRunnerFake) StartFollowerRunner(running bool, term paxos.TermNum) {
+	r.FollowerRunning = running
+	r.FollowerTerm = term
 }
 
 func nodeSetToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {
