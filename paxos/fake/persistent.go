@@ -7,36 +7,27 @@ func NewNodeID(num int) paxos.NodeID {
 }
 
 type PersistentStateFake struct {
-	NodeID              paxos.NodeID
-	HighestProposeValue paxos.TermValue
-	LastTerm            paxos.TermNum
+	NodeID   paxos.NodeID
+	LastTerm paxos.TermNum
 }
 
 var _ paxos.PersistentState = &PersistentStateFake{}
 
 func (s *PersistentStateFake) NextProposeTerm() paxos.TermNum {
-	s.HighestProposeValue++
-	return paxos.TermNum{
-		Num:    s.HighestProposeValue,
-		NodeID: s.NodeID,
-	}
+	s.LastTerm.Num++
+	s.LastTerm.NodeID = s.NodeID
+	return s.LastTerm
 }
 
-func (s *PersistentStateFake) RecordLastTerm(lastTerm paxos.TermNum) {
-	if lastTerm.Num > s.HighestProposeValue {
-		s.HighestProposeValue = lastTerm.Num
+func (s *PersistentStateFake) RecordLastTerm(lastTerm paxos.TermNum) bool {
+	// input <= existed => do nothing
+	if paxos.CompareTermNum(lastTerm, s.LastTerm) <= 0 {
+		return false
 	}
-
-	// input > existed
-	if paxos.CompareTermNum(lastTerm, s.LastTerm) > 0 {
-		s.LastTerm = lastTerm
-	}
+	s.LastTerm = lastTerm
+	return true
 }
 
 func (s *PersistentStateFake) GetLastTerm() paxos.TermNum {
 	return s.LastTerm
-}
-
-func (s *PersistentStateFake) GetNodeID() paxos.NodeID {
-	return s.NodeID
 }

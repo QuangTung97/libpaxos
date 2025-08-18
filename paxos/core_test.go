@@ -50,8 +50,7 @@ func newCoreLogicTest(_ *testing.T) *coreLogicTest {
 	c.cancelCtx = cancelCtx
 
 	c.persistent = &fake.PersistentStateFake{
-		NodeID:              nodeID1,
-		HighestProposeValue: 20,
+		NodeID: nodeID1,
 		LastTerm: TermNum{
 			Num:    20,
 			NodeID: nodeID5,
