@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -218,72 +218,77 @@ func TestKeyRunner__Remove_Then_Add_Again__Before_Finish(t *testing.T) {
 }
 
 func TestKeyRunner_Public(t *testing.T) {
-	var runningMut sync.Mutex
-	runningSet := map[string]objectValue{}
+	synctest.Test(t, func(t *testing.T) {
+		var runningMut sync.Mutex
+		runningSet := map[string]objectValue{}
 
-	r := New(
-		objectValue.getKey,
-		func(ctx context.Context, val objectValue) {
-			runningMut.Lock()
-			runningSet[val.key] = val
-			runningMut.Unlock()
+		r := New(
+			objectValue.getKey,
+			func(ctx context.Context, val objectValue) {
+				runningMut.Lock()
+				runningSet[val.key] = val
+				runningMut.Unlock()
 
-			<-ctx.Done()
+				<-ctx.Done()
 
-			runningMut.Lock()
-			delete(runningSet, val.key)
-			runningMut.Unlock()
-		},
-	)
+				runningMut.Lock()
+				delete(runningSet, val.key)
+				runningMut.Unlock()
+			},
+		)
 
-	// insert
-	r.Upsert([]objectValue{
-		{key: "key01", val: 11},
-		{key: "key02", val: 12},
+		// insert
+		r.Upsert([]objectValue{
+			{key: "key01", val: 11},
+			{key: "key02", val: 12},
+		})
+
+		synctest.Wait()
+
+		// check running set
+		runningMut.Lock()
+		assert.Equal(t, map[string]objectValue{
+			"key01": {key: "key01", val: 11},
+			"key02": {key: "key02", val: 12},
+		}, runningSet)
+		runningMut.Unlock()
+
+		// delete key01
+		r.Upsert([]objectValue{
+			{key: "key02", val: 12},
+		})
+
+		synctest.Wait()
+
+		// check running set
+		runningMut.Lock()
+		assert.Equal(t, map[string]objectValue{
+			"key02": {key: "key02", val: 12},
+		}, runningSet)
+		runningMut.Unlock()
+
+		// update key 02 & insert key 03
+		r.Upsert([]objectValue{
+			{key: "key02", val: 22},
+			{key: "key03", val: 13},
+		})
+
+		synctest.Wait()
+
+		// check running set
+		runningMut.Lock()
+		assert.Equal(t, map[string]objectValue{
+			"key02": {key: "key02", val: 22},
+			"key03": {key: "key03", val: 13},
+		}, runningSet)
+		runningMut.Unlock()
+
+		r.Shutdown()
+		synctest.Wait()
+
+		// check running set after shutdown
+		runningMut.Lock()
+		assert.Equal(t, map[string]objectValue{}, runningSet)
+		runningMut.Unlock()
 	})
-
-	// check running set
-	time.Sleep(50 * time.Millisecond)
-	runningMut.Lock()
-	assert.Equal(t, map[string]objectValue{
-		"key01": {key: "key01", val: 11},
-		"key02": {key: "key02", val: 12},
-	}, runningSet)
-	runningMut.Unlock()
-
-	// delete key01
-	r.Upsert([]objectValue{
-		{key: "key02", val: 12},
-	})
-
-	// check running set
-	time.Sleep(50 * time.Millisecond)
-	runningMut.Lock()
-	assert.Equal(t, map[string]objectValue{
-		"key02": {key: "key02", val: 12},
-	}, runningSet)
-	runningMut.Unlock()
-
-	// update key 02 & insert key 03
-	r.Upsert([]objectValue{
-		{key: "key02", val: 22},
-		{key: "key03", val: 13},
-	})
-
-	// check running set
-	time.Sleep(50 * time.Millisecond)
-	runningMut.Lock()
-	assert.Equal(t, map[string]objectValue{
-		"key02": {key: "key02", val: 22},
-		"key03": {key: "key03", val: 13},
-	}, runningSet)
-	runningMut.Unlock()
-
-	r.Shutdown()
-
-	// check running set after shutdown
-	time.Sleep(50 * time.Millisecond)
-	runningMut.Lock()
-	assert.Equal(t, map[string]objectValue{}, runningSet)
-	runningMut.Unlock()
 }
