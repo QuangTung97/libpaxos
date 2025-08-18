@@ -16,6 +16,8 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, bool)
 
+	FollowerReceiveAcceptEntriesRequest(fromNode NodeID, term TermNum) bool
+
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
 	InsertCommand(term TermNum, cmdDataList ...[]byte) bool
@@ -36,7 +38,7 @@ func NewCoreLogic(
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
 ) CoreLogic {
-	return &coreLogicImpl{
+	c := &coreLogicImpl{
 		state:   StateFollower,
 		nowFunc: nowFunc,
 
@@ -44,6 +46,13 @@ func NewCoreLogic(
 		log:        log,
 		runner:     runner,
 	}
+
+	c.follower = &followerStateInfo{
+		lastTerm: c.persistent.GetLastTerm(),
+		wakeUpAt: c.nowFunc(),
+	}
+
+	return c
 }
 
 type coreLogicImpl struct {
@@ -52,12 +61,18 @@ type coreLogicImpl struct {
 	mut   sync.Mutex
 	state State
 
+	follower  *followerStateInfo
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
 
 	persistent PersistentState
 	log        LogStorage
 	runner     NodeRunner
+}
+
+type followerStateInfo struct {
+	lastTerm TermNum
+	wakeUpAt TimestampMilli
 }
 
 type candidateStateInfo struct {
@@ -108,6 +123,7 @@ func (c *coreLogicImpl) StartElection() {
 		remainPosMap: map[NodeID]InfiniteLogPos{},
 		acceptPos:    commitInfo.Pos,
 	}
+	c.follower = nil
 
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
@@ -415,6 +431,13 @@ func (c *coreLogicImpl) isCandidateOrLeader() bool {
 		return true
 	}
 	return false
+}
+
+func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
+	fromNode NodeID, term TermNum,
+) bool {
+	// TODO implement
+	return true
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(

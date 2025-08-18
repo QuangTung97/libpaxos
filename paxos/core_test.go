@@ -50,8 +50,11 @@ func newCoreLogicTest(_ *testing.T) *coreLogicTest {
 	c.cancelCtx = cancelCtx
 
 	c.persistent = &fake.PersistentStateFake{
-		NodeID:    nodeID1,
-		LastValue: 20,
+		NodeID:              nodeID1,
+		HighestProposeValue: 20,
+		LastTerm: TermNum{
+			Num: 20,
+		},
 	}
 	c.log = &fake.LogStorageFake{}
 	c.runner = &fake.NodeRunnerFake{}
