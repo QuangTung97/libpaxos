@@ -871,10 +871,10 @@ func (c *coreLogicTest) doGetAcceptReq(
 func (c *coreLogicTest) doGetAcceptReqAsync(
 	t *testing.T, nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
 ) func() AcceptEntriesInput {
-
-	return testutil.RunAsync[AcceptEntriesInput](t, func() AcceptEntriesInput {
+	fn, _ := testutil.RunAsync[AcceptEntriesInput](t, func() AcceptEntriesInput {
 		return c.doGetAcceptReq(nodeID, fromPos, lastCommitted)
 	})
+	return fn
 }
 
 func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
@@ -1027,7 +1027,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 
 	synctest.Test(t, func(t *testing.T) {
 		// check accept req again, waiting
-		acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
 			return c.doGetAcceptReq(nodeID6, 6, 1)
 		})
 
@@ -1074,7 +1074,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	}, acceptReq)
 
 	synctest.Test(t, func(t *testing.T) {
-		acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
 			return c.doGetAcceptReq(nodeID3, 5, 1)
 		})
 
@@ -1099,4 +1099,26 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		},
 		Committed: 3,
 	}, acceptReq)
+}
+
+func TestCoreLogic__Follower_GetReadyToStartElect(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	ok := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+	assert.Equal(t, true, ok)
+
+	synctest.Test(t, func(t *testing.T) {
+		checkFn, assertNotFinish := testutil.RunAsync(t, func() bool {
+			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+		})
+
+		c.now.Add(4000)
+		c.core.CheckTimeout()
+		assertNotFinish()
+
+		c.now.Add(1100)
+		c.core.CheckTimeout()
+
+		assert.Equal(t, true, checkFn())
+	})
 }

@@ -412,7 +412,7 @@ StartFunction:
 		if lastCommittedSent < c.leader.lastCommitted {
 			return false
 		}
-		if c.leader.acceptorWakeUpAt[toNode] <= c.nowFunc() {
+		if c.isExpired(c.leader.acceptorWakeUpAt[toNode]) {
 			return false
 		}
 		return true
@@ -593,11 +593,8 @@ func (c *coreLogicImpl) CheckTimeout() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	now := c.nowFunc()
-
 	if c.state == StateFollower {
-		// TODO testing
-		if c.follower.wakeUpAt <= now {
+		if c.isExpired(c.follower.wakeUpAt) {
 			c.follower.waitCond.Broadcast()
 		}
 		return
@@ -605,7 +602,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 
 	// for candidate & leader
 	for nodeID, weakUpAt := range c.leader.acceptorWakeUpAt {
-		if weakUpAt <= now {
+		if c.isExpired(weakUpAt) {
 			delete(c.leader.acceptorWakeUpAt, nodeID)
 			c.leader.nodeCondVar.Signal(nodeID)
 		}
@@ -669,12 +666,14 @@ StartLoop:
 		return false
 	}
 
-	if c.follower.wakeUpAt > c.nowFunc() {
+	if !c.isExpired(c.follower.wakeUpAt) {
 		if err := c.follower.waitCond.Wait(ctx, c.nodeID); err != nil {
 			return false
 		}
 		goto StartLoop
 	}
+
+	c.follower.wakeUpAt = c.computeNextWakeUp()
 
 	return true
 }
@@ -694,9 +693,14 @@ func (c *coreLogicImpl) GetLastCommitted() LogPos {
 }
 
 func (c *coreLogicImpl) computeNextWakeUp() TimestampMilli {
+	// TODO add jitter
 	return c.nowFunc() + 5_000 // TODO configurable
 }
 
 func (c *coreLogicImpl) getCurrentTerm() TermNum {
 	return c.persistent.GetLastTerm()
+}
+
+func (c *coreLogicImpl) isExpired(ts TimestampMilli) bool {
+	return ts <= c.nowFunc()
 }
