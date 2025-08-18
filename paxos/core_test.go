@@ -957,72 +957,126 @@ func (c *coreLogicTest) doChangeMembers(newNodes []NodeID) {
 	}
 }
 
-func TestCoreLogic__Leader__Change_Membership(t *testing.T) {
-	t.Run("handle single member change, then wait for new log entry to accept", func(t *testing.T) {
-		c := newCoreLogicTest(t)
+func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *testing.T) {
+	c := newCoreLogicTest(t)
 
-		c.startAsLeader()
-		c.doChangeMembers([]NodeID{
-			nodeID4, nodeID5, nodeID6,
+	c.startAsLeader()
+	c.doChangeMembers([]NodeID{
+		nodeID4, nodeID5, nodeID6,
+	})
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
+
+	c.doInsertCmd("cmd data 01")
+	c.doInsertCmd("cmd data 02", "cmd data 03")
+
+	// check accept req
+	acceptReq := c.doGetAcceptReq(nodeID6, 0, 0)
+
+	newCmdFunc := func(cmdStr string) LogEntry {
+		entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
+		entry.Term = c.currentTerm.ToInf()
+		return entry
+	}
+
+	membersEntry := LogEntry{
+		Type: LogTypeMembership,
+		Term: c.currentTerm.ToInf(),
+		Members: []MemberInfo{
+			{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
+			{CreatedAt: 2, Nodes: []NodeID{nodeID4, nodeID5, nodeID6}},
+		},
+	}
+
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID6,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 2, Entry: membersEntry},
+			{Pos: 3, Entry: newCmdFunc("cmd data 01")},
+			{Pos: 4, Entry: newCmdFunc("cmd data 02")},
+			{Pos: 5, Entry: newCmdFunc("cmd data 03")},
+		},
+		Committed: 1,
+	}, acceptReq)
+
+	synctest.Test(t, func(t *testing.T) {
+		// check accept req again, waiting
+		acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
+			return c.doGetAcceptReq(nodeID6, 6, 1)
 		})
 
-		// check runners
-		assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
-		assert.Equal(t, []NodeID{
-			nodeID1, nodeID2, nodeID3,
-			nodeID4, nodeID5, nodeID6,
-		}, c.runner.AcceptRunners)
+		c.doInsertCmd("cmd data 04")
 
-		c.doInsertCmd("cmd data 01")
-		c.doInsertCmd("cmd data 02", "cmd data 03")
-
-		// check accept req
-		acceptReq := c.doGetAcceptReq(nodeID6, 0, 0)
-
-		newCmdFunc := func(cmdStr string) LogEntry {
-			entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
-			entry.Term = c.currentTerm.ToInf()
-			return entry
-		}
-
-		membersEntry := LogEntry{
-			Type: LogTypeMembership,
-			Term: c.currentTerm.ToInf(),
-			Members: []MemberInfo{
-				{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
-				{CreatedAt: 2, Nodes: []NodeID{nodeID4, nodeID5, nodeID6}},
-			},
-		}
-
+		acceptReq := acceptFn()
 		assert.Equal(t, AcceptEntriesInput{
 			ToNode: nodeID6,
 			Term:   c.currentTerm,
 			Entries: []AcceptLogEntry{
-				{Pos: 2, Entry: membersEntry},
-				{Pos: 3, Entry: newCmdFunc("cmd data 01")},
-				{Pos: 4, Entry: newCmdFunc("cmd data 02")},
-				{Pos: 5, Entry: newCmdFunc("cmd data 03")},
+				{Pos: 6, Entry: newCmdFunc("cmd data 04")},
 			},
 			Committed: 1,
 		}, acceptReq)
-
-		synctest.Test(t, func(t *testing.T) {
-			// check accept req again, waiting
-			acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
-				return c.doGetAcceptReq(nodeID6, 6, 1)
-			})
-
-			c.doInsertCmd("cmd data 04")
-
-			acceptReq := acceptFn()
-			assert.Equal(t, AcceptEntriesInput{
-				ToNode: nodeID6,
-				Term:   c.currentTerm,
-				Entries: []AcceptLogEntry{
-					{Pos: 6, Entry: newCmdFunc("cmd data 04")},
-				},
-				Committed: 1,
-			}, acceptReq)
-		})
 	})
+}
+
+func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.startAsLeader()
+
+	c.doInsertCmd("cmd data 01")
+	c.doInsertCmd("cmd data 02", "cmd data 03")
+
+	// check accept req
+	acceptReq := c.doGetAcceptReq(nodeID3, 0, 0)
+
+	newCmdFunc := func(cmdStr string) LogEntry {
+		entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
+		entry.Term = c.currentTerm.ToInf()
+		return entry
+	}
+
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID3,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 2, Entry: newCmdFunc("cmd data 01")},
+			{Pos: 3, Entry: newCmdFunc("cmd data 02")},
+			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
+		},
+		Committed: 1,
+	}, acceptReq)
+
+	synctest.Test(t, func(t *testing.T) {
+		acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
+			return c.doGetAcceptReq(nodeID3, 5, 1)
+		})
+
+		c.doHandleAccept(nodeID1, 2, 3)
+		c.doHandleAccept(nodeID2, 2, 3)
+
+		accReq := acceptFn()
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode:    nodeID3,
+			Term:      c.currentTerm,
+			Committed: 3,
+		}, accReq)
+	})
+
+	// check accept req after committed pos = 3
+	acceptReq = c.doGetAcceptReq(nodeID1, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
+		},
+		Committed: 3,
+	}, acceptReq)
 }

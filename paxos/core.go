@@ -188,7 +188,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	defer c.mut.Unlock()
 
 	if !output.Success {
-		// TODO
+		// TODO handle
 		return true
 	}
 
@@ -270,17 +270,11 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 }
 
 func (c *coreLogicImpl) increaseAcceptPos() {
-	needBroadcast := false
 	for {
 		ok := c.tryIncreaseAcceptPosAt(c.candidate.acceptPos + 1)
 		if !ok {
 			break
 		}
-		needBroadcast = true
-	}
-
-	if needBroadcast {
-		c.broadcastAllAcceptors()
 	}
 }
 
@@ -310,6 +304,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getLeaderTerm().ToInf()
 	c.leader.memLog.Put(pos, logEntry)
+	c.broadcastAllAcceptors()
 
 	for nodeID, remainPos := range c.candidate.remainPosMap {
 		if !remainPos.IsFinite {
@@ -429,7 +424,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	defer c.mut.Unlock()
 
 	if !output.Success {
-		// TODO
+		// TODO handle
 		return false
 	}
 
@@ -487,7 +482,7 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 			break
 		}
 		memLog.PopFront()
-		// TODO broadcast
+		c.broadcastAllAcceptors()
 	}
 }
 
