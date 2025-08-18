@@ -6,7 +6,7 @@ import (
 )
 
 type CoreLogic interface {
-	StartElection()
+	StartElection(term TermNum) bool
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
@@ -93,13 +93,18 @@ type leaderStateInfo struct {
 	acceptorFullyReplicated map[NodeID]LogPos
 }
 
-func (c *coreLogicImpl) StartElection() {
+func (c *coreLogicImpl) StartElection(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateFollower {
 		// TODO testing
-		return
+		return false
+	}
+
+	if c.follower.lastTerm != term {
+		// TODO testing
+		return false
 	}
 
 	c.state = StateCandidate
@@ -127,6 +132,8 @@ func (c *coreLogicImpl) StartElection() {
 
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
+
+	return true
 }
 
 func (c *coreLogicImpl) updateVoteRunners() {

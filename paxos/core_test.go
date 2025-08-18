@@ -53,7 +53,8 @@ func newCoreLogicTest(_ *testing.T) *coreLogicTest {
 		NodeID:              nodeID1,
 		HighestProposeValue: 20,
 		LastTerm: TermNum{
-			Num: 20,
+			Num:    20,
+			NodeID: nodeID5,
 		},
 	}
 	c.log = &fake.LogStorageFake{}
@@ -137,7 +138,9 @@ func (c *coreLogicTest) doHandleVoteResp(
 }
 
 func (c *coreLogicTest) startAsLeader() {
-	c.core.StartElection()
+	if !c.core.StartElection(c.persistent.GetLastTerm()) {
+		panic("Should be able to start election")
+	}
 
 	c.doHandleVoteResp(nodeID1, 2, true)
 	c.doHandleVoteResp(nodeID2, 2, true)
@@ -157,7 +160,8 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	ok := c.core.StartElection(c.persistent.GetLastTerm())
+	assert.Equal(t, true, ok)
 
 	// check runners
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.VoteRunners)
@@ -194,7 +198,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	voteOutput := RequestVoteOutput{
 		Success: true,
@@ -227,7 +231,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd test 01", 19)
 
@@ -262,7 +266,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 19)
 	entry2 := c.newLogEntry("cmd data 02", 19)
@@ -300,7 +304,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
@@ -339,7 +343,7 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
@@ -371,7 +375,7 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 
@@ -414,7 +418,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 
@@ -449,7 +453,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
@@ -489,7 +493,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	c.firstGetAcceptToSetTimeout()
 
@@ -517,7 +521,7 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 	c := newCoreLogicTest(t)
 
 	// start election
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	entry1 := c.newLogEntry("cmd data 01", 17)
 	entry2 := c.newLogEntry("cmd data 02", 18)
@@ -687,7 +691,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 	t.Run("normal", func(t *testing.T) {
 		c := newCoreLogicTest(t)
 
-		c.core.StartElection()
+		c.core.StartElection(c.persistent.GetLastTerm())
 
 		entry1 := c.newLogEntry("cmd data 01", 18)
 		entry2 := c.newLogEntry("cmd data 02", 18)
@@ -703,7 +707,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 	t.Run("pos max", func(t *testing.T) {
 		c := newCoreLogicTest(t)
 
-		c.core.StartElection()
+		c.core.StartElection(c.persistent.GetLastTerm())
 
 		entry1 := c.newLogEntry("cmd data 01", 18)
 		entry2 := c.newLogEntry("cmd data 02", 18)
@@ -719,7 +723,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 	t.Run("greater than pos max", func(t *testing.T) {
 		c := newCoreLogicTest(t)
 
-		c.core.StartElection()
+		c.core.StartElection(c.persistent.GetLastTerm())
 
 		entry1 := c.newLogEntry("cmd data 01", 18)
 		entry2 := c.newLogEntry("cmd data 02", 18)
@@ -796,7 +800,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	c.core.StartElection()
+	c.core.StartElection(c.persistent.GetLastTerm())
 
 	newMembers := []MemberInfo{
 		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
@@ -864,7 +868,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 	t.Run("2 consecutive member changes", func(t *testing.T) {
 		c := newCoreLogicTest(t)
 
-		c.core.StartElection()
+		c.core.StartElection(c.persistent.GetLastTerm())
 
 		newMembers1 := []MemberInfo{
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
