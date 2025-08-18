@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -38,8 +39,9 @@ type coreLogicTest struct {
 	currentTerm TermNum
 }
 
-func newCoreLogicTest() *coreLogicTest {
+func newCoreLogicTest(_ *testing.T) *coreLogicTest {
 	c := &coreLogicTest{}
+
 	c.ctx = context.Background()
 	c.now.Store(10_000)
 
@@ -134,18 +136,8 @@ func (c *coreLogicTest) doHandleVoteResp(
 func (c *coreLogicTest) startAsLeader() {
 	c.core.StartElection()
 
-	voteOutput := RequestVoteOutput{
-		Success: true,
-		Term:    c.currentTerm,
-		Entries: []VoteLogEntry{
-			{
-				Pos:  2,
-				More: false,
-			},
-		},
-	}
-	c.core.HandleVoteResponse(nodeID1, voteOutput)
-	c.core.HandleVoteResponse(nodeID2, voteOutput)
+	c.doHandleVoteResp(nodeID1, 2, true)
+	c.doHandleVoteResp(nodeID2, 2, true)
 }
 
 func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
@@ -159,7 +151,7 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 }
 
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -196,7 +188,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 }
 
 func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -229,7 +221,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -264,7 +256,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -302,7 +294,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -341,7 +333,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 }
 
 func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -373,7 +365,7 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 }
 
 func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -416,7 +408,7 @@ func (c *coreLogicTest) firstGetAcceptToSetTimeout() {
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -451,7 +443,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_Inf(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -491,7 +483,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -519,7 +511,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 }
 
 func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	// start election
 	c.core.StartElection()
@@ -553,7 +545,7 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 }
 
 func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.startAsLeader()
 
@@ -599,7 +591,7 @@ func (c *coreLogicTest) newAcceptOutput(posList ...LogPos) AcceptEntriesOutput {
 }
 
 func TestCoreLogic__Insert_Cmd__Then_Handle_Accept_Response(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.startAsLeader()
 
@@ -628,7 +620,7 @@ func TestCoreLogic__Insert_Cmd__Then_Handle_Accept_Response(t *testing.T) {
 }
 
 func TestCoreLogic__Insert_Cmd__Accept_Response_2_Entries(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.startAsLeader()
 
@@ -653,7 +645,7 @@ func TestCoreLogic__Insert_Cmd__Accept_Response_2_Entries(t *testing.T) {
 }
 
 func TestCoreLogic__Insert_Cmd__Then_Accept_Response_Same_Node_Multi_Times(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.startAsLeader()
 
@@ -690,7 +682,7 @@ func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
 
 func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
-		c := newCoreLogicTest()
+		c := newCoreLogicTest(t)
 
 		c.core.StartElection()
 
@@ -706,7 +698,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 	})
 
 	t.Run("pos max", func(t *testing.T) {
-		c := newCoreLogicTest()
+		c := newCoreLogicTest(t)
 
 		c.core.StartElection()
 
@@ -722,7 +714,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 	})
 
 	t.Run("greater than pos max", func(t *testing.T) {
-		c := newCoreLogicTest()
+		c := newCoreLogicTest(t)
 
 		c.core.StartElection()
 
@@ -739,7 +731,7 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *t
 }
 
 func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.startAsLeader()
 
@@ -799,7 +791,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 }
 
 func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testing.T) {
-	c := newCoreLogicTest()
+	c := newCoreLogicTest(t)
 
 	c.core.StartElection()
 
@@ -856,9 +848,18 @@ func (c *coreLogicTest) doGetAcceptReq(
 	return req
 }
 
+func (c *coreLogicTest) doGetAcceptReqAsync(
+	t *testing.T, nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
+) func() AcceptEntriesInput {
+
+	return testutil.RunAsync[AcceptEntriesInput](t, func() AcceptEntriesInput {
+		return c.doGetAcceptReq(nodeID, fromPos, lastCommitted)
+	})
+}
+
 func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 	t.Run("2 consecutive member changes", func(t *testing.T) {
-		c := newCoreLogicTest()
+		c := newCoreLogicTest(t)
 
 		c.core.StartElection()
 
@@ -947,5 +948,81 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 			Term:      c.currentTerm,
 			Committed: 4,
 		}, accReq)
+	})
+}
+
+func (c *coreLogicTest) doChangeMembers(newNodes []NodeID) {
+	if !c.core.ChangeMembership(c.currentTerm, newNodes) {
+		panic("Change members should be OK")
+	}
+}
+
+func TestCoreLogic__Leader__Change_Membership(t *testing.T) {
+	t.Run("handle single member change, then wait for new log entry to accept", func(t *testing.T) {
+		c := newCoreLogicTest(t)
+
+		c.startAsLeader()
+		c.doChangeMembers([]NodeID{
+			nodeID4, nodeID5, nodeID6,
+		})
+
+		// check runners
+		assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{
+			nodeID1, nodeID2, nodeID3,
+			nodeID4, nodeID5, nodeID6,
+		}, c.runner.AcceptRunners)
+
+		c.doInsertCmd("cmd data 01")
+		c.doInsertCmd("cmd data 02", "cmd data 03")
+
+		// check accept req
+		acceptReq := c.doGetAcceptReq(nodeID6, 0, 0)
+
+		newCmdFunc := func(cmdStr string) LogEntry {
+			entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
+			entry.Term = c.currentTerm.ToInf()
+			return entry
+		}
+
+		membersEntry := LogEntry{
+			Type: LogTypeMembership,
+			Term: c.currentTerm.ToInf(),
+			Members: []MemberInfo{
+				{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
+				{CreatedAt: 2, Nodes: []NodeID{nodeID4, nodeID5, nodeID6}},
+			},
+		}
+
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID6,
+			Term:   c.currentTerm,
+			Entries: []AcceptLogEntry{
+				{Pos: 2, Entry: membersEntry},
+				{Pos: 3, Entry: newCmdFunc("cmd data 01")},
+				{Pos: 4, Entry: newCmdFunc("cmd data 02")},
+				{Pos: 5, Entry: newCmdFunc("cmd data 03")},
+			},
+			Committed: 1,
+		}, acceptReq)
+
+		synctest.Test(t, func(t *testing.T) {
+			// check accept req again, waiting
+			acceptFn := testutil.RunAsync(t, func() AcceptEntriesInput {
+				return c.doGetAcceptReq(nodeID6, 6, 1)
+			})
+
+			c.doInsertCmd("cmd data 04")
+
+			acceptReq := acceptFn()
+			assert.Equal(t, AcceptEntriesInput{
+				ToNode: nodeID6,
+				Term:   c.currentTerm,
+				Entries: []AcceptLogEntry{
+					{Pos: 6, Entry: newCmdFunc("cmd data 04")},
+				},
+				Committed: 1,
+			}, acceptReq)
+		})
 	})
 }

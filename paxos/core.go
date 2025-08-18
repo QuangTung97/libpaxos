@@ -519,7 +519,7 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 
 func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {
 	c.leader.memLog.Put(pos, entry)
-	// TODO broadcast acceptors
+	c.broadcastAllAcceptors()
 }
 
 func (c *coreLogicImpl) CheckTimeout() {
