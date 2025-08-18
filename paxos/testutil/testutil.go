@@ -5,7 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -35,22 +35,14 @@ func (c *ConcurrentTest) Go(fn func(ctx context.Context) error) *RunHandle {
 		root: c,
 	}
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		err := fn(c.ctx)
 		h.finished.Store(&errorInfo{err: err})
-	}()
+	})
+
+	synctest.Wait()
 
 	return h
-}
-
-func (c *ConcurrentTest) shortWaitBeforeAssert() {
-	if c.shortWaited {
-		return
-	}
-	c.shortWaited = true
-	time.Sleep(10 * time.Millisecond)
 }
 
 type errorInfo struct {
@@ -63,7 +55,6 @@ type RunHandle struct {
 }
 
 func (h *RunHandle) AssertNotFinished(t *testing.T) {
-	h.root.shortWaitBeforeAssert()
 	t.Helper()
 
 	if h.finished.Load() != nil {
@@ -72,7 +63,6 @@ func (h *RunHandle) AssertNotFinished(t *testing.T) {
 }
 
 func (h *RunHandle) AssertFinished(t *testing.T, finishErr error) {
-	h.root.shortWaitBeforeAssert()
 	t.Helper()
 
 	info := h.finished.Load()

@@ -10,25 +10,21 @@ type NodeCond struct {
 	_ noCopy
 
 	mut     *sync.Mutex
-	waitSet map[NodeID]chan struct{}
+	waitSet map[NodeID][]chan struct{}
 }
 
 func NewNodeCond(mut *sync.Mutex) *NodeCond {
 	return &NodeCond{
 		mut:     mut,
-		waitSet: map[NodeID]chan struct{}{},
+		waitSet: map[NodeID][]chan struct{}{},
 	}
 }
 
 // Wait must be used in mutex
 func (c *NodeCond) Wait(ctx context.Context, nodeID NodeID) error {
-	prev, ok := c.waitSet[nodeID]
-	if ok {
-		close(prev)
-	}
-
 	signalCh := make(chan struct{})
-	c.waitSet[nodeID] = signalCh
+	prev := c.waitSet[nodeID]
+	c.waitSet[nodeID] = append(prev, signalCh)
 
 	c.mut.Unlock()
 
@@ -39,27 +35,24 @@ func (c *NodeCond) Wait(ctx context.Context, nodeID NodeID) error {
 
 	case <-ctx.Done():
 		c.mut.Lock()
-		delete(c.waitSet, nodeID)
+		c.Signal(nodeID)
 		return ctx.Err()
 	}
 }
 
 // Signal must be used in mutex
 func (c *NodeCond) Signal(nodeID NodeID) {
-	signChan, ok := c.waitSet[nodeID]
-	if !ok {
-		return
-	}
-
+	allChannels := c.waitSet[nodeID]
 	delete(c.waitSet, nodeID)
-	close(signChan)
+	for _, ch := range allChannels {
+		close(ch)
+	}
 }
 
 // Broadcast must be used in mutex
 func (c *NodeCond) Broadcast() {
-	for nodeID, signChan := range c.waitSet {
-		close(signChan)
-		delete(c.waitSet, nodeID)
+	for nodeID := range c.waitSet {
+		c.Signal(nodeID)
 	}
 }
 
