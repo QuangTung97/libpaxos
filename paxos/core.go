@@ -2,14 +2,15 @@ package paxos
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sync"
 )
 
 type CoreLogic interface {
-	StartElection(term TermNum) bool
+	StartElection(term TermNum) error
 
-	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool)
+	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
 
 	GetAcceptEntriesRequest(
@@ -101,18 +102,16 @@ type leaderStateInfo struct {
 	acceptorFullyReplicated map[NodeID]LogPos
 }
 
-func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
+func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateFollower {
-		// TODO testing
-		return false
+		return fmt.Errorf("state is not Follower, actual: %s", c.state.String())
 	}
 
-	if !c.isValidTerm(inputTerm) {
-		// TODO testing
-		return false
+	if err := c.isValidTerm(inputTerm); err != nil {
+		return err
 	}
 
 	c.state = StateCandidate
@@ -150,7 +149,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
 	c.runner.SetLeader(term, false)
 	c.runner.StartFollowerRunner(term, false)
 
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) updateVoteRunners() {
@@ -193,34 +192,36 @@ func (c *coreLogicImpl) getMaxValidLogPos() LogPos {
 	return c.leader.memLog.MaxLogPos()
 }
 
-func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, bool) {
+func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateCandidate {
 		// TODO testing
-		return RequestVoteInput{}, false
+		return RequestVoteInput{}, fmt.Errorf("state is not Candidate, actual: %s", c.state.String())
 	}
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		// TODO testing
-		return RequestVoteInput{}, false
+		return RequestVoteInput{}, err
 	}
 
 	remainPos, ok := c.candidate.remainPosMap[toNode]
 	if !ok {
 		// TODO testing
-		return RequestVoteInput{}, false
+		err := fmt.Errorf("missing remain pos for node id '%s'", toNode.String())
+		return RequestVoteInput{}, err
 	}
 
 	if !remainPos.IsFinite {
-		return RequestVoteInput{}, false
+		err := fmt.Errorf("remain pos of node id '%s' is infinite", toNode.String())
+		return RequestVoteInput{}, err
 	}
 
 	return RequestVoteInput{
 		ToNode:  toNode,
 		Term:    c.getCurrentTerm(),
 		FromPos: remainPos.Pos,
-	}, true
+	}, nil
 }
 
 func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) bool {
@@ -236,7 +237,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		return false
 	}
 
-	if !c.isValidTerm(output.Term) {
+	if err := c.isValidTerm(output.Term); err != nil {
 		// TODO testing
 		return false
 	}
@@ -422,7 +423,7 @@ StartFunction:
 		return AcceptEntriesInput{}, false
 	}
 
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		// TODO testing
 		return AcceptEntriesInput{}, false
 	}
@@ -537,7 +538,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		return false
 	}
 
-	if !c.isValidTerm(output.Term) {
+	if err := c.isValidTerm(output.Term); err != nil {
 		// TODO testing
 		return false
 	}
@@ -607,7 +608,7 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 		return false
 	}
 
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		return false
 	}
 
@@ -655,8 +656,15 @@ func (c *coreLogicImpl) CheckTimeout() {
 	}
 }
 
-func (c *coreLogicImpl) isValidTerm(term TermNum) bool {
-	return c.getCurrentTerm() == term
+func (c *coreLogicImpl) isValidTerm(term TermNum) error {
+	if c.getCurrentTerm() == term {
+		return nil
+	}
+	return fmt.Errorf(
+		"mismatch term number, input: %s, actual: %s",
+		term.String(),
+		c.getCurrentTerm().String(),
+	)
 }
 
 func (c *coreLogicImpl) broadcastAllAcceptors() {
@@ -672,7 +680,7 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) bool {
 		return false
 	}
 
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		// TODO testing
 		return false
 	}
@@ -705,7 +713,7 @@ func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 		return false
 	}
 
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		// TODO testing
 		return false
 	}
@@ -760,7 +768,7 @@ StartLoop:
 		return false
 	}
 
-	if !c.isValidTerm(term) {
+	if err := c.isValidTerm(term); err != nil {
 		return false
 	}
 

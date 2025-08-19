@@ -2,12 +2,18 @@ package paxos
 
 import (
 	"cmp"
+	"encoding/hex"
+	"fmt"
 	"slices"
 )
 
 // ----------------------------------------------------------
 
 type NodeID [16]byte
+
+func (n NodeID) String() string {
+	return hex.EncodeToString(n[:])
+}
 
 // ----------------------------------------------------------
 
@@ -25,6 +31,10 @@ type TermValue int64
 type TermNum struct {
 	Num    TermValue
 	NodeID NodeID
+}
+
+func (t TermNum) String() string {
+	return fmt.Sprintf("%d:%s", t.Num, t.NodeID.String())
 }
 
 func (t TermNum) ToInf() InfiniteTerm {
@@ -66,6 +76,19 @@ const (
 	StateCandidate
 	StateLeader
 )
+
+func (s State) String() string {
+	switch s {
+	case StateFollower:
+		return "Follower"
+	case StateCandidate:
+		return "Candidate"
+	case StateLeader:
+		return "Leader"
+	default:
+		return "Unknown"
+	}
+}
 
 // ----------------------------------------------------------
 
