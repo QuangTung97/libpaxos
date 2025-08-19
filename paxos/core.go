@@ -53,15 +53,12 @@ func NewCoreLogic(
 		runner:     runner,
 	}
 
-	lastTerm := c.persistent.GetLastTerm()
-
 	c.follower = &followerStateInfo{
 		wakeUpAt: c.nowFunc(),
 		waitCond: NewNodeCond(&c.mut),
 	}
 
-	c.runner.SetLeader(lastTerm, false)
-	c.runner.StartFollowerRunner(lastTerm, true)
+	c.resetRunnersForFollower()
 
 	return c
 }
@@ -113,7 +110,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
 		return false
 	}
 
-	if c.persistent.GetLastTerm() != inputTerm {
+	if !c.isValidTerm(inputTerm) {
 		// TODO testing
 		return false
 	}
@@ -472,7 +469,7 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 
 	if c.state == StateFollower {
 		c.follower.wakeUpAt = c.computeNextWakeUp()
-		c.runner.StartFollowerRunner(c.getCurrentTerm(), true)
+		c.resetRunnersForFollower()
 		return true
 	}
 
@@ -488,12 +485,17 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 		waitCond: NewNodeCond(&c.mut),
 	}
 
+	c.resetRunnersForFollower()
+	return true
+}
+
+func (c *coreLogicImpl) resetRunnersForFollower() {
+	term := c.getCurrentTerm()
+
 	c.runner.StartVoteRequestRunners(term, nil)
 	c.runner.StartAcceptRequestRunners(term, nil)
 	c.runner.StartFollowerRunner(term, true)
 	c.runner.SetLeader(term, false)
-
-	return true
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(
