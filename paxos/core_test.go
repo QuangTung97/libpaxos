@@ -1212,3 +1212,142 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		assert.Equal(t, true, checkFn())
 	})
 }
+
+func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	newTerm := TermNum{
+		Num:    22,
+		NodeID: nodeID2,
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+
+		checkFn, _ := testutil.RunAsync(t, func() bool {
+			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+		})
+
+		c.now.Add(5100)
+		c.core.CheckTimeout()
+
+		assert.Equal(t, true, checkFn())
+	})
+}
+
+func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.doStartElection()
+
+	newTerm := TermNum{
+		Num:    17,
+		NodeID: nodeID2,
+	}
+	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+	assert.Equal(t, false, affected)
+
+	// no change in state
+	assert.Equal(t, StateCandidate, c.core.GetState())
+}
+
+func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
+	if !c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID, pos) {
+		panic("Should update OK")
+	}
+}
+
+func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_Membership_Change(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doInsertCmd("cmd 01", "cmd 02")
+
+	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{
+		nodeID3, nodeID4, nodeID5,
+	})
+	assert.Equal(t, true, ok)
+
+	c.doUpdateFullyReplicated(nodeID3, 1)
+
+	c.doHandleAccept(nodeID1, 2, 3, 4)
+	c.doHandleAccept(nodeID3, 2, 3, 4)
+	c.doHandleAccept(nodeID4, 2, 3, 4)
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	c.doUpdateFullyReplicated(nodeID4, 1)
+	c.doUpdateFullyReplicated(nodeID3, 4)
+
+	// check accept entries
+	accReq := c.doGetAcceptReq(nodeID5, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID5,
+		Term:      c.currentTerm,
+		Committed: 4,
+	}, accReq)
+
+	c.doUpdateFullyReplicated(nodeID4, 4)
+
+	// check accept entries again
+	accReq = c.doGetAcceptReq(nodeID5, 0, 0)
+	newMembers := LogEntry{
+		Type: LogTypeMembership,
+		Term: c.currentTerm.ToInf(),
+		Members: []MemberInfo{
+			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
+		},
+	}
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID5,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 5, Entry: newMembers},
+		},
+		Committed: 4,
+	}, accReq)
+}
+
+func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doInsertCmd("cmd 01", "cmd 02")
+
+	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{
+		nodeID3, nodeID4, nodeID5,
+	})
+	assert.Equal(t, true, ok)
+
+	c.doUpdateFullyReplicated(nodeID3, 4)
+	c.doUpdateFullyReplicated(nodeID4, 4)
+
+	// check accept entries
+	accReq := c.doGetAcceptReq(nodeID5, 5, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID5,
+		Term:      c.currentTerm,
+		Committed: 1,
+	}, accReq)
+
+	c.doHandleAccept(nodeID1, 2, 3, 4)
+	c.doHandleAccept(nodeID3, 2, 3, 4)
+	c.doHandleAccept(nodeID4, 2, 3, 4)
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	// check accept entries again
+	accReq = c.doGetAcceptReq(nodeID5, 5, 0)
+	newMembers := LogEntry{
+		Type: LogTypeMembership,
+		Term: c.currentTerm.ToInf(),
+		Members: []MemberInfo{
+			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
+		},
+	}
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID5,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 5, Entry: newMembers},
+		},
+		Committed: 4,
+	}, accReq)
+}

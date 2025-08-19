@@ -2,6 +2,7 @@ package paxos
 
 import (
 	"context"
+	"slices"
 	"sync"
 )
 
@@ -60,7 +61,7 @@ func NewCoreLogic(
 	}
 
 	c.runner.SetLeader(lastTerm, false)
-	c.runner.StartFollowerRunner(true, lastTerm)
+	c.runner.StartFollowerRunner(lastTerm, true)
 
 	return c
 }
@@ -150,7 +151,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
 
 	term := c.getCurrentTerm()
 	c.runner.SetLeader(term, false)
-	c.runner.StartFollowerRunner(false, term)
+	c.runner.StartFollowerRunner(term, false)
 
 	return true
 }
@@ -486,10 +487,10 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 		waitCond: NewNodeCond(&c.mut),
 	}
 
-	c.runner.StartVoteRequestRunners(c.getCurrentTerm(), nil)
-	c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), nil)
-	c.runner.StartFollowerRunner(true, c.getCurrentTerm())
-	c.runner.SetLeader(c.getCurrentTerm(), false)
+	c.runner.StartVoteRequestRunners(term, nil)
+	c.runner.StartAcceptRequestRunners(term, nil)
+	c.runner.StartFollowerRunner(term, true)
+	c.runner.SetLeader(term, false)
 
 	return true
 }
@@ -559,6 +560,8 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 			break
 		}
 		memLog.PopFront()
+
+		c.finishMembershipChange()
 		c.broadcastAllAcceptors()
 	}
 }
@@ -659,7 +662,55 @@ func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	if !c.isCandidateOrLeader() {
+		// TODO testing
+		return false
+	}
+
+	if !c.isValidTerm(term) {
+		// TODO testing
+		return false
+	}
+
+	c.leader.acceptorFullyReplicated[nodeID] = pos
+	c.finishMembershipChange()
+
 	return true
+}
+
+func (c *coreLogicImpl) finishMembershipChange() {
+	if len(c.leader.members) <= 1 {
+		return
+	}
+
+	newConf := c.leader.members[1]
+	if newConf.CreatedAt > c.leader.lastCommitted {
+		return
+	}
+
+	validSet := map[NodeID]struct{}{}
+	for nodeID, pos := range c.leader.acceptorFullyReplicated {
+		if pos < newConf.CreatedAt {
+			continue
+		}
+		validSet[nodeID] = struct{}{}
+	}
+
+	if !IsQuorum([]MemberInfo{newConf}, validSet) {
+		return
+	}
+
+	pos := c.leader.memLog.MaxLogPos() + 1
+	c.leader.members = slices.Clone(c.leader.members[1:])
+	c.leader.members[0].CreatedAt = 1
+
+	entry := LogEntry{
+		Type:    LogTypeMembership,
+		Term:    c.getCurrentTerm().ToInf(),
+		Members: c.leader.members,
+	}
+	c.appendNewEntry(pos, entry)
+	c.updateAcceptRunners()
 }
 
 func (c *coreLogicImpl) GetReadyToStartElection(ctx context.Context, term TermNum) bool {
@@ -671,7 +722,7 @@ StartLoop:
 		return false
 	}
 
-	if c.getCurrentTerm() != term {
+	if !c.isValidTerm(term) {
 		return false
 	}
 

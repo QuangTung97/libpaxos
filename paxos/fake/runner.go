@@ -41,7 +41,7 @@ func (r *NodeRunnerFake) SetLeader(term paxos.TermNum, isLeader bool) {
 	r.IsLeader = isLeader
 }
 
-func (r *NodeRunnerFake) StartFollowerRunner(running bool, term paxos.TermNum) {
+func (r *NodeRunnerFake) StartFollowerRunner(term paxos.TermNum, running bool) {
 	r.FollowerRunning = running
 	r.FollowerTerm = term
 }

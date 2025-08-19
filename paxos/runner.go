@@ -7,5 +7,5 @@ type NodeRunner interface {
 
 	SetLeader(term TermNum, isLeader bool)
 
-	StartFollowerRunner(running bool, term TermNum)
+	StartFollowerRunner(term TermNum, isRunning bool)
 }
