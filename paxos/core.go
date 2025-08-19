@@ -353,6 +353,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 		if !remainPos.IsFinite {
 			continue
 		}
+		// update remain pos of all nodes
 		if remainPos.Pos < pos {
 			remainPos.Pos = pos + 1
 			c.candidate.remainPosMap[nodeID] = remainPos

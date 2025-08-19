@@ -178,4 +178,28 @@ func TestMemLog(t *testing.T) {
 		term := m.GetFrontTerm()
 		assert.Equal(t, InfiniteTerm{}, term)
 	})
+
+	t.Run("wrap around, check voted", func(t *testing.T) {
+		lastCommitted := LogPos(20)
+
+		m := NewMemLog(&lastCommitted, 2)
+
+		entry1 := newEntry("cmd 01")
+		entry2 := newEntry("cmd 02")
+		entry3 := newEntry("cmd 03")
+		entry4 := newEntry("cmd 04")
+
+		m.Put(21, entry1)
+		m.Put(22, entry2)
+		m.Put(23, entry3)
+		m.Put(24, entry4)
+
+		m.PopFront()
+
+		entry5 := newEntry("cmd 05")
+		m.Put(25, entry5)
+
+		assert.Equal(t, entry5, m.Get(25))
+		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(25))
+	})
 }
