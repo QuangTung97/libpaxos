@@ -15,8 +15,9 @@ type NodeRunner interface {
 }
 
 type nodeTermInfo struct {
-	nodeID NodeID
-	term   TermNum
+	nodeID   NodeID
+	term     TermNum
+	isLeader bool
 }
 
 func (i nodeTermInfo) getNodeID() NodeID {
@@ -36,9 +37,9 @@ func NewNodeRunner(
 	currentNodeID NodeID,
 	voteRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	acceptorRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	stateMachineFunc func(ctx context.Context, term TermNum) error,
+	stateMachineFunc func(ctx context.Context, term TermNum, isLeader bool) error,
 	followerRunnerFunc func(ctx context.Context, term TermNum) error,
-) NodeRunner {
+) (NodeRunner, func()) {
 	r := &nodeRunnerImpl{
 		currentNodeID: currentNodeID,
 	}
@@ -65,7 +66,7 @@ func NewNodeRunner(
 
 	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
 		for {
-			_ = stateMachineFunc(ctx, val.term)
+			_ = stateMachineFunc(ctx, val.term, val.isLeader)
 			sleepWithContext(ctx, 1000*time.Millisecond)
 			if ctx.Err() != nil {
 				return
@@ -83,7 +84,12 @@ func NewNodeRunner(
 		}
 	})
 
-	return r
+	return r, func() {
+		r.voters.Shutdown()
+		r.acceptors.Shutdown()
+		r.stateMachine.Shutdown()
+		r.follower.Shutdown()
+	}
 }
 
 func sleepWithContext(ctx context.Context, duration time.Duration) {
@@ -94,13 +100,48 @@ func sleepWithContext(ctx context.Context, duration time.Duration) {
 }
 
 func (r *nodeRunnerImpl) StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{}) {
+	infos := make([]nodeTermInfo, 0, len(nodes))
+	for id := range nodes {
+		infos = append(infos, nodeTermInfo{
+			nodeID: id,
+			term:   term,
+		})
+	}
+	r.voters.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{}) {
+	infos := make([]nodeTermInfo, 0, len(nodes))
+	for id := range nodes {
+		infos = append(infos, nodeTermInfo{
+			nodeID: id,
+			term:   term,
+		})
+	}
+	r.voters.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {
+	infos := []nodeTermInfo{
+		{
+			nodeID:   r.currentNodeID,
+			term:     term,
+			isLeader: isLeader,
+		},
+	}
+	r.voters.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) StartFollowerRunner(term TermNum, isRunning bool) {
+	if isRunning {
+		infos := []nodeTermInfo{
+			{
+				nodeID: r.currentNodeID,
+				term:   term,
+			},
+		}
+		r.voters.Upsert(infos)
+	} else {
+		r.voters.Upsert(nil)
+	}
 }
