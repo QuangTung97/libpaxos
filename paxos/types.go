@@ -93,8 +93,10 @@ const (
 	LogTypeNoOp
 )
 
-func NewNoOpLogEntry(term TermNum) LogEntry {
-	term.Num = -1
+func NewNoOpLogEntry() LogEntry {
+	term := TermNum{
+		Num: -1,
+	}
 	return LogEntry{
 		Type: LogTypeNoOp,
 		Term: term.ToInf(),

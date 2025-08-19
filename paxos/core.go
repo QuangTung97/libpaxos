@@ -287,11 +287,14 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 		return
 	}
 
-	term := c.getCurrentTerm()
-
 	putEntry := entry.Entry
+	if !putEntry.Term.IsFinite {
+		// +infinity => update to current term
+		putEntry.Term = c.getCurrentTerm().ToInf()
+	}
+
 	if putEntry.IsNull() {
-		putEntry = NewNoOpLogEntry(term)
+		putEntry = NewNoOpLogEntry()
 	}
 
 	oldEntry := c.leader.memLog.Get(pos)
@@ -773,23 +776,32 @@ func (c *coreLogicImpl) CheckInvariant() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state == StateLeader {
+	if c.state != StateFollower {
+		memLog := c.leader.memLog
+		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
+			entry := memLog.Get(pos)
+			assertTrue(entry.Term.IsFinite)
+			assertTrue(entry.Type != LogTypeNull)
+		}
+	}
+
+	switch c.state {
+	case StateLeader:
 		assertTrue(c.follower == nil)
 		assertTrue(c.candidate == nil)
 		assertTrue(c.leader != nil)
-		return
-	}
 
-	if c.state == StateCandidate {
+	case StateCandidate:
 		assertTrue(c.follower == nil)
 		assertTrue(c.candidate != nil)
 		assertTrue(c.leader != nil)
-		return
-	}
 
-	assertTrue(c.follower != nil)
-	assertTrue(c.candidate == nil)
-	assertTrue(c.leader == nil)
+	default:
+		assertTrue(c.follower != nil)
+		assertTrue(c.candidate == nil)
+		assertTrue(c.leader == nil)
+		assertTrue(c.state == StateFollower)
+	}
 }
 
 func assertTrue(b bool) {

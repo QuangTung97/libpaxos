@@ -316,7 +316,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	}, acceptReq)
 }
 
-func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
+func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// start election
@@ -349,6 +349,44 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry(t *testing.T) {
 			{
 				Pos:   3,
 				Entry: entry2,
+			},
+		},
+		Committed: 1,
+	}, acceptReq)
+}
+
+func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry__Replaced_By_Other_Entry(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	// start election
+	c.core.StartElection(c.persistent.GetLastTerm())
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 15)
+	entry3 := c.newLogEntry("cmd data 03", 19)
+
+	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, entry2, entry3)
+
+	// check get accept req
+	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+		c.ctx, c.currentTerm, nodeID1, 1, 0,
+	)
+	assert.Equal(t, true, ok)
+
+	entry2.Term = c.currentTerm.ToInf()
+	entry3.Term = c.currentTerm.ToInf()
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{
+				Pos:   2,
+				Entry: entry2,
+			},
+			{
+				Pos:   3,
+				Entry: entry3,
 			},
 		},
 		Committed: 1,
@@ -1352,5 +1390,30 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 			{Pos: 5, Entry: newMembers},
 		},
 		Committed: 4,
+	}, accReq)
+}
+
+func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.doStartElection()
+
+	entry1 := c.newLogEntry("cmd 01", 18)
+	entry2 := c.newLogEntry("cmd 02", 18)
+	entry2.Term = InfiniteTerm{}
+
+	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
+	c.core.CheckInvariant()
+
+	c.doHandleVoteResp(nodeID2, 2, false, entry1)
+
+	c.doHandleAccept(nodeID1, 2)
+	c.doHandleAccept(nodeID2, 2)
+
+	// check get accept req
+	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID3,
+		Term:      c.currentTerm,
+		Committed: 2,
 	}, accReq)
 }
