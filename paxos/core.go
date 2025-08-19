@@ -365,9 +365,29 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 		c.updateAcceptRunners()
 	}
 
-	// TODO step down to Follower when current candidate is no longer in membership list
-
 	return true
+}
+
+func (c *coreLogicImpl) stepDownWhenNotInMemberList() {
+	if c.leader.memLog.GetQueueSize() > 0 {
+		return
+	}
+	if c.isInMemberList() {
+		return
+	}
+	c.stepDownToFollower()
+}
+
+func (c *coreLogicImpl) isInMemberList() bool {
+	nodeID := c.persistent.GetNodeID()
+	for _, conf := range c.leader.members {
+		for _, id := range conf.Nodes {
+			if id == nodeID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *coreLogicImpl) switchFromCandidateToLeader() {
@@ -477,6 +497,11 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	}
 
 	// when state = candidate / leader
+	c.stepDownToFollower()
+	return true
+}
+
+func (c *coreLogicImpl) stepDownToFollower() {
 	c.state = StateFollower
 	c.candidate = nil
 
@@ -489,7 +514,6 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	}
 
 	c.resetRunnersForFollower()
-	return true
 }
 
 func (c *coreLogicImpl) resetRunnersForFollower() {
@@ -570,6 +594,7 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 
 		c.finishMembershipChange()
 		c.broadcastAllAcceptors()
+		c.stepDownWhenNotInMemberList()
 	}
 }
 
@@ -582,6 +607,11 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 	}
 
 	if !c.isValidTerm(term) {
+		return false
+	}
+
+	if !c.isInMemberList() {
+		// TODO testing
 		return false
 	}
 

@@ -5,4 +5,5 @@ type PersistentState interface {
 	NextProposeTerm() TermNum
 	RecordLastTerm(lastTerm TermNum) bool
 	GetLastTerm() TermNum
+	GetNodeID() NodeID
 }

@@ -927,10 +927,10 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 
 		newMembers1 := []MemberInfo{
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
-			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 4},
+			{Nodes: []NodeID{nodeID1, nodeID4, nodeID5}, CreatedAt: 4},
 		}
 		newMembers2 := []MemberInfo{
-			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
+			{Nodes: []NodeID{nodeID1, nodeID4, nodeID5}, CreatedAt: 1},
 		}
 
 		entry1 := LogEntry{
@@ -951,26 +951,26 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		}
 		entry3 := c.newLogEntry("cmd data 03", 18)
 
-		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
-		c.doHandleVoteResp(nodeID2, 2, true)
+		c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
+		c.doHandleVoteResp(nodeID3, 2, true)
 
 		// state is still candidate
 		assert.Equal(t, StateCandidate, c.core.GetState())
 
-		assert.Equal(t, []NodeID{nodeID3, nodeID4, nodeID5, nodeID6}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{nodeID1, nodeID4, nodeID5}, c.runner.VoteRunners)
 		assert.Equal(t, []NodeID{
 			nodeID1, nodeID2, nodeID3,
-			nodeID4, nodeID5, nodeID6,
+			nodeID4, nodeID5,
 		}, c.runner.AcceptRunners)
 
 		// handle for node 4
 		c.doHandleVoteResp(nodeID4, 3, true)
 		assert.Equal(t, StateCandidate, c.core.GetState())
 
-		assert.Equal(t, []NodeID{nodeID3, nodeID5, nodeID6}, c.runner.VoteRunners)
+		assert.Equal(t, []NodeID{nodeID1, nodeID5}, c.runner.VoteRunners)
 		assert.Equal(t, []NodeID{
 			nodeID1, nodeID2, nodeID3,
-			nodeID4, nodeID5, nodeID6,
+			nodeID4, nodeID5,
 		}, c.runner.AcceptRunners)
 
 		// handle for node 5
@@ -979,7 +979,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 
 		assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
 		assert.Equal(t, []NodeID{
-			nodeID4, nodeID5, nodeID6,
+			nodeID1, nodeID4, nodeID5,
 		}, c.runner.AcceptRunners)
 
 		// get accept requests
@@ -987,9 +987,9 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		entry2.Term = c.currentTerm.ToInf()
 		entry3.Term = c.currentTerm.ToInf()
 
-		accReq := c.doGetAcceptReq(nodeID6, 2, 0)
+		accReq := c.doGetAcceptReq(nodeID5, 2, 0)
 		assert.Equal(t, AcceptEntriesInput{
-			ToNode: nodeID6,
+			ToNode: nodeID5,
 			Term:   c.currentTerm,
 			Entries: []AcceptLogEntry{
 				{Pos: 2, Entry: entry1},
@@ -1004,9 +1004,9 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		c.doHandleAccept(nodeID5, 2, 3, 4)
 
 		// get again empty but not wait
-		accReq = c.doGetAcceptReq(nodeID6, 5, 1)
+		accReq = c.doGetAcceptReq(nodeID5, 5, 1)
 		assert.Equal(t, AcceptEntriesInput{
-			ToNode:    nodeID6,
+			ToNode:    nodeID5,
 			Term:      c.currentTerm,
 			Committed: 4,
 		}, accReq)

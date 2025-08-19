@@ -31,3 +31,7 @@ func (s *PersistentStateFake) RecordLastTerm(lastTerm paxos.TermNum) bool {
 func (s *PersistentStateFake) GetLastTerm() paxos.TermNum {
 	return s.LastTerm
 }
+
+func (s *PersistentStateFake) GetNodeID() paxos.NodeID {
+	return s.NodeID
+}
