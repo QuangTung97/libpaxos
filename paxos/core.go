@@ -20,9 +20,9 @@ type CoreLogic interface {
 
 	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
 
-	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
+	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
-	InsertCommand(term TermNum, cmdDataList ...[]byte) bool
+	InsertCommand(term TermNum, cmdDataList ...[]byte) error
 
 	CheckTimeout()
 
@@ -518,18 +518,18 @@ func (c *coreLogicImpl) resetRunnersForFollower() {
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	fromNode NodeID, output AcceptEntriesOutput,
-) bool {
+) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if !output.Success {
 		// TODO handle
-		return false
+		return nil
 	}
 
 	if err := c.isValidTerm(output.Term); err != nil {
 		// TODO testing
-		return false
+		return err
 	}
 
 	for _, pos := range output.PosList {
@@ -537,7 +537,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	}
 
 	c.increaseLastCommitted()
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
@@ -589,21 +589,17 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 	}
 }
 
-func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
+func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateLeader {
-		return false
-	}
-
-	if err := c.isValidTerm(term); err != nil {
-		return false
+	if err := c.isStateValid(term, StateLeader); err != nil {
+		return err
 	}
 
 	if !c.isInMemberList() {
 		// TODO testing
-		return false
+		return fmt.Errorf("current leader is stopping")
 	}
 
 	for _, cmd := range cmdList {
@@ -617,7 +613,7 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) bool {
 		c.appendNewEntry(pos, entry)
 	}
 
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {

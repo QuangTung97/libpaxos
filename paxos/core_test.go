@@ -153,8 +153,8 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 	for _, cmd := range cmdList {
 		cmdListBytes = append(cmdListBytes, []byte(cmd))
 	}
-	if ok := c.core.InsertCommand(c.currentTerm, cmdListBytes...); !ok {
-		panic("can not insert")
+	if err := c.core.InsertCommand(c.currentTerm, cmdListBytes...); err != nil {
+		panic("can not insert, error: " + err.Error())
 	}
 }
 
@@ -661,18 +661,18 @@ func TestCoreLogic__Insert_Cmd__Then_Handle_Accept_Response(t *testing.T) {
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept
-	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2))
-	assert.Equal(t, true, ok)
+	err := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept node2
-	ok = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2))
-	assert.Equal(t, true, ok)
+	err = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 
 	// do accept node3
-	ok = c.core.HandleAcceptEntriesResponse(nodeID3, c.newAcceptOutput(2))
-	assert.Equal(t, true, ok)
+	err = c.core.HandleAcceptEntriesResponse(nodeID3, c.newAcceptOutput(2))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 }
 
@@ -691,13 +691,13 @@ func TestCoreLogic__Insert_Cmd__Accept_Response_2_Entries(t *testing.T) {
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept
-	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
-	assert.Equal(t, true, ok)
+	err := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept node2
-	ok = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2, 3))
-	assert.Equal(t, true, ok)
+	err = c.core.HandleAcceptEntriesResponse(nodeID2, c.newAcceptOutput(2, 3))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
 }
 
@@ -716,24 +716,24 @@ func TestCoreLogic__Insert_Cmd__Then_Accept_Response_Same_Node_Multi_Times(t *te
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept
-	ok := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
-	assert.Equal(t, true, ok)
+	err := c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 
 	// do accept again
-	ok = c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
-	assert.Equal(t, true, ok)
+	err = c.core.HandleAcceptEntriesResponse(nodeID1, c.newAcceptOutput(2, 3))
+	assert.Equal(t, nil, err)
 	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
 }
 
 func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
-	ok := c.core.HandleAcceptEntriesResponse(nodeID, AcceptEntriesOutput{
+	err := c.core.HandleAcceptEntriesResponse(nodeID, AcceptEntriesOutput{
 		Success: true,
 		Term:    c.currentTerm,
 		PosList: posList,
 	})
-	if !ok {
-		panic("Do handle accept should be ok")
+	if err != nil {
+		panic("Do handle accept should be ok, but got: " + err.Error())
 	}
 }
 
