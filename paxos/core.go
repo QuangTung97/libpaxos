@@ -196,13 +196,11 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 	defer c.mut.Unlock()
 
 	if err := c.checkStateEqual(term, StateCandidate); err != nil {
-		// TODO testing
 		return RequestVoteInput{}, err
 	}
 
 	remainPos, ok := c.candidate.remainPosMap[toNode]
 	if !ok {
-		// TODO testing
 		err := fmt.Errorf("missing remain pos for node id '%s'", toNode.String())
 		return RequestVoteInput{}, err
 	}
@@ -593,12 +591,10 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 
 func (c *coreLogicImpl) isValidLeader(term TermNum) error {
 	if err := c.checkStateEqual(term, StateLeader); err != nil {
-		// TODO testing
 		return err
 	}
 
 	if !c.isInMemberList() {
-		// TODO testing
 		return fmt.Errorf("current leader is stopping")
 	}
 

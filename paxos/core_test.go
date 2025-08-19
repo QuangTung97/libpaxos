@@ -737,7 +737,7 @@ func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
 	}
 }
 
-func TestCoreLogic__Handle_Vote_Resp__Without_More_After_Accept_Pos_Went_Up(t *testing.T) {
+func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
 		c := newCoreLogicTest(t)
 
@@ -1507,4 +1507,33 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	// try to insert command
 	err = c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
 	assert.Equal(t, errors.New("expected state 'Leader', got 'Follower'"), err)
+}
+
+func TestCoreLogic__Follower__Get_Vote_Req(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	req, err := c.core.GetVoteRequest(c.currentTerm, nodeID1)
+	assert.Equal(t, errors.New("expected state 'Candidate', got 'Follower'"), err)
+	assert.Equal(t, RequestVoteInput{}, req)
+
+	c.doStartElection()
+
+	// after becoming candidate
+	oldTerm := c.currentTerm
+	oldTerm.Num--
+	req, err = c.core.GetVoteRequest(oldTerm, nodeID1)
+	assert.Equal(t, ErrMismatchTerm(oldTerm, c.currentTerm), err)
+	assert.Equal(t, RequestVoteInput{}, req)
+
+	// not found node id 6
+	req, err = c.core.GetVoteRequest(c.currentTerm, nodeID6)
+	assert.Equal(t, errors.New("missing remain pos for node id '64060000000000000000000000000000'"), err)
+	assert.Equal(t, RequestVoteInput{}, req)
+
+	c.doHandleVoteResp(nodeID1, 2, true)
+
+	// after remain pos = +infinity
+	req, err = c.core.GetVoteRequest(c.currentTerm, nodeID1)
+	assert.Equal(t, errors.New("remain pos of node id '64010000000000000000000000000000' is infinite"), err)
+	assert.Equal(t, RequestVoteInput{}, req)
 }
