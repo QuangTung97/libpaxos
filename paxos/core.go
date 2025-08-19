@@ -11,12 +11,12 @@ type CoreLogic interface {
 	StartElection(term TermNum) error
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
-	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) bool
+	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) error
 
 	GetAcceptEntriesRequest(
 		ctx context.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
-	) (AcceptEntriesInput, bool)
+	) (AcceptEntriesInput, error)
 
 	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
 
@@ -106,18 +106,13 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateFollower {
-		return fmt.Errorf("state is not Follower, actual: %s", c.state.String())
-	}
-
-	if err := c.isValidTerm(inputTerm); err != nil {
+	if err := c.isStateValid(inputTerm, StateFollower); err != nil {
+		// TODO testing
 		return err
 	}
 
 	c.state = StateCandidate
-
 	commitInfo := c.log.GetCommittedInfo()
-
 	c.persistent.NextProposeTerm()
 
 	// init leader state
@@ -196,11 +191,7 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateCandidate {
-		// TODO testing
-		return RequestVoteInput{}, fmt.Errorf("state is not Candidate, actual: %s", c.state.String())
-	}
-	if err := c.isValidTerm(term); err != nil {
+	if err := c.isStateValid(term, StateCandidate); err != nil {
 		// TODO testing
 		return RequestVoteInput{}, err
 	}
@@ -224,22 +215,18 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 	}, nil
 }
 
-func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) bool {
+func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if !output.Success {
 		// TODO handle
-		return true
+		return nil
 	}
 
-	if c.state != StateCandidate {
-		return false
-	}
-
-	if err := c.isValidTerm(output.Term); err != nil {
+	if err := c.isStateValid(output.Term, StateCandidate); err != nil {
 		// TODO testing
-		return false
+		return err
 	}
 
 	for _, entry := range output.Entries {
@@ -249,7 +236,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	c.increaseAcceptPos()
 	c.switchFromCandidateToLeader()
 
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) handleVoteResponseEntry(
@@ -413,19 +400,14 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
 	ctx context.Context, term TermNum, toNode NodeID,
 	fromPos LogPos, lastCommittedSent LogPos,
-) (AcceptEntriesInput, bool) {
+) (AcceptEntriesInput, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 StartFunction:
-	if !c.isCandidateOrLeader() {
+	if err := c.isCandidateOrLeader(term); err != nil {
 		// TODO testing
-		return AcceptEntriesInput{}, false
-	}
-
-	if err := c.isValidTerm(term); err != nil {
-		// TODO testing
-		return AcceptEntriesInput{}, false
+		return AcceptEntriesInput{}, err
 	}
 
 	maxLogPos := c.getMaxValidLogPos()
@@ -450,7 +432,7 @@ StartFunction:
 
 	if waitCond() {
 		if err := c.leader.nodeCondVar.Wait(ctx, toNode); err != nil {
-			return AcceptEntriesInput{}, false
+			return AcceptEntriesInput{}, err
 		}
 		goto StartFunction
 	}
@@ -470,10 +452,17 @@ StartFunction:
 		Term:      c.getCurrentTerm(),
 		Entries:   acceptEntries,
 		Committed: c.leader.lastCommitted,
-	}, true
+	}, nil
 }
 
-func (c *coreLogicImpl) isCandidateOrLeader() bool {
+func (c *coreLogicImpl) isCandidateOrLeader(term TermNum) error {
+	if !c.stateIsCandidateOrLeader() {
+		return fmt.Errorf("expected state is 'Candidate' or 'Leader', got: '%s'", c.state.String())
+	}
+	return c.isValidTerm(term)
+}
+
+func (c *coreLogicImpl) stateIsCandidateOrLeader() bool {
 	if c.state == StateCandidate {
 		return true
 	}
@@ -667,6 +656,13 @@ func (c *coreLogicImpl) isValidTerm(term TermNum) error {
 	)
 }
 
+func (c *coreLogicImpl) isStateValid(term TermNum, expectedState State) error {
+	if c.state != expectedState {
+		return fmt.Errorf("expected state '%s', got '%s'", expectedState.String(), c.state.String())
+	}
+	return c.isValidTerm(term)
+}
+
 func (c *coreLogicImpl) broadcastAllAcceptors() {
 	c.leader.nodeCondVar.Broadcast()
 }
@@ -708,7 +704,7 @@ func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if !c.isCandidateOrLeader() {
+	if err := c.isCandidateOrLeader(term); err != nil {
 		// TODO testing
 		return false
 	}

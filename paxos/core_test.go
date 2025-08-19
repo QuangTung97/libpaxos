@@ -2,6 +2,7 @@ package paxos_test
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -133,9 +134,8 @@ func (c *coreLogicTest) doHandleVoteResp(
 		Entries: voteEntries,
 	}
 
-	ok := c.core.HandleVoteResponse(nodeID, voteOutput)
-	if !ok {
-		panic("Should handle vote response ok")
+	if err := c.core.HandleVoteResponse(nodeID, voteOutput); err != nil {
+		panic("Should handle vote response ok, but got: " + err.Error())
 	}
 }
 
@@ -226,13 +226,15 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	}
 
 	// handle vote response
-	c.core.HandleVoteResponse(nodeID1, voteOutput)
+	err := c.core.HandleVoteResponse(nodeID1, voteOutput)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.VoteRunners)
 
 	// switch to leader state
-	c.core.HandleVoteResponse(nodeID2, voteOutput)
+	err = c.core.HandleVoteResponse(nodeID2, voteOutput)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
@@ -240,7 +242,8 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	assert.Equal(t, true, c.runner.IsLeader)
 
 	// do nothing
-	c.core.HandleVoteResponse(nodeID3, voteOutput)
+	err = c.core.HandleVoteResponse(nodeID3, voteOutput)
+	assert.Equal(t, errors.New("expected state 'Candidate', got 'Leader'"), err)
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T) {
@@ -255,10 +258,10 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	c.doHandleVoteResp(nodeID2, 2, true)
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	entry1.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{
@@ -292,10 +295,10 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	c.doHandleVoteResp(nodeID2, 2, true, LogEntry{}, entry3)
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	entry1.Term = c.currentTerm.ToInf()
 	entry2.Term = c.currentTerm.ToInf()
@@ -329,10 +332,10 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 	c.doHandleVoteResp(nodeID2, 2, false, LogEntry{}, entry2)
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{
@@ -368,10 +371,10 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry__Replaced_By_Other_E
 	c.doHandleVoteResp(nodeID2, 2, false, entry2, entry3)
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
 	entry3.Term = c.currentTerm.ToInf()
@@ -404,10 +407,10 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 	c.doHandleVoteResp(nodeID2, 2, false, entry2)
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{
@@ -436,10 +439,10 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req, first time not wait
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequest(
 		c.cancelCtx, c.currentTerm, nodeID1, 2, 1,
 	)
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID1,
 		Term:      c.currentTerm,
@@ -447,18 +450,18 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	}, acceptReq)
 
 	// check get accept req, waiting
-	acceptReq, ok = c.core.GetAcceptEntriesRequest(
+	acceptReq, err = c.core.GetAcceptEntriesRequest(
 		c.cancelCtx, c.currentTerm, nodeID1, 2, 1,
 	)
-	assert.Equal(t, false, ok)
+	assert.Equal(t, context.Canceled, err)
 	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
 }
 
 func (c *coreLogicTest) firstGetAcceptToSetTimeout() {
 	// check get accept req, first time not wait
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-	if !ok {
-		panic("Should be ok here")
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+	if err != nil {
+		panic("Should be ok here, but got: " + err.Error())
 	}
 	if len(acceptReq.Entries) > 0 {
 		panic("Should be empty here")
@@ -476,8 +479,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 
 	testutil.RunInBackground(t, func() {
 		// check get accept req, waiting
-		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, true, ok)
+		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+		assert.Equal(t, nil, err)
 
 		acceptEntry1 := entry1
 		acceptEntry1.Term = c.currentTerm.ToInf()
@@ -511,8 +514,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 
 	testutil.RunInBackground(t, func() {
 		// check get accept req, waiting
-		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, true, ok)
+		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+		assert.Equal(t, nil, err)
 
 		acceptEntry1 := entry1
 		acceptEntry1.Term = c.currentTerm.ToInf()
@@ -547,8 +550,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 
 	testutil.RunInBackground(t, func() {
 		// check get accept req, waiting
-		acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, true, ok)
+		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+		assert.Equal(t, nil, err)
 
 		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID1,
@@ -581,8 +584,8 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 1, 0)
-	assert.Equal(t, true, ok)
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 1, 0)
+	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{
@@ -609,8 +612,8 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 		"cmd data 02",
 	)
 
-	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 1, 0)
-	assert.Equal(t, true, ok)
+	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 1, 0)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID2,
 		Term:   c.currentTerm,
@@ -816,8 +819,8 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	// finally move up
 	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
 
-	acceptReq, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID6, 0, 0)
-	assert.Equal(t, true, ok)
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID6, 0, 0)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
@@ -895,9 +898,9 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 func (c *coreLogicTest) doGetAcceptReq(
 	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
 ) AcceptEntriesInput {
-	req, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
-	if !ok {
-		panic("Get accept entries req should return ok")
+	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
+	if err != nil {
+		panic("Get accept entries req should return ok, but got: " + err.Error())
 	}
 	return req
 }
@@ -1202,9 +1205,9 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	}, accReq)
 
 	synctest.Test(t, func(t *testing.T) {
-		acceptResult, _ := testutil.RunAsync(t, func() bool {
-			_, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID3, 2, 1)
-			return ok
+		acceptResult, _ := testutil.RunAsync(t, func() error {
+			_, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID3, 2, 1)
+			return err
 		})
 
 		newTerm := TermNum{
@@ -1213,7 +1216,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		}
 		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
 
-		assert.Equal(t, false, acceptResult())
+		assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), acceptResult())
 
 		// check state
 		assert.Equal(t, StateFollower, c.core.GetState())
