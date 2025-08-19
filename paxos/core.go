@@ -26,11 +26,11 @@ type CoreLogic interface {
 
 	CheckTimeout()
 
-	ChangeMembership(term TermNum, newNodes []NodeID) bool
+	ChangeMembership(term TermNum, newNodes []NodeID) error
 
-	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) bool
+	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) error
 
-	GetReadyToStartElection(ctx context.Context, term TermNum) bool
+	GetReadyToStartElection(ctx context.Context, term TermNum) error
 
 	GetState() State
 	GetLastCommitted() LogPos
@@ -106,7 +106,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if err := c.isStateValid(inputTerm, StateFollower); err != nil {
+	if err := c.checkStateEqual(inputTerm, StateFollower); err != nil {
 		// TODO testing
 		return err
 	}
@@ -191,7 +191,7 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if err := c.isStateValid(term, StateCandidate); err != nil {
+	if err := c.checkStateEqual(term, StateCandidate); err != nil {
 		// TODO testing
 		return RequestVoteInput{}, err
 	}
@@ -224,7 +224,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		return nil
 	}
 
-	if err := c.isStateValid(output.Term, StateCandidate); err != nil {
+	if err := c.checkStateEqual(output.Term, StateCandidate); err != nil {
 		// TODO testing
 		return err
 	}
@@ -456,13 +456,13 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) isCandidateOrLeader(term TermNum) error {
-	if !c.stateIsCandidateOrLeader() {
+	if !c.doCheckStateIsCandidateOrLeader() {
 		return fmt.Errorf("expected state is 'Candidate' or 'Leader', got: '%s'", c.state.String())
 	}
-	return c.isValidTerm(term)
+	return c.doCheckValidTerm(term)
 }
 
-func (c *coreLogicImpl) stateIsCandidateOrLeader() bool {
+func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	if c.state == StateCandidate {
 		return true
 	}
@@ -527,7 +527,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		return nil
 	}
 
-	if err := c.isValidTerm(output.Term); err != nil {
+	if err := c.isCandidateOrLeader(output.Term); err != nil {
 		// TODO testing
 		return err
 	}
@@ -589,17 +589,27 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 	}
 }
 
-func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) error {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-
-	if err := c.isStateValid(term, StateLeader); err != nil {
+func (c *coreLogicImpl) isValidLeader(term TermNum) error {
+	if err := c.checkStateEqual(term, StateLeader); err != nil {
+		// TODO testing
 		return err
 	}
 
 	if !c.isInMemberList() {
 		// TODO testing
 		return fmt.Errorf("current leader is stopping")
+	}
+
+	return nil
+}
+
+func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if err := c.isValidLeader(term); err != nil {
+		// TODO testing
+		return err
 	}
 
 	for _, cmd := range cmdList {
@@ -641,40 +651,39 @@ func (c *coreLogicImpl) CheckTimeout() {
 	}
 }
 
-func (c *coreLogicImpl) isValidTerm(term TermNum) error {
-	if c.getCurrentTerm() == term {
-		return nil
-	}
+func ErrMismatchTerm(inputTerm TermNum, actual TermNum) error {
 	return fmt.Errorf(
 		"mismatch term number, input: %s, actual: %s",
-		term.String(),
-		c.getCurrentTerm().String(),
+		inputTerm,
+		actual,
 	)
 }
 
-func (c *coreLogicImpl) isStateValid(term TermNum, expectedState State) error {
+func (c *coreLogicImpl) doCheckValidTerm(term TermNum) error {
+	if c.getCurrentTerm() == term {
+		return nil
+	}
+	return ErrMismatchTerm(term, c.getCurrentTerm())
+}
+
+func (c *coreLogicImpl) checkStateEqual(term TermNum, expectedState State) error {
 	if c.state != expectedState {
 		return fmt.Errorf("expected state '%s', got '%s'", expectedState.String(), c.state.String())
 	}
-	return c.isValidTerm(term)
+	return c.doCheckValidTerm(term)
 }
 
 func (c *coreLogicImpl) broadcastAllAcceptors() {
 	c.leader.nodeCondVar.Broadcast()
 }
 
-func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) bool {
+func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateLeader {
+	if err := c.isValidLeader(term); err != nil {
 		// TODO testing
-		return false
-	}
-
-	if err := c.isValidTerm(term); err != nil {
-		// TODO testing
-		return false
+		return err
 	}
 
 	pos := c.leader.memLog.MaxLogPos() + 1
@@ -691,29 +700,24 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) bool {
 	c.appendNewEntry(pos, entry)
 	c.updateAcceptRunners()
 
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 	term TermNum, nodeID NodeID, pos LogPos,
-) bool {
+) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if err := c.isCandidateOrLeader(term); err != nil {
 		// TODO testing
-		return false
-	}
-
-	if err := c.isValidTerm(term); err != nil {
-		// TODO testing
-		return false
+		return err
 	}
 
 	c.leader.acceptorFullyReplicated[nodeID] = pos
 	c.finishMembershipChange()
 
-	return true
+	return nil
 }
 
 func (c *coreLogicImpl) finishMembershipChange() {
@@ -751,29 +755,24 @@ func (c *coreLogicImpl) finishMembershipChange() {
 	c.updateAcceptRunners()
 }
 
-func (c *coreLogicImpl) GetReadyToStartElection(ctx context.Context, term TermNum) bool {
+func (c *coreLogicImpl) GetReadyToStartElection(ctx context.Context, term TermNum) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 StartLoop:
-	if c.state != StateFollower {
-		return false
-	}
-
-	if err := c.isValidTerm(term); err != nil {
-		return false
+	if err := c.checkStateEqual(term, StateFollower); err != nil {
+		return err
 	}
 
 	if !c.isExpired(c.follower.wakeUpAt) {
 		if err := c.follower.waitCond.Wait(ctx, c.nodeID); err != nil {
-			return false
+			return err
 		}
 		goto StartLoop
 	}
 
 	c.follower.wakeUpAt = c.computeNextWakeUp()
-
-	return true
+	return nil
 }
 
 // ---------------------------------------------------------------------------

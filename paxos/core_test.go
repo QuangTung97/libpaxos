@@ -798,8 +798,8 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	)
 
 	// do change
-	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID6})
-	assert.Equal(t, true, ok)
+	err := c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID6})
+	assert.Equal(t, nil, err)
 
 	// check active runners
 	assert.Equal(t, []NodeID{
@@ -1010,8 +1010,8 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 }
 
 func (c *coreLogicTest) doChangeMembers(newNodes []NodeID) {
-	if !c.core.ChangeMembership(c.currentTerm, newNodes) {
-		panic("Change members should be OK")
+	if err := c.core.ChangeMembership(c.currentTerm, newNodes); err != nil {
+		panic("Change members should be OK, but got: " + err.Error())
 	}
 }
 
@@ -1142,11 +1142,11 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 func TestCoreLogic__Follower_GetReadyToStartElect(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	ok := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
-	assert.Equal(t, true, ok)
+	err := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+	assert.Equal(t, nil, err)
 
 	synctest.Test(t, func(t *testing.T) {
-		checkFn, assertNotFinish := testutil.RunAsync(t, func() bool {
+		checkFn, assertNotFinish := testutil.RunAsync(t, func() error {
 			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
 		})
 
@@ -1157,33 +1157,33 @@ func TestCoreLogic__Follower_GetReadyToStartElect(t *testing.T) {
 		c.now.Add(1100)
 		c.core.CheckTimeout()
 
-		assert.Equal(t, true, checkFn())
+		assert.Equal(t, nil, checkFn())
 	})
 }
 
 func TestCoreLogic__GetReadyToStartElect_Wait__Then_Switch_To_Candidate(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	ok := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
-	assert.Equal(t, true, ok)
+	err := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+	assert.Equal(t, nil, err)
 
 	// check with wrong term
-	ok = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
-	assert.Equal(t, false, ok)
+	err = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
+	assert.Equal(t, ErrMismatchTerm(c.currentTerm, c.persistent.GetLastTerm()), err)
 
 	synctest.Test(t, func(t *testing.T) {
-		checkFn, _ := testutil.RunAsync(t, func() bool {
+		checkFn, _ := testutil.RunAsync(t, func() error {
 			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
 		})
 
 		err := c.core.StartElection(c.persistent.GetLastTerm())
 		assert.Equal(t, nil, err)
 
-		assert.Equal(t, false, checkFn())
+		assert.Equal(t, errors.New("expected state 'Follower', got 'Candidate'"), checkFn())
 
 		// check again
-		ok := c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
-		assert.Equal(t, false, ok)
+		err = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
+		assert.Equal(t, errors.New("expected state 'Follower', got 'Candidate'"), err)
 	})
 }
 
@@ -1236,14 +1236,14 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 
 		// check follower waiting
 		c.now.Add(4000)
-		checkFn, _ := testutil.RunAsync(t, func() bool {
+		checkFn, _ := testutil.RunAsync(t, func() error {
 			return c.core.GetReadyToStartElection(c.ctx, newTerm)
 		})
 
 		c.now.Add(1100)
 		c.core.CheckTimeout()
 
-		assert.Equal(t, true, checkFn())
+		assert.Equal(t, nil, checkFn())
 	})
 }
 
@@ -1261,14 +1261,14 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		assert.Equal(t, true, c.runner.FollowerRunning)
 		assert.Equal(t, newTerm, c.runner.FollowerTerm)
 
-		checkFn, _ := testutil.RunAsync(t, func() bool {
+		checkFn, _ := testutil.RunAsync(t, func() error {
 			return c.core.GetReadyToStartElection(c.ctx, newTerm)
 		})
 
 		c.now.Add(5100)
 		c.core.CheckTimeout()
 
-		assert.Equal(t, true, checkFn())
+		assert.Equal(t, nil, checkFn())
 	})
 }
 
@@ -1288,8 +1288,8 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 }
 
 func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
-	if !c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID, pos) {
-		panic("Should update OK")
+	if err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID, pos); err != nil {
+		panic("Should update OK, but got: " + err.Error())
 	}
 }
 
@@ -1299,10 +1299,10 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 
 	c.doInsertCmd("cmd 01", "cmd 02")
 
-	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{
+	err := c.core.ChangeMembership(c.currentTerm, []NodeID{
 		nodeID3, nodeID4, nodeID5,
 	})
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	c.doUpdateFullyReplicated(nodeID3, 1)
 
@@ -1349,10 +1349,10 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 
 	c.doInsertCmd("cmd 01", "cmd 02")
 
-	ok := c.core.ChangeMembership(c.currentTerm, []NodeID{
+	err := c.core.ChangeMembership(c.currentTerm, []NodeID{
 		nodeID3, nodeID4, nodeID5,
 	})
-	assert.Equal(t, true, ok)
+	assert.Equal(t, nil, err)
 
 	c.doUpdateFullyReplicated(nodeID3, 4)
 	c.doUpdateFullyReplicated(nodeID4, 4)
