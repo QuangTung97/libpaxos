@@ -16,7 +16,7 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, bool)
 
-	FollowerReceiveAcceptEntriesRequest(fromNode NodeID, term TermNum) bool
+	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) bool
 
@@ -32,6 +32,9 @@ type CoreLogic interface {
 
 	GetState() State
 	GetLastCommitted() LogPos
+
+	// CheckInvariant for testing only
+	CheckInvariant()
 }
 
 func NewCoreLogic(
@@ -120,6 +123,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
 
 	c.persistent.NextProposeTerm()
 
+	// init leader state
 	c.leader = &leaderStateInfo{
 		members:       commitInfo.Members,
 		lastCommitted: commitInfo.Pos,
@@ -129,13 +133,16 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) bool {
 
 		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
-
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 
+	// init candidate state
 	c.candidate = &candidateStateInfo{
 		remainPosMap: map[NodeID]InfiniteLogPos{},
 		acceptPos:    commitInfo.Pos,
 	}
+
+	// clear follower
+	c.follower.waitCond.Broadcast()
 	c.follower = nil
 
 	c.updateVoteRunners()
@@ -453,9 +460,7 @@ func (c *coreLogicImpl) isCandidateOrLeader() bool {
 	return false
 }
 
-func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
-	fromNode NodeID, term TermNum,
-) bool {
+func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -666,6 +671,10 @@ StartLoop:
 		return false
 	}
 
+	if c.getCurrentTerm() != term {
+		return false
+	}
+
 	if !c.isExpired(c.follower.wakeUpAt) {
 		if err := c.follower.waitCond.Wait(ctx, c.nodeID); err != nil {
 			return false
@@ -703,4 +712,33 @@ func (c *coreLogicImpl) getCurrentTerm() TermNum {
 
 func (c *coreLogicImpl) isExpired(ts TimestampMilli) bool {
 	return ts <= c.nowFunc()
+}
+
+func (c *coreLogicImpl) CheckInvariant() {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.state == StateLeader {
+		assertTrue(c.follower == nil)
+		assertTrue(c.candidate == nil)
+		assertTrue(c.leader != nil)
+		return
+	}
+
+	if c.state == StateCandidate {
+		assertTrue(c.follower == nil)
+		assertTrue(c.candidate != nil)
+		assertTrue(c.leader != nil)
+		return
+	}
+
+	assertTrue(c.follower != nil)
+	assertTrue(c.candidate == nil)
+	assertTrue(c.leader == nil)
+}
+
+func assertTrue(b bool) {
+	if !b {
+		panic("Should be true here")
+	}
 }

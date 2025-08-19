@@ -39,7 +39,7 @@ type coreLogicTest struct {
 	currentTerm TermNum
 }
 
-func newCoreLogicTest(_ *testing.T) *coreLogicTest {
+func newCoreLogicTest(t *testing.T) *coreLogicTest {
 	c := &coreLogicTest{}
 
 	c.ctx = context.Background()
@@ -91,6 +91,9 @@ func newCoreLogicTest(_ *testing.T) *coreLogicTest {
 			return TimestampMilli(c.now.Load())
 		},
 	)
+
+	t.Cleanup(c.core.CheckInvariant)
+
 	return c
 }
 
@@ -871,6 +874,7 @@ func (c *coreLogicTest) doGetAcceptReq(
 func (c *coreLogicTest) doGetAcceptReqAsync(
 	t *testing.T, nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
 ) func() AcceptEntriesInput {
+	t.Helper()
 	fn, _ := testutil.RunAsync[AcceptEntriesInput](t, func() AcceptEntriesInput {
 		return c.doGetAcceptReq(nodeID, fromPos, lastCommitted)
 	})
@@ -1115,6 +1119,92 @@ func TestCoreLogic__Follower_GetReadyToStartElect(t *testing.T) {
 		c.now.Add(4000)
 		c.core.CheckTimeout()
 		assertNotFinish()
+
+		c.now.Add(1100)
+		c.core.CheckTimeout()
+
+		assert.Equal(t, true, checkFn())
+	})
+}
+
+func TestCoreLogic__GetReadyToStartElect_Wait__Then_Switch_To_Candidate(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	ok := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+	assert.Equal(t, true, ok)
+
+	// check with wrong term
+	ok = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
+	assert.Equal(t, false, ok)
+
+	synctest.Test(t, func(t *testing.T) {
+		checkFn, _ := testutil.RunAsync(t, func() bool {
+			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+		})
+
+		ok := c.core.StartElection(c.persistent.GetLastTerm())
+		assert.Equal(t, true, ok)
+
+		assert.Equal(t, false, checkFn())
+
+		// check again
+		ok = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
+		assert.Equal(t, false, ok)
+	})
+}
+
+func (c *coreLogicTest) doStartElection() {
+	if !c.core.StartElection(c.persistent.GetLastTerm()) {
+		panic("Should start election OK")
+	}
+}
+
+func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.doStartElection()
+
+	accReq := c.doGetAcceptReq(nodeID3, 2, 1)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID3,
+		Term:      c.currentTerm,
+		Committed: 1,
+	}, accReq)
+
+	synctest.Test(t, func(t *testing.T) {
+		acceptResult, _ := testutil.RunAsync(t, func() bool {
+			_, ok := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID3, 2, 1)
+			return ok
+		})
+
+		newTerm := TermNum{
+			Num:    22,
+			NodeID: nodeID2,
+		}
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+
+		assert.Equal(t, false, acceptResult())
+
+		// check state
+		assert.Equal(t, StateFollower, c.core.GetState())
+
+		// check runners
+		assert.Equal(t, newTerm, c.runner.VoteTerm)
+		assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+
+		assert.Equal(t, newTerm, c.runner.AcceptTerm)
+		assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+
+		assert.Equal(t, newTerm, c.runner.LeaderTerm)
+		assert.Equal(t, false, c.runner.IsLeader)
+
+		assert.Equal(t, newTerm, c.runner.FollowerTerm)
+		assert.Equal(t, true, c.runner.FollowerRunning)
+
+		// check follower waiting
+		c.now.Add(4000)
+		checkFn, _ := testutil.RunAsync(t, func() bool {
+			return c.core.GetReadyToStartElection(c.ctx, newTerm)
+		})
 
 		c.now.Add(1100)
 		c.core.CheckTimeout()

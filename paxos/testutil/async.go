@@ -7,6 +7,8 @@ import (
 )
 
 func RunAsync[T any](t *testing.T, fn func() T) (func() T, func()) {
+	t.Helper()
+
 	var finished atomic.Bool
 	resultCh := make(chan T)
 
