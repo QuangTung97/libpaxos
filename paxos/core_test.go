@@ -1413,3 +1413,98 @@ func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
 		Committed: 2,
 	}, accReq)
 }
+
+func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberList(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newMembers1 := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		{Nodes: []NodeID{nodeID4}, CreatedAt: 4},
+	}
+	newMembers2 := []MemberInfo{
+		{Nodes: []NodeID{nodeID4}, CreatedAt: 1},
+	}
+
+	entry1 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers1,
+	}
+	entry2 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers2,
+	}
+	entry3 := c.newLogEntry("cmd data 03", 18)
+
+	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
+	c.doHandleVoteResp(nodeID3, 2, true)
+
+	// state is still candidate
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	assert.Equal(t, []NodeID{nodeID1, nodeID4}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4,
+	}, c.runner.AcceptRunners)
+
+	// handle for node 4
+	c.doHandleVoteResp(nodeID4, 3, true, entry2, entry3)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{nodeID4}, c.runner.AcceptRunners)
+
+	// get accept requests
+	entry1.Term = c.currentTerm.ToInf()
+	entry2.Term = c.currentTerm.ToInf()
+	entry3.Term = c.currentTerm.ToInf()
+
+	accReq := c.doGetAcceptReq(nodeID5, 2, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID5,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 2, Entry: entry1},
+			{Pos: 3, Entry: entry2},
+			{Pos: 4, Entry: entry3},
+		},
+		Committed: 1,
+	}, accReq)
+
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// try to insert command
+	err := c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
+	assert.Equal(t, errors.New("current leader is stopping"), err)
+
+	// try to change membership again
+	err = c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID5, nodeID6})
+	assert.Equal(t, errors.New("current leader is stopping"), err)
+
+	// put entries => switch to follower
+	c.doHandleAccept(nodeID4, 2, 3, 4)
+
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+
+	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
+	assert.Equal(t, false, c.runner.IsLeader)
+
+	assert.Equal(t, c.currentTerm, c.runner.FollowerTerm)
+	assert.Equal(t, true, c.runner.FollowerRunning)
+
+	// try to insert command
+	err = c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
+	assert.Equal(t, errors.New("expected state 'Leader', got 'Follower'"), err)
+}

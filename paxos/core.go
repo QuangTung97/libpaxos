@@ -32,6 +32,10 @@ type CoreLogic interface {
 
 	GetReadyToStartElection(ctx context.Context, term TermNum) error
 
+	// -------------------------------------------------------
+	// Testing Utility Functions
+	// -------------------------------------------------------
+
 	GetState() State
 	GetLastCommitted() LogPos
 
@@ -225,7 +229,6 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	}
 
 	if err := c.checkStateEqual(output.Term, StateCandidate); err != nil {
-		// TODO testing
 		return err
 	}
 
@@ -406,7 +409,6 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 
 StartFunction:
 	if err := c.isCandidateOrLeader(term); err != nil {
-		// TODO testing
 		return AcceptEntriesInput{}, err
 	}
 
@@ -608,7 +610,6 @@ func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) error {
 	defer c.mut.Unlock()
 
 	if err := c.isValidLeader(term); err != nil {
-		// TODO testing
 		return err
 	}
 
@@ -682,7 +683,6 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 	defer c.mut.Unlock()
 
 	if err := c.isValidLeader(term); err != nil {
-		// TODO testing
 		return err
 	}
 
