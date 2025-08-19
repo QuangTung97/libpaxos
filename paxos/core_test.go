@@ -1223,9 +1223,12 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+		// check follower runner
+		assert.Equal(t, true, c.runner.FollowerRunning)
+		assert.Equal(t, newTerm, c.runner.FollowerTerm)
 
 		checkFn, _ := testutil.RunAsync(t, func() bool {
-			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+			return c.core.GetReadyToStartElection(c.ctx, newTerm)
 		})
 
 		c.now.Add(5100)

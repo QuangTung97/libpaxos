@@ -472,6 +472,7 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 
 	if c.state == StateFollower {
 		c.follower.wakeUpAt = c.computeNextWakeUp()
+		c.runner.StartFollowerRunner(c.getCurrentTerm(), true)
 		return true
 	}
 
