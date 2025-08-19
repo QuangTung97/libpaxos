@@ -41,10 +41,10 @@ func (m *MemLog) Put(pos LogPos, entry LogEntry) {
 	m.queueData[index].entry = entry
 }
 
-func (m *MemLog) GetFrontVoted() map[NodeID]struct{} {
+func (m *MemLog) GetFrontTerm() InfiniteTerm {
 	pos := *m.lastCommitted + 1
 	entry := m.getByPos(pos)
-	return entry.voted
+	return entry.entry.Term
 }
 
 func (m *MemLog) PopFront() {
@@ -102,11 +102,6 @@ func (m *MemLog) getByPos(pos LogPos) memLogEntry {
 
 	index := m.getQueueIndex(memPos - 1)
 	return m.queueData[index]
-}
-
-func (m *MemLog) AddVoted(pos LogPos, nodeID NodeID) {
-	entry := m.getByPos(pos)
-	entry.voted[nodeID] = struct{}{}
 }
 
 func (m *MemLog) MaxLogPos() LogPos {

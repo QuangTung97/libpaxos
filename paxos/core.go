@@ -518,6 +518,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		c.handleAcceptResponseForPos(fromNode, pos)
 	}
 
+	c.increaseLastCommitted()
 	return true
 }
 
@@ -549,8 +550,6 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 		memLog.Put(pos, entry)
 	}
 
-	c.increaseLastCommitted()
-
 	return true
 }
 
@@ -558,10 +557,12 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 	memLog := c.leader.memLog
 
 	for memLog.GetQueueSize() > 0 {
-		voted := memLog.GetFrontVoted()
-		if !IsQuorum(c.leader.members, voted) {
+		term := memLog.GetFrontTerm()
+		if term.IsFinite {
 			break
 		}
+
+		// when term = +infinity
 		memLog.PopFront()
 
 		c.finishMembershipChange()

@@ -12,7 +12,11 @@ import (
 func TestMemLog(t *testing.T) {
 	newEntry := func(cmd string) LogEntry {
 		return LogEntry{
-			Type:    LogTypeCmd,
+			Type: LogTypeCmd,
+			Term: TermNum{
+				Num:    15,
+				NodeID: nodeID3,
+			}.ToInf(),
 			CmdData: []byte(cmd),
 		}
 	}
@@ -147,9 +151,17 @@ func TestMemLog(t *testing.T) {
 		node1 := fake.NewNodeID(1)
 		node2 := fake.NewNodeID(2)
 
-		m.AddVoted(21, node1)
-		m.AddVoted(21, node2)
-		m.AddVoted(22, node2)
+		addVote := func(pos LogPos, n NodeID) {
+			voted := m.GetVoted(pos)
+			voted[n] = struct{}{}
+		}
+
+		addVote(21, node1)
+		addVote(21, node2)
+		addVote(22, node2)
+
+		entry1.Term = InfiniteTerm{}
+		m.Put(21, entry1)
 
 		assert.Equal(t, map[NodeID]struct{}{
 			node1: {},
@@ -163,10 +175,7 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
 
 		// get front
-		voted := m.GetFrontVoted()
-		assert.Equal(t, map[NodeID]struct{}{
-			node1: {},
-			node2: {},
-		}, voted)
+		term := m.GetFrontTerm()
+		assert.Equal(t, InfiniteTerm{}, term)
 	})
 }
