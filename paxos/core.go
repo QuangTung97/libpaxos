@@ -256,12 +256,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
-	if CompareTermNum(inputTerm, c.getCurrentTerm()) <= 0 {
-		// do nothing
-		return
-	}
-	c.persistent.UpdateLastTerm(inputTerm)
-	c.stepDownToFollower()
+	c.followDoCheckAcceptEntriesRequest(inputTerm, 0)
 }
 
 func (c *coreLogicImpl) handleVoteResponseEntry(
@@ -526,6 +521,10 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	return c.followDoCheckAcceptEntriesRequest(term, pos)
+}
+
+func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, pos LogPos) bool {
 	cmpResult := CompareTermNum(c.getCurrentTerm(), term)
 	if cmpResult <= 0 {
 		c.clearForceStayAsFollower(pos)

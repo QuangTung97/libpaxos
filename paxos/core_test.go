@@ -1758,9 +1758,11 @@ func TestCoreLogic__Follower__Stay_As_Follower__Get_Ready_to_Start_Election_Bloc
 
 		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 4)
 		assertNotFinish()
+		assert.Equal(t, 1, c.persistent.UpdateStayCalls)
 
 		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 5)
 		assert.Equal(t, ErrMismatchTerm(lastTerm, newTerm), checkFn())
+		assert.Equal(t, 2, c.persistent.UpdateStayCalls)
 	})
 }
 
@@ -1832,6 +1834,15 @@ func TestCoreLogic__Leader__Handle_Accept_Resp__Not_Success__Higher_Term(t *test
 	assert.Equal(t, StateFollower, c.core.GetState())
 	assert.Equal(t, newTerm, c.runner.AcceptTerm)
 	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+
+	// handle failed resp again, when state = Follower
+	newTerm.Num++
+	err = c.core.HandleAcceptEntriesResponse(nodeID3, AcceptEntriesOutput{
+		Success: false,
+		Term:    newTerm,
+	})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, c.persistent.UpdateStayCalls)
 }
 
 func TestAssertTrue(t *testing.T) {

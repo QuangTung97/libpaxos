@@ -10,8 +10,9 @@ type PersistentStateFake struct {
 	NodeID   paxos.NodeID
 	LastTerm paxos.TermNum
 
-	StayMaxPos     paxos.LogPos
-	StayAsFollower bool
+	StayMaxPos      paxos.LogPos
+	StayAsFollower  bool
+	UpdateStayCalls int
 }
 
 var _ paxos.PersistentState = &PersistentStateFake{}
@@ -29,6 +30,7 @@ func (s *PersistentStateFake) GetNodeID() paxos.NodeID {
 }
 
 func (s *PersistentStateFake) UpdateForceStayAsFollower(maxPos paxos.LogPos, stayed bool) {
+	s.UpdateStayCalls++
 	s.StayMaxPos = maxPos
 	s.StayAsFollower = stayed
 }
