@@ -8,7 +8,7 @@ import (
 )
 
 type CoreLogic interface {
-	StartElection(term TermNum) error
+	StartElection(term TermNum, maxTermValue TermValue) error
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) error
@@ -18,7 +18,7 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
-	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
+	FollowerReceiveAcceptEntriesRequest(term TermNum, pos LogPos) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
@@ -105,17 +105,16 @@ type leaderStateInfo struct {
 	acceptorFullyReplicated map[NodeID]LogPos
 }
 
-func (c *coreLogicImpl) generateNextProposeTerm() {
+func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
 	lastTerm := c.persistent.GetLastTerm()
 	newTerm := TermNum{
-		Num:    lastTerm.Num + 1,
+		Num:    max(maxTermValue, lastTerm.Num) + 1,
 		NodeID: c.persistent.GetNodeID(),
 	}
 	c.persistent.UpdateLastTerm(newTerm)
 }
 
-func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
-	// TODO add max term value arg
+func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -125,7 +124,8 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 
 	c.state = StateCandidate
 	commitInfo := c.log.GetCommittedInfo()
-	c.generateNextProposeTerm()
+
+	c.generateNextProposeTerm(maxTermValue)
 
 	// init leader state
 	c.leader = &leaderStateInfo{
@@ -496,7 +496,9 @@ func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	return false
 }
 
-func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
+func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
+	term TermNum, pog LogPos,
+) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 

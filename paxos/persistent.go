@@ -4,5 +4,9 @@ package paxos
 type PersistentState interface {
 	UpdateLastTerm(lastTerm TermNum)
 	GetLastTerm() TermNum
+
 	GetNodeID() NodeID
+
+	UpdateForceStayAsFollower(maxPos LogPos, stayed bool)
+	GetForceStayAsFollower() (LogPos, bool)
 }

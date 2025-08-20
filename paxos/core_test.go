@@ -142,7 +142,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 }
 
 func (c *coreLogicTest) startAsLeader() {
-	if err := c.core.StartElection(c.persistent.GetLastTerm()); err != nil {
+	if err := c.core.StartElection(c.persistent.GetLastTerm(), 0); err != nil {
 		panic("Should be able to start election, but got error: " + err.Error())
 	}
 
@@ -174,7 +174,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, true, c.runner.FollowerRunning)
 
 	// start election
-	err := c.core.StartElection(c.persistent.GetLastTerm())
+	err := c.core.StartElection(c.persistent.GetLastTerm(), 0)
 	assert.Equal(t, nil, err)
 
 	// check runners
@@ -1186,7 +1186,7 @@ func TestCoreLogic__GetReadyToStartElect_Wait__Then_Switch_To_Candidate(t *testi
 			return c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
 		})
 
-		err := c.core.StartElection(c.persistent.GetLastTerm())
+		err := c.core.StartElection(c.persistent.GetLastTerm(), 0)
 		assert.Equal(t, nil, err)
 
 		assert.Equal(t, errors.New("expected state 'Follower', got: 'Candidate'"), checkFn())
@@ -1198,7 +1198,7 @@ func TestCoreLogic__GetReadyToStartElect_Wait__Then_Switch_To_Candidate(t *testi
 }
 
 func (c *coreLogicTest) doStartElection() {
-	if err := c.core.StartElection(c.persistent.GetLastTerm()); err != nil {
+	if err := c.core.StartElection(c.persistent.GetLastTerm(), 0); err != nil {
 		panic("Should start election OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1225,7 +1225,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 			Num:    22,
 			NodeID: nodeID2,
 		}
-		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
 
 		assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), acceptResult())
 
@@ -1267,7 +1267,7 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	}
 
 	synctest.Test(t, func(t *testing.T) {
-		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
 		// check follower runner
 		assert.Equal(t, true, c.runner.FollowerRunning)
 		assert.Equal(t, newTerm, c.runner.FollowerTerm)
@@ -1291,14 +1291,14 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 		Num:    17,
 		NodeID: nodeID2,
 	}
-	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
 	assert.Equal(t, false, affected)
 
 	// no change in state
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// same term
-	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
+	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm, 2)
 	assert.Equal(t, false, affected)
 
 	// no change in state
@@ -1572,7 +1572,7 @@ func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.startAsLeader()
 
-	err := c.core.StartElection(c.currentTerm)
+	err := c.core.StartElection(c.currentTerm, 0)
 	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
 }
 
@@ -1701,4 +1701,16 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Not_Finish_Member_Change
 		},
 		Committed: 2,
 	}, accReq)
+}
+
+func TestCoreLogic__Start_Election__With_Max_Term_Value(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	err := c.core.StartElection(c.persistent.GetLastTerm(), 23)
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, TermNum{
+		Num:    24,
+		NodeID: c.persistent.GetNodeID(),
+	}, c.runner.VoteTerm)
 }
