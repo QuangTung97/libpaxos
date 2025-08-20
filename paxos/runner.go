@@ -44,44 +44,38 @@ func NewNodeRunner(
 		currentNodeID: currentNodeID,
 	}
 
-	r.voters = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
+	loopWithSleep := func(ctx context.Context, callback func(ctx context.Context) error) {
 		for {
-			_ = voteRunnerFunc(ctx, val.nodeID, val.term)
+			_ = callback(ctx)
 			sleepWithContext(ctx, 1000*time.Millisecond)
 			if ctx.Err() != nil {
 				return
 			}
 		}
+	}
+
+	r.voters = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return voteRunnerFunc(ctx, val.nodeID, val.term)
+		})
 	})
 
 	r.acceptors = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		for {
-			_ = acceptorRunnerFunc(ctx, val.nodeID, val.term)
-			sleepWithContext(ctx, 1000*time.Millisecond)
-			if ctx.Err() != nil {
-				return
-			}
-		}
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return acceptorRunnerFunc(ctx, val.nodeID, val.term)
+		})
 	})
 
 	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		for {
-			_ = stateMachineFunc(ctx, val.term, val.isLeader)
-			sleepWithContext(ctx, 1000*time.Millisecond)
-			if ctx.Err() != nil {
-				return
-			}
-		}
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return stateMachineFunc(ctx, val.term, val.isLeader)
+		})
 	})
 
 	r.follower = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		for {
-			_ = followerRunnerFunc(ctx, val.term)
-			sleepWithContext(ctx, 1000*time.Millisecond)
-			if ctx.Err() != nil {
-				return
-			}
-		}
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return followerRunnerFunc(ctx, val.term)
+		})
 	})
 
 	return r, func() {
