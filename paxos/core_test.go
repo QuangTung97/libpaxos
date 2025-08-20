@@ -243,7 +243,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 
 	// do nothing
 	err = c.core.HandleVoteResponse(nodeID3, voteOutput)
-	assert.Equal(t, errors.New("expected state 'Candidate', got 'Leader'"), err)
+	assert.Equal(t, errors.New("expected state 'Candidate', got: 'Leader'"), err)
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T) {
@@ -1179,11 +1179,11 @@ func TestCoreLogic__GetReadyToStartElect_Wait__Then_Switch_To_Candidate(t *testi
 		err := c.core.StartElection(c.persistent.GetLastTerm())
 		assert.Equal(t, nil, err)
 
-		assert.Equal(t, errors.New("expected state 'Follower', got 'Candidate'"), checkFn())
+		assert.Equal(t, errors.New("expected state 'Follower', got: 'Candidate'"), checkFn())
 
 		// check again
 		err = c.core.GetReadyToStartElection(c.ctx, c.currentTerm)
-		assert.Equal(t, errors.New("expected state 'Follower', got 'Candidate'"), err)
+		assert.Equal(t, errors.New("expected state 'Follower', got: 'Candidate'"), err)
 	})
 }
 
@@ -1469,9 +1469,9 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	entry2.Term = c.currentTerm.ToInf()
 	entry3.Term = c.currentTerm.ToInf()
 
-	accReq := c.doGetAcceptReq(nodeID5, 2, 0)
+	accReq := c.doGetAcceptReq(nodeID4, 2, 0)
 	assert.Equal(t, AcceptEntriesInput{
-		ToNode: nodeID5,
+		ToNode: nodeID4,
 		Term:   c.currentTerm,
 		Entries: []AcceptLogEntry{
 			{Pos: 2, Entry: entry1},
@@ -1506,14 +1506,14 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 
 	// try to insert command
 	err = c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
-	assert.Equal(t, errors.New("expected state 'Leader', got 'Follower'"), err)
+	assert.Equal(t, errors.New("expected state 'Leader', got: 'Follower'"), err)
 }
 
 func TestCoreLogic__Follower__Get_Vote_Req(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	req, err := c.core.GetVoteRequest(c.currentTerm, nodeID1)
-	assert.Equal(t, errors.New("expected state 'Candidate', got 'Follower'"), err)
+	assert.Equal(t, errors.New("expected state 'Candidate', got: 'Follower'"), err)
 	assert.Equal(t, RequestVoteInput{}, req)
 
 	c.doStartElection()
@@ -1527,7 +1527,7 @@ func TestCoreLogic__Follower__Get_Vote_Req(t *testing.T) {
 
 	// not found node id 6
 	req, err = c.core.GetVoteRequest(c.currentTerm, nodeID6)
-	assert.Equal(t, errors.New("missing remain pos for node id '64060000000000000000000000000000'"), err)
+	assert.Equal(t, errors.New("node id '64060000000000000000000000000000' is not in current member list"), err)
 	assert.Equal(t, RequestVoteInput{}, req)
 
 	c.doHandleVoteResp(nodeID1, 2, true)
@@ -1536,4 +1536,67 @@ func TestCoreLogic__Follower__Get_Vote_Req(t *testing.T) {
 	req, err = c.core.GetVoteRequest(c.currentTerm, nodeID1)
 	assert.Equal(t, errors.New("remain pos of node id '64010000000000000000000000000000' is infinite"), err)
 	assert.Equal(t, RequestVoteInput{}, req)
+}
+
+func TestCoreLogic__Leader__Get_Accept_Entries__Not_In_MemberList(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doInsertCmd("cmd 01", "cmd 02")
+
+	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID4, 0, 0)
+	assert.Equal(t, errors.New("node id '64040000000000000000000000000000' is not in current member list"), err)
+	assert.Equal(t, AcceptEntriesInput{}, req)
+}
+
+func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	err := c.core.StartElection(c.currentTerm)
+	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
+}
+
+func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	// handle error
+	err := c.core.HandleAcceptEntriesResponse(nodeID1, AcceptEntriesOutput{
+		Success: true,
+		Term:    c.currentTerm,
+		PosList: []LogPos{2},
+	})
+	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
+
+	c.doStartElection()
+
+	entry1 := c.newLogEntry("cmd test 01", 19)
+
+	c.doHandleVoteResp(nodeID1, 2, true)
+	c.doHandleVoteResp(nodeID1, 2, true, entry1)
+	c.doHandleVoteResp(nodeID2, 2, true)
+
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	req := c.doGetAcceptReq(nodeID3, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID3,
+		Term:      c.currentTerm,
+		Committed: 1,
+	}, req)
+}
+
+func TestCoreLogic__Leader__Handle_Accept_Response__Greater_Than_Max_Pos(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.startAsLeader()
+
+	c.doHandleAccept(nodeID1, 2)
+}
+
+func TestCoreLogic__Follower__Update_Fully_Replicated(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID1, 1)
+	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
 }

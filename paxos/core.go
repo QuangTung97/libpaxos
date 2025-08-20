@@ -71,9 +71,8 @@ func NewCoreLogic(
 type coreLogicImpl struct {
 	nowFunc func() TimestampMilli
 
-	mut    sync.Mutex
-	state  State
-	nodeID NodeID
+	mut   sync.Mutex
+	state State
 
 	follower  *followerStateInfo
 	candidate *candidateStateInfo
@@ -111,7 +110,6 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 	defer c.mut.Unlock()
 
 	if err := c.checkStateEqual(inputTerm, StateFollower); err != nil {
-		// TODO testing
 		return err
 	}
 
@@ -191,6 +189,13 @@ func (c *coreLogicImpl) getMaxValidLogPos() LogPos {
 	return c.leader.memLog.MaxLogPos()
 }
 
+func (c *coreLogicImpl) validateInMemberList(nodeID NodeID) error {
+	if c.isInMemberList(nodeID) {
+		return nil
+	}
+	return fmt.Errorf("node id '%s' is not in current member list", nodeID.String())
+}
+
 func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -199,8 +204,13 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 		return RequestVoteInput{}, err
 	}
 
+	if err := c.validateInMemberList(toNode); err != nil {
+		return RequestVoteInput{}, err
+	}
+
 	remainPos, ok := c.candidate.remainPosMap[toNode]
 	if !ok {
+		// This should never occur
 		err := fmt.Errorf("missing remain pos for node id '%s'", toNode.String())
 		return RequestVoteInput{}, err
 	}
@@ -246,7 +256,6 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	remainPos := c.candidate.remainPosMap[id]
 	if !remainPos.IsFinite {
 		// is infinite => do nothing
-		// TODO testing
 		return
 	}
 
@@ -362,14 +371,13 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() {
 	if c.leader.memLog.GetQueueSize() > 0 {
 		return
 	}
-	if c.isInMemberList() {
+	if c.isInMemberList(c.persistent.GetNodeID()) {
 		return
 	}
 	c.stepDownToFollower()
 }
 
-func (c *coreLogicImpl) isInMemberList() bool {
-	nodeID := c.persistent.GetNodeID()
+func (c *coreLogicImpl) isInMemberList(nodeID NodeID) bool {
 	for _, conf := range c.leader.members {
 		for _, id := range conf.Nodes {
 			if id == nodeID {
@@ -407,6 +415,10 @@ func (c *coreLogicImpl) GetAcceptEntriesRequest(
 
 StartFunction:
 	if err := c.isCandidateOrLeader(term); err != nil {
+		return AcceptEntriesInput{}, err
+	}
+
+	if err := c.validateInMemberList(toNode); err != nil {
 		return AcceptEntriesInput{}, err
 	}
 
@@ -528,7 +540,6 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	}
 
 	if err := c.isCandidateOrLeader(output.Term); err != nil {
-		// TODO testing
 		return err
 	}
 
@@ -549,7 +560,6 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 
 	maxPos := memLog.MaxLogPos()
 	if pos > maxPos {
-		// TODO testing
 		return false
 	}
 
@@ -594,7 +604,7 @@ func (c *coreLogicImpl) isValidLeader(term TermNum) error {
 		return err
 	}
 
-	if !c.isInMemberList() {
+	if !c.isInMemberList(c.persistent.GetNodeID()) {
 		return fmt.Errorf("current leader is stopping")
 	}
 
@@ -665,7 +675,7 @@ func (c *coreLogicImpl) doCheckValidTerm(term TermNum) error {
 
 func (c *coreLogicImpl) checkStateEqual(term TermNum, expectedState State) error {
 	if c.state != expectedState {
-		return fmt.Errorf("expected state '%s', got '%s'", expectedState.String(), c.state.String())
+		return fmt.Errorf("expected state '%s', got: '%s'", expectedState.String(), c.state.String())
 	}
 	return c.doCheckValidTerm(term)
 }
@@ -706,7 +716,6 @@ func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 	defer c.mut.Unlock()
 
 	if err := c.isCandidateOrLeader(term); err != nil {
-		// TODO testing
 		return err
 	}
 
@@ -761,7 +770,7 @@ StartLoop:
 	}
 
 	if !c.isExpired(c.follower.wakeUpAt) {
-		if err := c.follower.waitCond.Wait(ctx, c.nodeID); err != nil {
+		if err := c.follower.waitCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
 			return err
 		}
 		goto StartLoop
