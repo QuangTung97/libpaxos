@@ -118,7 +118,7 @@ func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeI
 			term:   term,
 		})
 	}
-	r.voters.Upsert(infos)
+	r.acceptors.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {
@@ -129,7 +129,7 @@ func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {
 			isLeader: isLeader,
 		},
 	}
-	r.voters.Upsert(infos)
+	r.stateMachine.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) StartFollowerRunner(term TermNum, isRunning bool) {
@@ -140,8 +140,8 @@ func (r *nodeRunnerImpl) StartFollowerRunner(term TermNum, isRunning bool) {
 				term:   term,
 			},
 		}
-		r.voters.Upsert(infos)
+		r.follower.Upsert(infos)
 	} else {
-		r.voters.Upsert(nil)
+		r.follower.Upsert(nil)
 	}
 }
