@@ -56,3 +56,7 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 		Pos:     s.lastCommitted,
 	}
 }
+
+func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLogEntry {
+	return nil
+}

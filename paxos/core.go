@@ -45,7 +45,7 @@ type CoreLogic interface {
 
 func NewCoreLogic(
 	persistent PersistentState,
-	log LogStorage,
+	log LeaderLogGetter,
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
 ) CoreLogic {
@@ -79,7 +79,7 @@ type coreLogicImpl struct {
 	leader    *leaderStateInfo
 
 	persistent PersistentState
-	log        LogStorage
+	log        LeaderLogGetter
 	runner     NodeRunner
 }
 
@@ -841,6 +841,8 @@ func (c *coreLogicImpl) GetState() State {
 }
 
 func (c *coreLogicImpl) GetLastCommitted() LogPos {
+	c.mut.Lock()
+	defer c.mut.Unlock()
 	return c.leader.lastCommitted
 }
 
