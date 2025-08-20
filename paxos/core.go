@@ -404,6 +404,8 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 	c.candidate = nil
 	c.updateVoteRunners()
 	c.runner.SetLeader(c.getCurrentTerm(), true)
+
+	c.finishMembershipChange()
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -726,6 +728,10 @@ func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
 }
 
 func (c *coreLogicImpl) finishMembershipChange() {
+	if c.state != StateLeader {
+		return
+	}
+
 	if len(c.leader.members) <= 1 {
 		return
 	}

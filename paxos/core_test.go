@@ -137,6 +137,8 @@ func (c *coreLogicTest) doHandleVoteResp(
 	if err := c.core.HandleVoteResponse(nodeID, voteOutput); err != nil {
 		panic("Should handle vote response ok, but got: " + err.Error())
 	}
+
+	c.core.CheckInvariant()
 }
 
 func (c *coreLogicTest) startAsLeader() {
@@ -146,6 +148,8 @@ func (c *coreLogicTest) startAsLeader() {
 
 	c.doHandleVoteResp(nodeID1, 2, true)
 	c.doHandleVoteResp(nodeID2, 2, true)
+
+	c.core.CheckInvariant()
 }
 
 func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
@@ -156,6 +160,8 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 	if err := c.core.InsertCommand(c.currentTerm, cmdListBytes...); err != nil {
 		panic("can not insert, error: " + err.Error())
 	}
+
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
@@ -466,6 +472,8 @@ func (c *coreLogicTest) firstGetAcceptToSetTimeout() {
 	if len(acceptReq.Entries) > 0 {
 		panic("Should be empty here")
 	}
+
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testing.T) {
@@ -735,6 +743,7 @@ func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
 	if err != nil {
 		panic("Do handle accept should be ok, but got: " + err.Error())
 	}
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *testing.T) {
@@ -1013,6 +1022,7 @@ func (c *coreLogicTest) doChangeMembers(newNodes []NodeID) {
 	if err := c.core.ChangeMembership(c.currentTerm, newNodes); err != nil {
 		panic("Change members should be OK, but got: " + err.Error())
 	}
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *testing.T) {
@@ -1191,6 +1201,7 @@ func (c *coreLogicTest) doStartElection() {
 	if err := c.core.StartElection(c.persistent.GetLastTerm()); err != nil {
 		panic("Should start election OK, but got: " + err.Error())
 	}
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
@@ -1291,6 +1302,7 @@ func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
 	if err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID, pos); err != nil {
 		panic("Should update OK, but got: " + err.Error())
 	}
+	c.core.CheckInvariant()
 }
 
 func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_Membership_Change(t *testing.T) {
@@ -1599,4 +1611,87 @@ func TestCoreLogic__Follower__Update_Fully_Replicated(t *testing.T) {
 
 	err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID1, 1)
 	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
+}
+
+func TestCoreLogic__Candidate__Update_Fully_Replicated__Not_Finish_Member_Change(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newMembers := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 2},
+	}
+
+	entry1 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers,
+	}
+
+	c.doHandleVoteResp(nodeID1, 2, false, entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, LogEntry{})
+
+	// do get accept req
+	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
+	entry1.Term = c.currentTerm.ToInf()
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID3,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 2, Entry: entry1},
+		},
+		Committed: 1,
+	}, accReq)
+
+	// handle accept
+	c.doHandleAccept(nodeID1, 2)
+	c.doHandleAccept(nodeID2, 2)
+	assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+	c.doHandleAccept(nodeID4, 2)
+	c.doHandleAccept(nodeID5, 2)
+	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+
+	// fully replicated
+	c.doUpdateFullyReplicated(nodeID4, 2)
+	c.doUpdateFullyReplicated(nodeID5, 2)
+
+	// get accept req again
+	accReq = c.doGetAcceptReq(nodeID3, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID3,
+		Term:      c.currentTerm,
+		Committed: 2,
+	}, accReq)
+
+	// switch to leader state
+	c.doHandleVoteResp(nodeID1, 3, true)
+	c.doHandleVoteResp(nodeID2, 3, true)
+	c.doHandleVoteResp(nodeID4, 3, true)
+	c.doHandleVoteResp(nodeID5, 3, true)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// get accept req again, node6
+	accReq = c.doGetAcceptReq(nodeID6, 0, 0)
+
+	newMembers2 := []MemberInfo{
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
+	}
+	entry2 := LogEntry{
+		Type:    LogTypeMembership,
+		Term:    c.currentTerm.ToInf(),
+		Members: newMembers2,
+	}
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID6,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 3, Entry: entry2},
+		},
+		Committed: 2,
+	}, accReq)
 }
