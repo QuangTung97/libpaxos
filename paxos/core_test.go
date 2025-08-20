@@ -1510,7 +1510,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	err = c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID5, nodeID6})
 	assert.Equal(t, errors.New("current leader is stopping"), err)
 
-	// put entries => switch to follower
+	// no log entries in mem log => switch to follower
 	c.doHandleAccept(nodeID4, 2, 3, 4)
 
 	assert.Equal(t, StateFollower, c.core.GetState())
@@ -1523,9 +1523,33 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, c.currentTerm, c.runner.FollowerTerm)
 	assert.Equal(t, true, c.runner.FollowerRunning)
 
+	// check persistent state stay as follower
+	stayMaxPos, stayAsFollower := c.persistent.GetForceStayAsFollower()
+	assert.Equal(t, true, stayAsFollower)
+	assert.Equal(t, LogPos(4), stayMaxPos)
+
 	// try to insert command
 	err = c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
 	assert.Equal(t, errors.New("expected state 'Leader', got: 'Follower'"), err)
+
+	newTerm := TermNum{
+		Num:    22,
+		NodeID: nodeID4,
+	}
+	c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 4)
+
+	// check persistent state stay as follower
+	stayMaxPos, stayAsFollower = c.persistent.GetForceStayAsFollower()
+	assert.Equal(t, true, stayAsFollower)
+	assert.Equal(t, LogPos(4), stayMaxPos)
+
+	// follower recv again
+	c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 5)
+
+	// check persistent state stay as follower
+	stayMaxPos, stayAsFollower = c.persistent.GetForceStayAsFollower()
+	assert.Equal(t, false, stayAsFollower)
+	assert.Equal(t, LogPos(0), stayMaxPos)
 }
 
 func TestCoreLogic__Follower__Get_Vote_Req(t *testing.T) {
@@ -1713,4 +1737,39 @@ func TestCoreLogic__Start_Election__With_Max_Term_Value(t *testing.T) {
 		Num:    24,
 		NodeID: c.persistent.GetNodeID(),
 	}, c.runner.VoteTerm)
+}
+
+func TestCoreLogic__Follower__Stay_As_Follower__Get_Ready_to_Start_Election_Blocked(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	synctest.Test(t, func(t *testing.T) {
+		lastTerm := c.persistent.GetLastTerm()
+		c.persistent.UpdateForceStayAsFollower(4, true)
+
+		checkFn, assertNotFinish := testutil.RunAsync(t, func() error {
+			return c.core.GetReadyToStartElection(c.ctx, lastTerm)
+		})
+
+		// clear stay as follower
+		newTerm := TermNum{
+			Num:    25,
+			NodeID: nodeID5,
+		}
+
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 4)
+		assertNotFinish()
+
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 5)
+		assert.Equal(t, ErrMismatchTerm(lastTerm, newTerm), checkFn())
+	})
+}
+
+func TestCoreLogic__Follower__GetReadyToStartElection__Context_Cancelled(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	err := c.core.GetReadyToStartElection(c.ctx, c.persistent.GetLastTerm())
+	assert.Equal(t, nil, err)
+
+	err = c.core.GetReadyToStartElection(c.cancelCtx, c.persistent.GetLastTerm())
+	assert.Equal(t, context.Canceled, err)
 }

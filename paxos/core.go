@@ -384,6 +384,8 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() {
 	if c.isInMemberList(c.persistent.GetNodeID()) {
 		return
 	}
+
+	c.persistent.UpdateForceStayAsFollower(c.leader.lastCommitted, true)
 	c.stepDownToFollower()
 }
 
@@ -496,13 +498,36 @@ func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	return false
 }
 
+func (c *coreLogicImpl) clearForceStayAsFollower(pos LogPos) {
+	if c.state != StateFollower {
+		return
+	}
+
+	maxPos, stayed := c.persistent.GetForceStayAsFollower()
+	if !stayed {
+		return
+	}
+
+	if pos <= maxPos {
+		return
+	}
+
+	c.persistent.UpdateForceStayAsFollower(0, false)
+	c.follower.waitCond.Broadcast()
+}
+
 func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
-	term TermNum, pog LogPos,
+	term TermNum, pos LogPos,
 ) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
+	cmpResult := CompareTermNum(c.getCurrentTerm(), term)
+	if cmpResult <= 0 {
+		c.clearForceStayAsFollower(pos)
+	}
+
+	if cmpResult >= 0 {
 		// current term >= term => do nothing
 		return false
 	}
@@ -789,7 +814,9 @@ StartLoop:
 		return err
 	}
 
-	if !c.isExpired(c.follower.wakeUpAt) {
+	_, stayed := c.persistent.GetForceStayAsFollower()
+
+	if stayed || !c.isExpired(c.follower.wakeUpAt) {
 		if err := c.follower.waitCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
 			return err
 		}
@@ -855,6 +882,11 @@ func (c *coreLogicImpl) CheckInvariant() {
 		assertTrue(c.follower != nil)
 		assertTrue(c.candidate == nil)
 		assertTrue(c.leader == nil)
+		assertTrue(c.state == StateFollower)
+	}
+
+	_, stayed := c.persistent.GetForceStayAsFollower()
+	if stayed {
 		assertTrue(c.state == StateFollower)
 	}
 }
