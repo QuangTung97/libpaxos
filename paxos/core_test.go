@@ -1773,3 +1773,70 @@ func TestCoreLogic__Follower__GetReadyToStartElection__Context_Cancelled(t *test
 	err = c.core.GetReadyToStartElection(c.cancelCtx, c.persistent.GetLastTerm())
 	assert.Equal(t, context.Canceled, err)
 }
+
+func TestCoreLogic__Candidate__Handle_Vote_Resp__Not_Success__Higher_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newTerm := TermNum{
+		Num:    22,
+		NodeID: nodeID2,
+	}
+	err := c.core.HandleVoteResponse(nodeID3, RequestVoteOutput{
+		Success: false,
+		Term:    newTerm,
+	})
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, newTerm, c.runner.AcceptTerm)
+	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+}
+
+func TestCoreLogic__Candidate__Handle_Vote_Resp__Not_Success__Lower_Term__Do_Nothing(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newTerm := TermNum{
+		Num:    15,
+		NodeID: nodeID2,
+	}
+	err := c.core.HandleVoteResponse(nodeID3, RequestVoteOutput{
+		Success: false,
+		Term:    newTerm,
+	})
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, StateCandidate, c.core.GetState())
+	assert.Equal(t, c.currentTerm, c.runner.AcceptTerm)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.AcceptRunners)
+}
+
+func TestCoreLogic__Leader__Handle_Accept_Resp__Not_Success__Higher_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.startAsLeader()
+
+	newTerm := TermNum{
+		Num:    22,
+		NodeID: nodeID2,
+	}
+	err := c.core.HandleAcceptEntriesResponse(nodeID3, AcceptEntriesOutput{
+		Success: false,
+		Term:    newTerm,
+	})
+	assert.Equal(t, nil, err)
+
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, newTerm, c.runner.AcceptTerm)
+	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+}
+
+func TestAssertTrue(t *testing.T) {
+	AssertTrue(true)
+	assert.PanicsWithValue(t, "Should be true here", func() {
+		AssertTrue(false)
+	})
+}

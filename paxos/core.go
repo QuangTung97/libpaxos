@@ -218,12 +218,7 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 		return RequestVoteInput{}, err
 	}
 
-	remainPos, ok := c.candidate.remainPosMap[toNode]
-	if !ok {
-		// This should never occur
-		err := fmt.Errorf("missing remain pos for node id '%s'", toNode.String())
-		return RequestVoteInput{}, err
-	}
+	remainPos := c.candidate.remainPosMap[toNode]
 
 	if !remainPos.IsFinite {
 		err := fmt.Errorf("remain pos of node id '%s' is infinite", toNode.String())
@@ -242,7 +237,7 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	defer c.mut.Unlock()
 
 	if !output.Success {
-		// TODO handle
+		c.stepDownWhenEncounterHigherTerm(output.Term)
 		return nil
 	}
 
@@ -258,6 +253,15 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 	c.switchFromCandidateToLeader()
 
 	return nil
+}
+
+func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
+	if CompareTermNum(inputTerm, c.getCurrentTerm()) <= 0 {
+		// do nothing
+		return
+	}
+	c.persistent.UpdateLastTerm(inputTerm)
+	c.stepDownToFollower()
 }
 
 func (c *coreLogicImpl) handleVoteResponseEntry(
@@ -576,7 +580,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	defer c.mut.Unlock()
 
 	if !output.Success {
-		// TODO handle
+		c.stepDownWhenEncounterHigherTerm(output.Term)
 		return nil
 	}
 
@@ -862,36 +866,36 @@ func (c *coreLogicImpl) CheckInvariant() {
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
 			entry := memLog.Get(pos)
-			assertTrue(entry.Term.IsFinite)
-			assertTrue(entry.Type != LogTypeNull)
+			AssertTrue(entry.Term.IsFinite)
+			AssertTrue(entry.Type != LogTypeNull)
 		}
 	}
 
 	switch c.state {
 	case StateLeader:
-		assertTrue(c.follower == nil)
-		assertTrue(c.candidate == nil)
-		assertTrue(c.leader != nil)
+		AssertTrue(c.follower == nil)
+		AssertTrue(c.candidate == nil)
+		AssertTrue(c.leader != nil)
 
 	case StateCandidate:
-		assertTrue(c.follower == nil)
-		assertTrue(c.candidate != nil)
-		assertTrue(c.leader != nil)
+		AssertTrue(c.follower == nil)
+		AssertTrue(c.candidate != nil)
+		AssertTrue(c.leader != nil)
 
 	default:
-		assertTrue(c.follower != nil)
-		assertTrue(c.candidate == nil)
-		assertTrue(c.leader == nil)
-		assertTrue(c.state == StateFollower)
+		AssertTrue(c.follower != nil)
+		AssertTrue(c.candidate == nil)
+		AssertTrue(c.leader == nil)
+		AssertTrue(c.state == StateFollower)
 	}
 
 	_, stayed := c.persistent.GetForceStayAsFollower()
 	if stayed {
-		assertTrue(c.state == StateFollower)
+		AssertTrue(c.state == StateFollower)
 	}
 }
 
-func assertTrue(b bool) {
+func AssertTrue(b bool) {
 	if !b {
 		panic("Should be true here")
 	}
