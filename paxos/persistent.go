@@ -2,8 +2,7 @@ package paxos
 
 // PersistentState does not have to be thread safe
 type PersistentState interface {
-	NextProposeTerm() TermNum
-	RecordLastTerm(lastTerm TermNum) bool
+	UpdateLastTerm(lastTerm TermNum)
 	GetLastTerm() TermNum
 	GetNodeID() NodeID
 }

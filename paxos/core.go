@@ -105,7 +105,17 @@ type leaderStateInfo struct {
 	acceptorFullyReplicated map[NodeID]LogPos
 }
 
+func (c *coreLogicImpl) generateNextProposeTerm() {
+	lastTerm := c.persistent.GetLastTerm()
+	newTerm := TermNum{
+		Num:    lastTerm.Num + 1,
+		NodeID: c.persistent.GetNodeID(),
+	}
+	c.persistent.UpdateLastTerm(newTerm)
+}
+
 func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
+	// TODO add max term value arg
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -115,7 +125,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum) error {
 
 	c.state = StateCandidate
 	commitInfo := c.log.GetCommittedInfo()
-	c.persistent.NextProposeTerm()
+	c.generateNextProposeTerm()
 
 	// init leader state
 	c.leader = &leaderStateInfo{
@@ -490,10 +500,12 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if !c.persistent.RecordLastTerm(term) {
-		// no update => do nothing
+	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
+		// current term >= term => do nothing
 		return false
 	}
+
+	c.persistent.UpdateLastTerm(term)
 
 	if c.state == StateFollower {
 		c.follower.wakeUpAt = c.computeNextWakeUp()

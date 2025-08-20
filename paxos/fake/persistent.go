@@ -13,19 +13,8 @@ type PersistentStateFake struct {
 
 var _ paxos.PersistentState = &PersistentStateFake{}
 
-func (s *PersistentStateFake) NextProposeTerm() paxos.TermNum {
-	s.LastTerm.Num++
-	s.LastTerm.NodeID = s.NodeID
-	return s.LastTerm
-}
-
-func (s *PersistentStateFake) RecordLastTerm(lastTerm paxos.TermNum) bool {
-	// input <= existed => do nothing
-	if paxos.CompareTermNum(lastTerm, s.LastTerm) <= 0 {
-		return false
-	}
+func (s *PersistentStateFake) UpdateLastTerm(lastTerm paxos.TermNum) {
 	s.LastTerm = lastTerm
-	return true
 }
 
 func (s *PersistentStateFake) GetLastTerm() paxos.TermNum {

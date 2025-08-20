@@ -1296,6 +1296,13 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 
 	// no change in state
 	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// same term
+	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
+	assert.Equal(t, false, affected)
+
+	// no change in state
+	assert.Equal(t, StateCandidate, c.core.GetState())
 }
 
 func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
