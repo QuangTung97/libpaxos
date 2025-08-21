@@ -263,6 +263,7 @@ StartLoop:
 		if entry.Entry.Type == LogTypeNull {
 			posList = append(posList, entry.Pos)
 		} else if entry.Entry.Term.IsFinite {
+			// TODO testing
 			posList = append(posList, entry.Pos)
 		}
 	}
