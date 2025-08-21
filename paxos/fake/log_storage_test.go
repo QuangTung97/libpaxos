@@ -85,8 +85,8 @@ func TestLogStorageFake_Membership(t *testing.T) {
 
 	// check committed info
 	assert.Equal(t, paxos.CommittedInfo{
-		Members:            members,
-		FullyReplicatedPos: 2,
+		Members:         members,
+		FullyReplicated: 2,
 	}, s.GetCommittedInfo())
 }
 
@@ -151,14 +151,14 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	// mark committed
 	s.MarkCommitted(1)
 	assert.Equal(t, paxos.CommittedInfo{
-		FullyReplicatedPos: 1,
-		Members:            entry3.Members,
+		FullyReplicated: 1,
+		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
 	s.MarkCommitted(2, 4)
 	assert.Equal(t, paxos.CommittedInfo{
-		FullyReplicatedPos: 2,
-		Members:            entry3.Members,
+		FullyReplicated: 2,
+		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
 	// add committed entry
@@ -168,8 +168,8 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		{Pos: 3, Entry: entry4},
 	})
 	assert.Equal(t, paxos.CommittedInfo{
-		FullyReplicatedPos: 4,
-		Members:            entry3.Members,
+		FullyReplicated: 4,
+		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
 	// get entries

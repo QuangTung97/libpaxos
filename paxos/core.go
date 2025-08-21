@@ -32,7 +32,7 @@ type CoreLogic interface {
 
 	GetReadyToStartElection(ctx context.Context, term TermNum) error
 
-	GetNeedReplicatedLogEntries(output NeedReplicatedInput) (NeedReplicatedOutput, error)
+	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
 	// -------------------------------------------------------
 	// Testing Utility Functions
@@ -134,7 +134,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 	// init leader state
 	c.leader = &leaderStateInfo{
 		members:       slices.Clone(commitInfo.Members),
-		lastCommitted: commitInfo.FullyReplicatedPos,
+		lastCommitted: commitInfo.FullyReplicated,
 
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
 		nodeCondVar:      NewNodeCond(&c.mut),
@@ -146,7 +146,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 	// init candidate state
 	c.candidate = &candidateStateInfo{
 		remainPosMap: map[NodeID]InfiniteLogPos{},
-		acceptPos:    commitInfo.FullyReplicatedPos,
+		acceptPos:    commitInfo.FullyReplicated,
 	}
 
 	// clear follower
@@ -839,9 +839,9 @@ StartLoop:
 }
 
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
-	output NeedReplicatedInput,
-) (NeedReplicatedOutput, error) {
-	return NeedReplicatedOutput{}, nil
+	input NeedReplicatedInput,
+) (AcceptEntriesInput, error) {
+	return AcceptEntriesInput{}, nil
 }
 
 // ---------------------------------------------------------------------------

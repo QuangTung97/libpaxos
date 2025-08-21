@@ -3,10 +3,11 @@ package fake
 import "github.com/QuangTung97/libpaxos/paxos"
 
 type LogStorageFake struct {
-	logEntries    []paxos.LogEntry
-	lastCommitted paxos.LogPos
-	lastMembers   []paxos.MemberInfo
-	Term          paxos.TermNum
+	logEntries         []paxos.LogEntry
+	lastMembers        []paxos.MemberInfo
+	fullyReplicatedPos paxos.LogPos
+
+	Term paxos.TermNum
 
 	PutPosList [][]paxos.LogPos
 }
@@ -40,13 +41,13 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
 	}
 	s.logEntries = newEntries
 
-	s.increaseLastCommitted()
+	s.increaseFullyReplicated()
 }
 
-func (s *LogStorageFake) increaseLastCommitted() {
+func (s *LogStorageFake) increaseFullyReplicated() {
 	maxPos := paxos.LogPos(len(s.logEntries))
 
-	for pos := s.lastCommitted + 1; pos <= maxPos; pos++ {
+	for pos := s.fullyReplicatedPos + 1; pos <= maxPos; pos++ {
 		index := pos - 1
 		entry := s.logEntries[index]
 
@@ -57,7 +58,7 @@ func (s *LogStorageFake) increaseLastCommitted() {
 			break
 		}
 
-		s.lastCommitted = pos
+		s.fullyReplicatedPos = pos
 
 		if entry.Type == paxos.LogTypeMembership {
 			s.lastMembers = entry.Members
@@ -70,13 +71,13 @@ func (s *LogStorageFake) MarkCommitted(posList ...paxos.LogPos) {
 		index := pos - 1
 		s.logEntries[index].Term = paxos.InfiniteTerm{}
 	}
-	s.increaseLastCommitted()
+	s.increaseFullyReplicated()
 }
 
 func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 	return paxos.CommittedInfo{
-		Members:            s.lastMembers,
-		FullyReplicatedPos: s.lastCommitted,
+		Members:         s.lastMembers,
+		FullyReplicated: s.fullyReplicatedPos,
 	}
 }
 
@@ -108,4 +109,8 @@ func (s *LogStorageFake) SetTerm(term paxos.TermNum) {
 
 func (s *LogStorageFake) GetTerm() paxos.TermNum {
 	return s.Term
+}
+
+func (s *LogStorageFake) GetFullyReplicated() paxos.LogPos {
+	return s.fullyReplicatedPos
 }

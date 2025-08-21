@@ -10,7 +10,9 @@ import (
 type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
-	GetNeedReplicatedPos(ctx context.Context, from LogPos) (NeedReplicatedInput, error)
+	GetNeedReplicatedPos(
+		ctx context.Context, from LogPos, lastFullyReplicated LogPos,
+	) (NeedReplicatedInput, error)
 }
 
 type acceptorLogicImpl struct {
@@ -34,7 +36,7 @@ func NewAcceptorLogic(
 		limit:       limit,
 
 		log:           log,
-		lastCommitted: commitInfo.FullyReplicatedPos,
+		lastCommitted: commitInfo.FullyReplicated,
 	}
 }
 
@@ -164,10 +166,6 @@ func (s *acceptorLogicImpl) updateTermToInf(entry *PosLogEntry) {
 	if entry.Pos > s.lastCommitted {
 		return
 	}
-	if !s.isSameTerm(entry.Entry.Term) {
-		// TODO testing
-		return
-	}
 	entry.Entry.Term = InfiniteTerm{}
 }
 
@@ -195,6 +193,32 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos, putE
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(
 	ctx context.Context, from LogPos,
+	lastFullyReplicated LogPos,
 ) (NeedReplicatedInput, error) {
-	return NeedReplicatedInput{}, nil
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	afterFullyReplicated := s.log.GetFullyReplicated() + 1
+	if from < afterFullyReplicated {
+		from = afterFullyReplicated
+	}
+
+	entries := s.log.GetEntries(from, s.limit)
+	var posList []LogPos
+	for _, entry := range entries {
+		if entry.Entry.Type == LogTypeNull {
+			posList = append(posList, entry.Pos)
+		} else if entry.Entry.Term.IsFinite {
+			posList = append(posList, entry.Pos)
+		}
+	}
+
+	return NeedReplicatedInput{
+		Term:     s.log.GetTerm(),
+		FromNode: s.currentNode,
+		PosList:  posList,
+		NextPos:  from + LogPos(len(entries)+1),
+
+		FullyReplicated: s.log.GetFullyReplicated(),
+	}, nil
 }

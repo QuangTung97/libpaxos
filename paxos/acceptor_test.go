@@ -1,6 +1,7 @@
 package paxos_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 )
 
 type acceptorLogicTest struct {
+	ctx         context.Context
 	log         *fake.LogStorageFake
 	logic       AcceptorLogic
 	currentTerm TermNum
@@ -18,6 +20,7 @@ type acceptorLogicTest struct {
 
 func newAcceptorLogicTest() *acceptorLogicTest {
 	s := &acceptorLogicTest{}
+	s.ctx = context.Background()
 	s.log = &fake.LogStorageFake{}
 
 	s.currentTerm = TermNum{
@@ -421,4 +424,33 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 		{5, 6},
 		{5, 6},
 	}, s.log.PutPosList)
+}
+
+func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(4,
+			s.newCmd("cmd test 03"),
+			s.newCmd("cmd test 04"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	resp = s.doAcceptEntries(
+		6,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	output, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, NeedReplicatedInput{
+		Term:     s.currentTerm,
+		FromNode: nodeID2,
+		PosList:  []LogPos{2, 3},
+		NextPos:  7,
+
+		FullyReplicated: 1,
+	}, output)
 }

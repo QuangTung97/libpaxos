@@ -37,8 +37,8 @@ type AcceptEntriesOutput struct {
 }
 
 type CommittedInfo struct {
-	Members            []MemberInfo
-	FullyReplicatedPos LogPos
+	Members         []MemberInfo
+	FullyReplicated LogPos
 }
 
 type NeedReplicatedInput struct {
@@ -46,7 +46,6 @@ type NeedReplicatedInput struct {
 	FromNode NodeID
 	PosList  []LogPos
 	NextPos  LogPos
-}
 
-type NeedReplicatedOutput struct {
+	FullyReplicated LogPos
 }

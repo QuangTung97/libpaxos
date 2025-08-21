@@ -30,6 +30,7 @@ type LogStorage interface {
 
 	SetTerm(term TermNum)
 	GetTerm() TermNum
+	GetFullyReplicated() LogPos
 }
 
 type PosLogEntry struct {
