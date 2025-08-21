@@ -24,9 +24,7 @@ type LogStorage interface {
 	// Follower functions are not required to be thread safe
 	// -----------------------------------------------------
 
-	UpsertEntries(entries []PosLogEntry)
-
-	MarkCommitted(posList ...LogPos)
+	UpsertEntries(entries []PosLogEntry, markCommitted []LogPos)
 
 	SetTerm(term TermNum)
 	GetTerm() TermNum

@@ -28,6 +28,7 @@ type CoreLogic interface {
 
 	ChangeMembership(term TermNum, newNodes []NodeID) error
 
+	// UpdateAcceptorFullyReplicated TODO remove
 	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) error
 
 	GetReadyToStartElection(ctx context.Context, term TermNum) error

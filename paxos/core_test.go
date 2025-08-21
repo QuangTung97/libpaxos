@@ -76,7 +76,7 @@ func newCoreLogicTest(t *testing.T) *coreLogicTest {
 			Pos:   1,
 			Entry: initEntry,
 		},
-	})
+	}, nil)
 
 	// setup current term
 	c.currentTerm = TermNum{

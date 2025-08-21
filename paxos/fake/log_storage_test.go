@@ -29,7 +29,7 @@ func TestLogStorageFake(t *testing.T) {
 			Pos:   4,
 			Entry: entry2,
 		},
-	})
+	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
 		{},
@@ -77,7 +77,7 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		{Pos: 1, Entry: entry1},
 		{Pos: 2, Entry: entry2},
 		{Pos: 3, Entry: entry3},
-	})
+	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
 		entry1, entry2, entry3,
@@ -122,7 +122,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
 		{Pos: 4, Entry: entry2},
-	})
+	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
 		{},
@@ -140,7 +140,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	// upsert member log entry
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 1, Entry: entry3},
-	})
+	}, nil)
 	assert.Equal(t, []paxos.LogEntry{
 		entry3,
 		entry1,
@@ -149,13 +149,13 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}, s.logEntries)
 
 	// mark committed
-	s.MarkCommitted(1)
+	s.UpsertEntries(nil, []paxos.LogPos{1})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 1,
 		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
-	s.MarkCommitted(2, 4)
+	s.UpsertEntries(nil, []paxos.LogPos{2, 4})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 2,
 		Members:         entry3.Members,
@@ -166,7 +166,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	entry4.Term = paxos.InfiniteTerm{}
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 3, Entry: entry4},
-	})
+	}, nil)
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 4,
 		Members:         entry3.Members,

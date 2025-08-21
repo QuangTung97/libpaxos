@@ -147,12 +147,13 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		})
 	}
 
-	putEntries = s.getNeedUpdateTermToInf(input.Committed, putEntries)
+	markCommitted := s.getNeedUpdateTermToInf(input.Committed)
 
 	for i := range putEntries {
 		s.updateTermToInf(&putEntries[i])
 	}
-	s.log.UpsertEntries(putEntries)
+
+	s.log.UpsertEntries(putEntries, markCommitted)
 
 	return AcceptEntriesOutput{
 		Success: true,
@@ -172,27 +173,28 @@ func (s *acceptorLogicImpl) updateTermToInf(entry *PosLogEntry) {
 	entry.Entry.Term = InfiniteTerm{}
 }
 
-func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos, putEntries []PosLogEntry) []PosLogEntry {
+func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []LogPos {
 	if newLastCommitted <= s.lastCommitted {
-		return putEntries
+		return nil
 	}
 
 	getLimit := int(newLastCommitted - s.lastCommitted)
 	entries := s.log.GetEntries(s.lastCommitted+1, getLimit)
+	var markCommitted []LogPos
 
 	for _, entry := range entries {
 		if entry.Entry.Type == LogTypeNull {
 			continue
 		}
 		if s.isSameTerm(entry.Entry.Term) {
-			putEntries = append(putEntries, entry)
+			markCommitted = append(markCommitted, entry.Pos)
 		}
 	}
 
 	s.lastCommitted = newLastCommitted
 	s.waitCond.Broadcast()
 
-	return putEntries
+	return markCommitted
 }
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(

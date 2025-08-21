@@ -9,17 +9,29 @@ type LogStorageFake struct {
 
 	Term paxos.TermNum
 
-	PutPosList [][]paxos.LogPos
+	UpsertList []UpsertInput
+}
+
+type UpsertInput struct {
+	PutList  []paxos.LogPos
+	MarkList []paxos.LogPos
 }
 
 var _ paxos.LogStorage = &LogStorageFake{}
 
-func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
-	posList := make([]paxos.LogPos, 0, len(entries))
+func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry, markCommitted []paxos.LogPos) {
+	var putList []paxos.LogPos
 	for _, e := range entries {
-		posList = append(posList, e.Pos)
+		putList = append(putList, e.Pos)
 	}
-	s.PutPosList = append(s.PutPosList, posList)
+	s.UpsertList = append(s.UpsertList, UpsertInput{
+		PutList:  putList,
+		MarkList: markCommitted,
+	})
+
+	// ----------------------------------------------
+	// Implementation
+	// ----------------------------------------------
 
 	newLen := len(s.logEntries)
 
@@ -41,6 +53,7 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
 	}
 	s.logEntries = newEntries
 
+	s.doMarkCommitted(markCommitted)
 	s.increaseFullyReplicated()
 }
 
@@ -66,12 +79,11 @@ func (s *LogStorageFake) increaseFullyReplicated() {
 	}
 }
 
-func (s *LogStorageFake) MarkCommitted(posList ...paxos.LogPos) {
+func (s *LogStorageFake) doMarkCommitted(posList []paxos.LogPos) {
 	for _, pos := range posList {
 		index := pos - 1
 		s.logEntries[index].Term = paxos.InfiniteTerm{}
 	}
-	s.increaseFullyReplicated()
 }
 
 func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {

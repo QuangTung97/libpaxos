@@ -45,7 +45,7 @@ func (s *acceptorLogicTest) putMembers() {
 	)
 	s.log.UpsertEntries([]PosLogEntry{
 		{Pos: 1, Entry: memberEntry},
-	})
+	}, nil)
 }
 
 func (s *acceptorLogicTest) initLogic(limit int) {
@@ -165,6 +165,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 			s.newCmd("cmd test 02"),
 			s.newCmd("cmd test 03"),
 		),
+		nil,
 	)
 
 	s.initLogic(100)
@@ -195,6 +196,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 			s.newCmd("cmd test 02"),
 			s.newCmd("cmd test 03"),
 		),
+		nil,
 	)
 
 	s.initLogic(2)
@@ -360,12 +362,12 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 		s.newCmd("cmd test 05"),
 	), entries)
 
-	assert.Equal(t, [][]LogPos{
-		{1},
-		{2, 3, 4},
-		{6, 7, 2, 3},
-		{4, 6},
-	}, s.log.PutPosList)
+	assert.Equal(t, []fake.UpsertInput{
+		{PutList: []LogPos{1}},
+		{PutList: []LogPos{2, 3, 4}},
+		{PutList: []LogPos{6, 7}, MarkList: []LogPos{2, 3}},
+		{MarkList: []LogPos{4, 6}},
+	}, s.log.UpsertList)
 }
 
 func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
@@ -420,12 +422,12 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 		s.newCmdInf("cmd test 05"),
 	), entries)
 
-	assert.Equal(t, [][]LogPos{
-		{1},
-		{2, 3, 4},
-		{5, 6},
-		{5, 6},
-	}, s.log.PutPosList)
+	assert.Equal(t, []fake.UpsertInput{
+		{PutList: []LogPos{1}},
+		{PutList: []LogPos{2, 3, 4}},
+		{PutList: []LogPos{5, 6}},
+		{MarkList: []LogPos{5, 6}},
+	}, s.log.UpsertList)
 }
 
 func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
