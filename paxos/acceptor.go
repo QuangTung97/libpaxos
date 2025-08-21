@@ -34,7 +34,6 @@ func NewAcceptorLogic(
 
 func (s *acceptorLogicImpl) validateNodeID(toNodeID NodeID) error {
 	if toNodeID != s.currentNode {
-		// TODO testing
 		return fmt.Errorf("mismatch node id")
 	}
 	return nil
@@ -115,5 +114,28 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		return AcceptEntriesOutput{}, err
 	}
 
-	return AcceptEntriesOutput{}, nil
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+	// TODO check term
+
+	s.log.SetTerm(input.Term)
+
+	posList := make([]LogPos, 0, len(input.Entries))
+	putEntries := make([]PosLogEntry, 0, len(input.Entries))
+	for _, entry := range input.Entries {
+		posList = append(posList, entry.Pos)
+		putEntries = append(putEntries, PosLogEntry{
+			Pos:   entry.Pos,
+			Entry: entry.Entry,
+		})
+	}
+
+	s.log.UpsertEntries(putEntries)
+
+	return AcceptEntriesOutput{
+		Success: true,
+		Term:    s.log.GetTerm(),
+		PosList: posList,
+	}, nil
 }

@@ -1,6 +1,7 @@
 package paxos_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,8 +75,34 @@ func newPosLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	return result
 }
 
+func newAcceptLogEntries(from LogPos, entries ...LogEntry) []AcceptLogEntry {
+	result := make([]AcceptLogEntry, 0, len(entries))
+	for index, e := range entries {
+		result = append(result, AcceptLogEntry{
+			Pos:   from + LogPos(index),
+			Entry: e,
+		})
+	}
+	return result
+}
+
 func (s *acceptorLogicTest) newCmd(cmd string) LogEntry {
 	return NewCmdLogEntry(s.currentTerm.ToInf(), []byte(cmd))
+}
+
+func (s *acceptorLogicTest) doAcceptEntries(
+	committed LogPos, entries ...AcceptLogEntry,
+) AcceptEntriesOutput {
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
+		ToNode:    nodeID2,
+		Term:      s.currentTerm,
+		Entries:   entries,
+		Committed: committed,
+	})
+	if err != nil {
+		panic("Should accept ok, but got: " + err.Error())
+	}
+	return resp
 }
 
 func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
@@ -194,4 +221,41 @@ func TestAcceptorLogic_HandleRequestVote__With_Lower_Term__Not_Success(t *testin
 			Term:    s.currentTerm,
 		},
 	}, outputs)
+}
+
+func TestAcceptorLogic_HandleRequestVote__Mismatch_Node_ID(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	_, err := s.logic.HandleRequestVote(RequestVoteInput{
+		ToNode:  nodeID3,
+		Term:    s.currentTerm,
+		FromPos: 2,
+	})
+	assert.Equal(t, errors.New("mismatch node id"), err)
+}
+
+func TestAcceptorLogic_AcceptEntries(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 01"),
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, AcceptEntriesOutput{
+		Success: true,
+		Term:    s.currentTerm,
+		PosList: []LogPos{2, 3, 4},
+	}, resp)
+
+	entries := s.log.GetEntries(2, 100)
+	assert.Equal(t, newPosLogEntries(
+		2,
+		s.newCmd("cmd test 01"),
+		s.newCmd("cmd test 02"),
+		s.newCmd("cmd test 03"),
+	), entries)
 }

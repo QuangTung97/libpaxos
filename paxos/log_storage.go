@@ -1,15 +1,23 @@
 package paxos
 
+import "context"
+
 type LeaderLogGetter interface {
 	GetCommittedInfo() CommittedInfo
 }
 
 type StateMachineLogGetter interface {
-	GetCommittedEntriesWithWait(fromPos LogPos, limit int) []PosLogEntry
+	GetCommittedEntriesWithWait(
+		ctx context.Context, fromPos LogPos, limit int,
+	) ([]PosLogEntry, error)
 }
 
 type LogStorage interface {
 	LeaderLogGetter
+
+	// -----------------------------------------------------
+	// Follower functions are not required to be thread safe
+	// -----------------------------------------------------
 
 	UpsertEntries(entries []PosLogEntry)
 
