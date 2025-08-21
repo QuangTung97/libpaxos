@@ -258,4 +258,41 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 		s.newCmd("cmd test 02"),
 		s.newCmd("cmd test 03"),
 	), entries)
+
+	// accept again
+	resp = s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(5,
+			s.newCmd("cmd test 04"),
+		)...,
+	)
+	assert.Equal(t, AcceptEntriesOutput{
+		Success: true,
+		Term:    s.currentTerm,
+		PosList: []LogPos{5},
+	}, resp)
+
+	entries = s.log.GetEntries(4, 100)
+	assert.Equal(t, newPosLogEntries(
+		4,
+		s.newCmd("cmd test 03"),
+		s.newCmd("cmd test 04"),
+	), entries)
+
+	// accept entries on lower term
+	lowerTerm := s.currentTerm
+	lowerTerm.Num--
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
+		ToNode: nodeID2,
+		Term:   lowerTerm,
+		Entries: newAcceptLogEntries(2,
+			s.newCmd("cmd test 05"),
+		),
+		Committed: 1,
+	})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, AcceptEntriesOutput{
+		Success: false,
+		Term:    s.currentTerm,
+	}, resp)
 }

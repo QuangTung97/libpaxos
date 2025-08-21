@@ -42,9 +42,10 @@ type CommittedInfo struct {
 }
 
 type NeedReplicatedInput struct {
-	Term    TermNum
-	PosList []LogPos
-	NextPos LogPos
+	Term     TermNum
+	FromNode NodeID
+	PosList  []LogPos
+	NextPos  LogPos
 }
 
 type NeedReplicatedOutput struct {

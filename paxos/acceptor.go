@@ -119,7 +119,12 @@ func (s *acceptorLogicImpl) AcceptEntries(
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
-	// TODO check term
+	if CompareTermNum(input.Term, s.log.GetTerm()) < 0 {
+		return AcceptEntriesOutput{
+			Success: false,
+			Term:    s.log.GetTerm(),
+		}, nil
+	}
 
 	s.log.SetTerm(input.Term)
 
