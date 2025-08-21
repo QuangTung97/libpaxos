@@ -28,9 +28,6 @@ type CoreLogic interface {
 
 	ChangeMembership(term TermNum, newNodes []NodeID) error
 
-	// UpdateAcceptorFullyReplicated TODO remove
-	UpdateAcceptorFullyReplicated(term TermNum, nodeID NodeID, pos LogPos) error
-
 	GetReadyToStartElection(ctx context.Context, term TermNum) error
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
@@ -762,20 +759,9 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 	return nil
 }
 
-func (c *coreLogicImpl) UpdateAcceptorFullyReplicated(
-	term TermNum, nodeID NodeID, pos LogPos,
-) error {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-
-	if err := c.isCandidateOrLeader(term); err != nil {
-		return err
-	}
-
+func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) {
 	c.leader.acceptorFullyReplicated[nodeID] = pos
 	c.finishMembershipChange()
-
-	return nil
 }
 
 func (c *coreLogicImpl) finishMembershipChange() {
@@ -842,6 +828,13 @@ StartLoop:
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	input NeedReplicatedInput,
 ) (AcceptEntriesInput, error) {
+	if err := c.isCandidateOrLeader(input.Term); err != nil {
+		return AcceptEntriesInput{}, err
+	}
+
+	c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated)
+
+	// TODO return accept input
 	return AcceptEntriesInput{}, nil
 }
 

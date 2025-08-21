@@ -10,6 +10,7 @@ import (
 type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
+	// GetNeedReplicatedPos add term input
 	GetNeedReplicatedPos(
 		ctx context.Context, from LogPos, lastFullyReplicated LogPos,
 	) (NeedReplicatedInput, error)

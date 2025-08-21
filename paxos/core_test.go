@@ -1306,7 +1306,13 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 }
 
 func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
-	if err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID, pos); err != nil {
+	input := NeedReplicatedInput{
+		Term:     c.currentTerm,
+		FromNode: nodeID,
+
+		FullyReplicated: pos,
+	}
+	if _, err := c.core.GetNeedReplicatedLogEntries(input); err != nil {
 		panic("Should update OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1640,7 +1646,12 @@ func TestCoreLogic__Leader__Handle_Accept_Response__Greater_Than_Max_Pos(t *test
 func TestCoreLogic__Follower__Update_Fully_Replicated(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	err := c.core.UpdateAcceptorFullyReplicated(c.currentTerm, nodeID1, 1)
+	input := NeedReplicatedInput{
+		Term:            c.currentTerm,
+		FromNode:        nodeID1,
+		FullyReplicated: 1,
+	}
+	_, err := c.core.GetNeedReplicatedLogEntries(input)
 	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
 }
 
