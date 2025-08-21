@@ -22,6 +22,7 @@ type acceptorLogicImpl struct {
 	mut           sync.Mutex
 	log           LogStorage
 	lastCommitted LogPos
+	waitCond      *NodeCond
 }
 
 func NewAcceptorLogic(
@@ -31,13 +32,15 @@ func NewAcceptorLogic(
 ) AcceptorLogic {
 	commitInfo := log.GetCommittedInfo()
 
-	return &acceptorLogicImpl{
+	s := &acceptorLogicImpl{
 		currentNode: currentNode,
 		limit:       limit,
 
 		log:           log,
 		lastCommitted: commitInfo.FullyReplicated,
 	}
+	s.waitCond = NewNodeCond(&s.mut)
+	return s
 }
 
 func (s *acceptorLogicImpl) validateNodeID(toNodeID NodeID) error {
@@ -187,6 +190,7 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos, putE
 	}
 
 	s.lastCommitted = newLastCommitted
+	s.waitCond.Broadcast()
 
 	return putEntries
 }
@@ -198,14 +202,40 @@ func (s *acceptorLogicImpl) GetNeedReplicatedPos(
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
+StartLoop:
 	afterFullyReplicated := s.log.GetFullyReplicated() + 1
 	if from < afterFullyReplicated {
 		from = afterFullyReplicated
 	}
 
-	entries := s.log.GetEntries(from, s.limit)
+	if s.lastCommitted < from && lastFullyReplicated >= s.log.GetFullyReplicated() {
+		if err := s.waitCond.Wait(ctx, s.currentNode); err != nil {
+			return NeedReplicatedInput{}, err
+		}
+		goto StartLoop
+	}
+
+	maxPos := s.lastCommitted
+	getLimit := s.lastCommitted - from + 1
+	if getLimit > LogPos(s.limit) {
+		getLimit = LogPos(s.limit)
+		maxPos = from + getLimit - 1
+	}
+
+	entries := s.log.GetEntries(from, int(getLimit))
 	var posList []LogPos
-	for _, entry := range entries {
+	for pos := from; pos <= maxPos; pos++ {
+		index := int(pos - from)
+
+		var entry PosLogEntry
+		if index < len(entries) {
+			entry = entries[index]
+		} else {
+			entry = PosLogEntry{
+				Pos: pos,
+			}
+		}
+
 		if entry.Entry.Type == LogTypeNull {
 			posList = append(posList, entry.Pos)
 		} else if entry.Entry.Term.IsFinite {
@@ -217,7 +247,7 @@ func (s *acceptorLogicImpl) GetNeedReplicatedPos(
 		Term:     s.log.GetTerm(),
 		FromNode: s.currentNode,
 		PosList:  posList,
-		NextPos:  from + LogPos(len(entries)+1),
+		NextPos:  maxPos + 1,
 
 		FullyReplicated: s.log.GetFullyReplicated(),
 	}, nil

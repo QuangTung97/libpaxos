@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
+	"github.com/QuangTung97/libpaxos/paxos/testutil"
 )
 
 type acceptorLogicTest struct {
@@ -432,25 +434,171 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(4,
-			s.newCmd("cmd test 03"),
-			s.newCmd("cmd test 04"),
+			s.newCmd("cmd test 03"), // pos = 4
+			s.newCmd("cmd test 04"), // pos = 5
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
 
 	resp = s.doAcceptEntries(
-		6,
+		5,
 	)
 	assert.Equal(t, true, resp.Success)
 
-	output, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, NeedReplicatedInput{
 		Term:     s.currentTerm,
 		FromNode: nodeID2,
 		PosList:  []LogPos{2, 3},
-		NextPos:  7,
+		NextPos:  6,
 
 		FullyReplicated: 1,
-	}, output)
+	}, input)
+
+	// check log entries
+	entries := s.log.GetEntries(2, 100)
+	assert.Equal(t, newPosLogEntries(
+		2,
+		LogEntry{},
+		LogEntry{},
+		s.newCmdInf("cmd test 03"),
+		s.newCmdInf("cmd test 04"),
+	), entries)
+}
+
+func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Increase_Partially(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(4,
+			s.newCmd("cmd test 03"), // pos = 4
+			s.newCmd("cmd test 04"), // pos = 5
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	resp = s.doAcceptEntries(
+		2,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, NeedReplicatedInput{
+		Term:     s.currentTerm,
+		FromNode: nodeID2,
+		PosList:  []LogPos{2},
+		NextPos:  3,
+
+		FullyReplicated: 1,
+	}, input)
+}
+
+func TestAcceptorLogic__Increase_Committed_Pos_Only__Then_Get_Need_Replicated(t *testing.T) {
+	s := newAcceptorLogicTest()
+	s.putMembers()
+	s.initLogic(3)
+
+	resp := s.doAcceptEntries(6)
+	assert.Equal(t, true, resp.Success)
+
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, NeedReplicatedInput{
+		Term:     s.currentTerm,
+		FromNode: nodeID2,
+		PosList:  []LogPos{2, 3, 4},
+		NextPos:  5,
+
+		FullyReplicated: 1,
+	}, input)
+}
+
+func (s *acceptorLogicTest) doGetNeedReplicated(from LogPos, lastFullyReplicated LogPos) NeedReplicatedInput {
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, from, lastFullyReplicated)
+	if err != nil {
+		panic(err)
+	}
+	return input
+}
+
+func TestAcceptorLogic__Get_Need_Replicated_With_Wait(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	synctest.Test(t, func(t *testing.T) {
+		getFn, _ := testutil.RunAsync(t, func() NeedReplicatedInput {
+			return s.doGetNeedReplicated(2, 1)
+		})
+
+		resp := s.doAcceptEntries(2)
+		assert.Equal(t, true, resp.Success)
+
+		assert.Equal(t, NeedReplicatedInput{
+			Term:     s.currentTerm,
+			FromNode: nodeID2,
+			PosList:  []LogPos{2},
+			NextPos:  3,
+
+			FullyReplicated: 1,
+		}, getFn())
+	})
+}
+
+func TestAcceptorLogic__Get_Need_Replicated_With_Wait__From_High_Pos(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	synctest.Test(t, func(t *testing.T) {
+		getFn, assertNotFinish := testutil.RunAsync(t, func() NeedReplicatedInput {
+			return s.doGetNeedReplicated(3, 1)
+		})
+
+		resp := s.doAcceptEntries(2)
+		assert.Equal(t, true, resp.Success)
+		assertNotFinish()
+
+		resp = s.doAcceptEntries(4)
+		assert.Equal(t, true, resp.Success)
+
+		assert.Equal(t, NeedReplicatedInput{
+			Term:     s.currentTerm,
+			FromNode: nodeID2,
+			PosList:  []LogPos{3, 4},
+			NextPos:  5,
+
+			FullyReplicated: 1,
+		}, getFn())
+	})
+}
+
+func TestAcceptorLogic__Get_Need_Replicated__Not_Wait_Because_Of_Init_Fully_Replicated_Pos(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	s.doAcceptEntries(2)
+
+	input := s.doGetNeedReplicated(3, 0)
+	assert.Equal(t, NeedReplicatedInput{
+		Term:     s.currentTerm,
+		FromNode: nodeID2,
+		NextPos:  3,
+
+		FullyReplicated: 1,
+	}, input)
+
+	synctest.Test(t, func(t *testing.T) {
+		getFn, _ := testutil.RunAsync(t, func() NeedReplicatedInput {
+			return s.doGetNeedReplicated(3, 1)
+		})
+
+		s.doAcceptEntries(3)
+
+		assert.Equal(t, NeedReplicatedInput{
+			Term:            s.currentTerm,
+			FromNode:        nodeID2,
+			PosList:         []LogPos{3},
+			NextPos:         4,
+			FullyReplicated: 1,
+		}, getFn())
+	})
 }
