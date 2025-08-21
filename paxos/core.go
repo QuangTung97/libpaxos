@@ -32,6 +32,8 @@ type CoreLogic interface {
 
 	GetReadyToStartElection(ctx context.Context, term TermNum) error
 
+	GetNeedReplicatedLogEntries(output NeedReplicatedInput) (NeedReplicatedOutput, error)
+
 	// -------------------------------------------------------
 	// Testing Utility Functions
 	// -------------------------------------------------------
@@ -528,8 +530,12 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
 
 func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, pos LogPos) bool {
 	cmpResult := CompareTermNum(c.getCurrentTerm(), term)
-	if cmpResult <= 0 {
-		c.clearForceStayAsFollower(pos)
+
+	if pos > 0 {
+		if cmpResult <= 0 {
+			// TODO test condition
+			c.clearForceStayAsFollower(pos)
+		}
 	}
 
 	if cmpResult >= 0 {
@@ -830,6 +836,12 @@ StartLoop:
 
 	c.follower.wakeUpAt = c.computeNextWakeUp()
 	return nil
+}
+
+func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
+	output NeedReplicatedInput,
+) (NeedReplicatedOutput, error) {
+	return NeedReplicatedOutput{}, nil
 }
 
 // ---------------------------------------------------------------------------

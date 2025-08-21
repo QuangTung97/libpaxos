@@ -31,6 +31,8 @@ type nodeRunnerImpl struct {
 	acceptors    *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	stateMachine *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	follower     *key_runner.KeyRunner[NodeID, nodeTermInfo]
+
+	// TODO add replicate runner
 }
 
 func NewNodeRunner(

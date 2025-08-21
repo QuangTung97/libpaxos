@@ -40,3 +40,12 @@ type CommittedInfo struct {
 	Members            []MemberInfo
 	FullyReplicatedPos LogPos
 }
+
+type NeedReplicatedInput struct {
+	Term    TermNum
+	PosList []LogPos
+	NextPos LogPos
+}
+
+type NeedReplicatedOutput struct {
+}

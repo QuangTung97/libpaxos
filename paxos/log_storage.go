@@ -4,6 +4,9 @@ import "context"
 
 type LeaderLogGetter interface {
 	GetCommittedInfo() CommittedInfo
+
+	// GetEntries does not wait when not found any entries from log pos
+	GetEntries(from LogPos, limit int) []PosLogEntry
 }
 
 type StateMachineLogGetter interface {
@@ -22,9 +25,6 @@ type LogStorage interface {
 	UpsertEntries(entries []PosLogEntry)
 
 	MarkCommitted(posList ...LogPos)
-
-	// GetEntries does not wait when not found any entries from log pos
-	GetEntries(from LogPos, limit int) []PosLogEntry
 
 	SetTerm(term TermNum)
 	GetTerm() TermNum

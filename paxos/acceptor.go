@@ -1,6 +1,7 @@
 package paxos
 
 import (
+	"context"
 	"fmt"
 	"iter"
 	"sync"
@@ -9,6 +10,7 @@ import (
 type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
+	GetNeedReplicatedPos(ctx context.Context, from LogPos) (NeedReplicatedInput, error)
 }
 
 type acceptorLogicImpl struct {
@@ -138,4 +140,10 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		Term:    s.log.GetTerm(),
 		PosList: posList,
 	}, nil
+}
+
+func (s *acceptorLogicImpl) GetNeedReplicatedPos(
+	ctx context.Context, from LogPos,
+) (NeedReplicatedInput, error) {
+	return NeedReplicatedInput{}, nil
 }
