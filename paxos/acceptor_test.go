@@ -43,7 +43,7 @@ func (s *acceptorLogicTest) putMembers() {
 }
 
 func (s *acceptorLogicTest) initLogic(limit int) {
-	s.logic = NewAcceptorLogic(s.log, limit)
+	s.logic = NewAcceptorLogic(nodeID2, s.log, limit)
 }
 
 func (s *acceptorLogicTest) doHandleVote(term TermNum, fromPos LogPos) []RequestVoteOutput {
@@ -94,6 +94,24 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 			},
 		},
 	}, outputs)
+
+	assert.Equal(t, s.currentTerm, s.log.GetTerm())
+
+	// get again
+	outputs = s.doHandleVote(s.currentTerm, 2)
+	assert.Equal(t, []RequestVoteOutput{
+		{
+			Success: true,
+			Term:    s.currentTerm,
+			Entries: []VoteLogEntry{
+				{
+					Pos:     2,
+					IsFinal: true,
+				},
+			},
+		},
+	}, outputs)
+	assert.Equal(t, s.currentTerm, s.log.GetTerm())
 }
 
 func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
@@ -158,6 +176,22 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 				{Pos: 4, Entry: s.newCmd("cmd test 03")},
 				{Pos: 5, IsFinal: true},
 			},
+		},
+	}, outputs)
+}
+
+func TestAcceptorLogic_HandleRequestVote__With_Lower_Term__Not_Success(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	s.doHandleVote(s.currentTerm, 2)
+
+	lowerTerm := s.currentTerm
+	lowerTerm.Num--
+	outputs := s.doHandleVote(lowerTerm, 2)
+	assert.Equal(t, []RequestVoteOutput{
+		{
+			Success: false,
+			Term:    s.currentTerm,
 		},
 	}, outputs)
 }
