@@ -153,7 +153,12 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		s.updateTermToInf(&putEntries[i])
 	}
 
+	oldFullyReplicated := s.log.GetFullyReplicated()
 	s.log.UpsertEntries(putEntries, markCommitted)
+
+	if s.log.GetFullyReplicated() > oldFullyReplicated {
+		s.waitCond.Broadcast()
+	}
 
 	return AcceptEntriesOutput{
 		Success: true,

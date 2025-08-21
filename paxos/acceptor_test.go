@@ -604,3 +604,29 @@ func TestAcceptorLogic__Get_Need_Replicated__Not_Wait_Because_Of_Init_Fully_Repl
 		}, getFn())
 	})
 }
+
+func TestAcceptorLogic__Get_Need_Replicated__Wait_For_New_Fully_Replicated(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	s.doAcceptEntries(3)
+
+	synctest.Test(t, func(t *testing.T) {
+		getFn, _ := testutil.RunAsync(t, func() NeedReplicatedInput {
+			return s.doGetNeedReplicated(4, 1)
+		})
+
+		s.doAcceptEntries(0,
+			newAcceptLogEntries(2,
+				s.newCmd("cmd data 01"),
+				s.newCmd("cmd data 02"),
+			)...,
+		)
+
+		assert.Equal(t, NeedReplicatedInput{
+			Term:            s.currentTerm,
+			FromNode:        nodeID2,
+			NextPos:         4,
+			FullyReplicated: 3,
+		}, getFn())
+	})
+}
