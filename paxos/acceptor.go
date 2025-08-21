@@ -10,10 +10,14 @@ import (
 type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
-	// GetNeedReplicatedPos add term input
+
 	GetNeedReplicatedPos(
-		ctx context.Context, from LogPos, lastFullyReplicated LogPos,
+		ctx context.Context, term TermNum, from LogPos,
+		lastFullyReplicated LogPos,
 	) (NeedReplicatedInput, error)
+
+	CheckInvariant()
+	GetLastCommitted() LogPos
 }
 
 type acceptorLogicImpl struct {
@@ -31,14 +35,12 @@ func NewAcceptorLogic(
 	log LogStorage,
 	limit int,
 ) AcceptorLogic {
-	commitInfo := log.GetCommittedInfo()
-
 	s := &acceptorLogicImpl{
 		currentNode: currentNode,
 		limit:       limit,
 
 		log:           log,
-		lastCommitted: commitInfo.FullyReplicated,
+		lastCommitted: log.GetFullyReplicated(),
 	}
 	s.waitCond = NewNodeCond(&s.mut)
 	return s
@@ -76,20 +78,31 @@ func (s *acceptorLogicImpl) HandleRequestVote(
 	}, nil
 }
 
+func (s *acceptorLogicImpl) updateTermNum(inputTerm TermNum) bool {
+	cmpVal := CompareTermNum(inputTerm, s.log.GetTerm())
+	if cmpVal < 0 {
+		return false
+	}
+	if cmpVal > 0 {
+		s.log.SetTerm(inputTerm)
+		s.lastCommitted = s.log.GetFullyReplicated()
+		s.waitCond.Broadcast()
+	}
+	return true
+}
+
 func (s *acceptorLogicImpl) buildVoteResponse(
 	inputTerm TermNum, fromPos LogPos,
 ) (RequestVoteOutput, LogPos, bool) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
-	if CompareTermNum(inputTerm, s.log.GetTerm()) < 0 {
+	if !s.updateTermNum(inputTerm) {
 		return RequestVoteOutput{
 			Success: false,
 			Term:    s.log.GetTerm(),
 		}, 0, true
 	}
-
-	s.log.SetTerm(inputTerm)
 
 	entries := s.log.GetEntries(fromPos, s.limit)
 
@@ -129,14 +142,12 @@ func (s *acceptorLogicImpl) AcceptEntries(
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
-	if CompareTermNum(input.Term, s.log.GetTerm()) < 0 {
+	if !s.updateTermNum(input.Term) {
 		return AcceptEntriesOutput{
 			Success: false,
 			Term:    s.log.GetTerm(),
 		}, nil
 	}
-
-	s.log.SetTerm(input.Term)
 
 	posList := make([]LogPos, 0, len(input.Entries))
 	putEntries := make([]PosLogEntry, 0, len(input.Entries))
@@ -204,13 +215,18 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []Lo
 }
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(
-	ctx context.Context, from LogPos,
+	ctx context.Context,
+	term TermNum, from LogPos,
 	lastFullyReplicated LogPos,
 ) (NeedReplicatedInput, error) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
 StartLoop:
+	if !s.updateTermNum(term) {
+		return NeedReplicatedInput{}, fmt.Errorf("input term is less than actual term")
+	}
+
 	afterFullyReplicated := s.log.GetFullyReplicated() + 1
 	if from < afterFullyReplicated {
 		from = afterFullyReplicated
@@ -259,4 +275,16 @@ StartLoop:
 
 		FullyReplicated: s.log.GetFullyReplicated(),
 	}, nil
+}
+
+func (s *acceptorLogicImpl) CheckInvariant() {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	AssertTrue(s.log.GetFullyReplicated() <= s.lastCommitted)
+}
+
+func (s *acceptorLogicImpl) GetLastCommitted() LogPos {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+	return s.lastCommitted
 }

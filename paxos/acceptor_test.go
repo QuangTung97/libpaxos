@@ -20,7 +20,7 @@ type acceptorLogicTest struct {
 	currentTerm TermNum
 }
 
-func newAcceptorLogicTest() *acceptorLogicTest {
+func newAcceptorLogicTest(t *testing.T) *acceptorLogicTest {
 	s := &acceptorLogicTest{}
 	s.ctx = context.Background()
 	s.log = &fake.LogStorageFake{}
@@ -32,6 +32,10 @@ func newAcceptorLogicTest() *acceptorLogicTest {
 
 	s.putMembers()
 	s.initLogic(100)
+
+	t.Cleanup(func() {
+		s.logic.CheckInvariant()
+	})
 
 	return s
 }
@@ -119,7 +123,7 @@ func (s *acceptorLogicTest) doAcceptEntries(
 }
 
 func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	outputs := s.doHandleVote(s.currentTerm, 2)
 	assert.Equal(t, []RequestVoteOutput{
@@ -155,7 +159,7 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 }
 
 func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	s.putMembers()
 
@@ -186,7 +190,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 }
 
 func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	s.putMembers()
 
@@ -223,7 +227,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 }
 
 func TestAcceptorLogic_HandleRequestVote__With_Lower_Term__Not_Success(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	s.doHandleVote(s.currentTerm, 2)
 
@@ -239,7 +243,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Lower_Term__Not_Success(t *testin
 }
 
 func TestAcceptorLogic_HandleRequestVote__Mismatch_Node_ID(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	_, err := s.logic.HandleRequestVote(RequestVoteInput{
 		ToNode:  nodeID3,
@@ -250,7 +254,7 @@ func TestAcceptorLogic_HandleRequestVote__Mismatch_Node_ID(t *testing.T) {
 }
 
 func TestAcceptorLogic_AcceptEntries(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	resp := s.doAcceptEntries(
 		1,
@@ -313,7 +317,7 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 }
 
 func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	resp := s.doAcceptEntries(
 		1,
@@ -371,7 +375,7 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 }
 
 func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	resp := s.doAcceptEntries(
 		1,
@@ -431,7 +435,7 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 }
 
 func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	resp := s.doAcceptEntries(
 		1,
@@ -447,7 +451,7 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 	)
 	assert.Equal(t, true, resp.Success)
 
-	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, 0, 0)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, NeedReplicatedInput{
 		Term:     s.currentTerm,
@@ -470,7 +474,7 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 }
 
 func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Increase_Partially(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	resp := s.doAcceptEntries(
 		1,
@@ -486,7 +490,7 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Incre
 	)
 	assert.Equal(t, true, resp.Success)
 
-	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, 0, 0)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, NeedReplicatedInput{
 		Term:     s.currentTerm,
@@ -499,14 +503,14 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Incre
 }
 
 func TestAcceptorLogic__Increase_Committed_Pos_Only__Then_Get_Need_Replicated(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 	s.putMembers()
 	s.initLogic(3)
 
 	resp := s.doAcceptEntries(6)
 	assert.Equal(t, true, resp.Success)
 
-	input, err := s.logic.GetNeedReplicatedPos(s.ctx, 0, 0)
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, 0, 0)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, NeedReplicatedInput{
 		Term:     s.currentTerm,
@@ -519,7 +523,7 @@ func TestAcceptorLogic__Increase_Committed_Pos_Only__Then_Get_Need_Replicated(t 
 }
 
 func (s *acceptorLogicTest) doGetNeedReplicated(from LogPos, lastFullyReplicated LogPos) NeedReplicatedInput {
-	input, err := s.logic.GetNeedReplicatedPos(s.ctx, from, lastFullyReplicated)
+	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, from, lastFullyReplicated)
 	if err != nil {
 		panic(err)
 	}
@@ -527,7 +531,7 @@ func (s *acceptorLogicTest) doGetNeedReplicated(from LogPos, lastFullyReplicated
 }
 
 func TestAcceptorLogic__Get_Need_Replicated_With_Wait(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	synctest.Test(t, func(t *testing.T) {
 		getFn, _ := testutil.RunAsync(t, func() NeedReplicatedInput {
@@ -549,7 +553,7 @@ func TestAcceptorLogic__Get_Need_Replicated_With_Wait(t *testing.T) {
 }
 
 func TestAcceptorLogic__Get_Need_Replicated_With_Wait__From_High_Pos(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	synctest.Test(t, func(t *testing.T) {
 		getFn, assertNotFinish := testutil.RunAsync(t, func() NeedReplicatedInput {
@@ -575,7 +579,7 @@ func TestAcceptorLogic__Get_Need_Replicated_With_Wait__From_High_Pos(t *testing.
 }
 
 func TestAcceptorLogic__Get_Need_Replicated__Not_Wait_Because_Of_Init_Fully_Replicated_Pos(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	s.doAcceptEntries(2)
 
@@ -606,7 +610,7 @@ func TestAcceptorLogic__Get_Need_Replicated__Not_Wait_Because_Of_Init_Fully_Repl
 }
 
 func TestAcceptorLogic__Get_Need_Replicated__Wait_For_New_Fully_Replicated(t *testing.T) {
-	s := newAcceptorLogicTest()
+	s := newAcceptorLogicTest(t)
 
 	s.doAcceptEntries(3)
 
@@ -628,5 +632,47 @@ func TestAcceptorLogic__Get_Need_Replicated__Wait_For_New_Fully_Replicated(t *te
 			NextPos:         4,
 			FullyReplicated: 3,
 		}, getFn())
+	})
+}
+
+func TestAcceptorLogic__Accept_Entries__Increase_Last_Committed__Then_Reset(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	s.doAcceptEntries(3)
+	assert.Equal(t, LogPos(3), s.logic.GetLastCommitted())
+
+	s.currentTerm.Num++
+	s.doAcceptEntries(2)
+	assert.Equal(t, LogPos(2), s.logic.GetLastCommitted())
+}
+
+func TestAcceptorLogic__Accept_Entries__GetReplicatedPos__Error(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	s.doAcceptEntries(3)
+
+	oldTerm := s.currentTerm
+	oldTerm.Num--
+
+	_, err := s.logic.GetNeedReplicatedPos(s.ctx, oldTerm, 0, 0)
+	assert.Equal(t, errors.New("input term is less than actual term"), err)
+}
+
+func TestAcceptorLogic__GetReplicated__Wait_On_New_Term(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	s.doAcceptEntries(1)
+
+	synctest.Test(t, func(t *testing.T) {
+		term := s.currentTerm
+		getFn, _ := testutil.RunAsync(t, func() error {
+			_, err := s.logic.GetNeedReplicatedPos(s.ctx, term, 2, 1)
+			return err
+		})
+
+		s.currentTerm.Num++
+		s.doAcceptEntries(1)
+
+		assert.Equal(t, errors.New("input term is less than actual term"), getFn())
 	})
 }
