@@ -90,6 +90,14 @@ func (s *acceptorLogicTest) newCmd(cmd string) LogEntry {
 	return NewCmdLogEntry(s.currentTerm.ToInf(), []byte(cmd))
 }
 
+func (s *acceptorLogicTest) newCmdInf(cmd string) LogEntry {
+	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmd))
+}
+
+func (s *acceptorLogicTest) newCmdTerm(term TermNum, cmd string) LogEntry {
+	return NewCmdLogEntry(term.ToInf(), []byte(cmd))
+}
+
 func (s *acceptorLogicTest) doAcceptEntries(
 	committed LogPos, entries ...AcceptLogEntry,
 ) AcceptEntriesOutput {
@@ -321,14 +329,10 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	assert.Equal(t, true, resp.Success)
 
 	entries := s.log.GetEntries(2, 100)
-	entry1 := s.newCmd("cmd test 01")
-	entry1.Term = InfiniteTerm{}
-	entry2 := s.newCmd("cmd test 02")
-	entry2.Term = InfiniteTerm{}
 	assert.Equal(t, newPosLogEntries(
 		2,
-		entry1,
-		entry2,
+		s.newCmdInf("cmd test 01"),
+		s.newCmdInf("cmd test 02"),
 		s.newCmd("cmd test 03"),
 		LogEntry{},
 		s.newCmd("cmd test 04"),
@@ -341,18 +345,14 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 
 	// check log entries again
 	entries = s.log.GetEntries(2, 100)
-
-	entry3 := s.newCmd("cmd test 03")
-	entry4 := s.newCmd("cmd test 04")
-	entry5 := s.newCmd("cmd test 05")
-
-	entry3.Term = InfiniteTerm{}
-	entry4.Term = InfiniteTerm{}
-
 	assert.Equal(t, newPosLogEntries(
 		2,
-		entry1, entry2, entry3,
-		LogEntry{}, entry4, entry5,
+		s.newCmdInf("cmd test 01"),
+		s.newCmdInf("cmd test 02"),
+		s.newCmdInf("cmd test 03"),
+		LogEntry{},
+		s.newCmdInf("cmd test 04"),
+		s.newCmd("cmd test 05"),
 	), entries)
 
 	assert.Equal(t, [][]LogPos{
@@ -360,5 +360,65 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 		{2, 3, 4},
 		{6, 7, 2, 3},
 		{4, 6},
+	}, s.log.PutPosList)
+}
+
+func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 01"),
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// change current term
+	oldTerm := s.currentTerm
+	s.currentTerm.Num++
+
+	resp = s.doAcceptEntries(
+		3,
+		newAcceptLogEntries(5,
+			s.newCmd("cmd test 04"),
+			s.newCmd("cmd test 05"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// check log entries
+	entries := s.log.GetEntries(2, 100)
+	assert.Equal(t, newPosLogEntries(
+		2,
+		s.newCmdTerm(oldTerm, "cmd test 01"),
+		s.newCmdTerm(oldTerm, "cmd test 02"),
+		s.newCmdTerm(oldTerm, "cmd test 03"),
+		s.newCmd("cmd test 04"),
+		s.newCmd("cmd test 05"),
+	), entries)
+
+	// increase commit pos only
+	resp = s.doAcceptEntries(6)
+	assert.Equal(t, true, resp.Success)
+
+	// check log entries
+	entries = s.log.GetEntries(2, 100)
+	assert.Equal(t, newPosLogEntries(
+		2,
+		s.newCmdTerm(oldTerm, "cmd test 01"),
+		s.newCmdTerm(oldTerm, "cmd test 02"),
+		s.newCmdTerm(oldTerm, "cmd test 03"),
+		s.newCmdInf("cmd test 04"),
+		s.newCmdInf("cmd test 05"),
+	), entries)
+
+	assert.Equal(t, [][]LogPos{
+		{1},
+		{2, 3, 4},
+		{5, 6},
+		{5, 6},
 	}, s.log.PutPosList)
 }

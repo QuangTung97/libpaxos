@@ -165,6 +165,7 @@ func (s *acceptorLogicImpl) updateTermToInf(entry *PosLogEntry) {
 		return
 	}
 	if !s.isSameTerm(entry.Entry.Term) {
+		// TODO testing
 		return
 	}
 	entry.Entry.Term = InfiniteTerm{}
@@ -182,7 +183,9 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos, putE
 		if entry.Entry.Type == LogTypeNull {
 			continue
 		}
-		putEntries = append(putEntries, entry)
+		if s.isSameTerm(entry.Entry.Term) {
+			putEntries = append(putEntries, entry)
+		}
 	}
 
 	s.lastCommitted = newLastCommitted
