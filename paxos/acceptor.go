@@ -1,6 +1,8 @@
 package paxos
 
-import "iter"
+import (
+	"iter"
+)
 
 type AcceptorLogic interface {
 	HandleRequestVote(input RequestVoteInput) iter.Seq[RequestVoteOutput]
@@ -21,6 +23,16 @@ func NewAcceptorLogic(
 
 func (s *acceptorLogicImpl) HandleRequestVote(input RequestVoteInput) iter.Seq[RequestVoteOutput] {
 	return func(yield func(RequestVoteOutput) bool) {
+		yield(RequestVoteOutput{
+			Success: true,
+			Term:    input.Term,
+			Entries: []VoteLogEntry{
+				{
+					Pos:     input.FromPos,
+					IsFinal: true,
+				},
+			},
+		})
 	}
 }
 

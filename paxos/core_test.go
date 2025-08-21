@@ -115,16 +115,16 @@ func (c *coreLogicTest) doHandleVoteResp(
 	voteEntries := make([]VoteLogEntry, 0, len(entries)+1)
 	for index, e := range entries {
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:   fromPos + LogPos(index),
-			More:  true,
-			Entry: e,
+			Pos:     fromPos + LogPos(index),
+			IsFinal: false,
+			Entry:   e,
 		})
 	}
 
 	if withFinal {
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:  fromPos + LogPos(len(entries)),
-			More: false,
+			Pos:     fromPos + LogPos(len(entries)),
+			IsFinal: true,
 		})
 	}
 
@@ -225,8 +225,8 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 		Term:    c.currentTerm,
 		Entries: []VoteLogEntry{
 			{
-				Pos:  2,
-				More: false,
+				Pos:     2,
+				IsFinal: true,
 			},
 		},
 	}

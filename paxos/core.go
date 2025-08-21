@@ -103,6 +103,8 @@ type leaderStateInfo struct {
 	nodeCondVar      *NodeCond
 
 	acceptorFullyReplicated map[NodeID]LogPos
+
+	// TODO add log buffer
 }
 
 func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
@@ -129,8 +131,8 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 	// init leader state
 	c.leader = &leaderStateInfo{
-		members:       commitInfo.Members,
-		lastCommitted: commitInfo.Pos,
+		members:       slices.Clone(commitInfo.Members),
+		lastCommitted: commitInfo.FullyReplicatedPos,
 
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
 		nodeCondVar:      NewNodeCond(&c.mut),
@@ -142,7 +144,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 	// init candidate state
 	c.candidate = &candidateStateInfo{
 		remainPosMap: map[NodeID]InfiniteLogPos{},
-		acceptPos:    commitInfo.Pos,
+		acceptPos:    commitInfo.FullyReplicatedPos,
 	}
 
 	// clear follower
@@ -269,15 +271,15 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	pos := entry.Pos
-	if entry.More {
+	if entry.IsFinal {
+		if pos > remainPos.Pos {
+			return
+		}
+	} else {
 		if remainPos.Pos != pos {
 			return
 		}
 		if pos <= c.candidate.acceptPos {
-			return
-		}
-	} else {
-		if pos > remainPos.Pos {
 			return
 		}
 	}
@@ -288,7 +290,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 	pos := entry.Pos
 
-	if !entry.More {
+	if entry.IsFinal {
 		c.candidate.remainPosMap[id] = InfiniteLogPos{}
 		c.updateVoteRunners()
 		return

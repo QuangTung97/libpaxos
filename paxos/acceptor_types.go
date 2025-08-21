@@ -13,9 +13,9 @@ type RequestVoteOutput struct {
 }
 
 type VoteLogEntry struct {
-	Pos   LogPos
-	More  bool
-	Entry LogEntry
+	Pos     LogPos
+	IsFinal bool // when true => it's the final log entry marker and Entry is null
+	Entry   LogEntry
 }
 
 type AcceptEntriesInput struct {
@@ -37,6 +37,6 @@ type AcceptEntriesOutput struct {
 }
 
 type CommittedInfo struct {
-	Members []MemberInfo
-	Pos     LogPos
+	Members            []MemberInfo
+	FullyReplicatedPos LogPos
 }

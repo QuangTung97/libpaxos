@@ -126,6 +126,25 @@ func NewNoOpLogEntry() LogEntry {
 	}
 }
 
+func NewCmdLogEntry(term InfiniteTerm, data []byte) LogEntry {
+	return LogEntry{
+		Type:    LogTypeCmd,
+		Term:    term,
+		CmdData: data,
+	}
+}
+
+func NewMembershipLogEntry(
+	term InfiniteTerm,
+	members []MemberInfo,
+) LogEntry {
+	return LogEntry{
+		Type:    LogTypeMembership,
+		Term:    term,
+		Members: members,
+	}
+}
+
 // ----------------------------------------------------------
 
 type MemberInfo struct {

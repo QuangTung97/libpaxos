@@ -67,8 +67,8 @@ func (s *LogStorageFake) MarkCommitted(posList ...paxos.LogPos) {
 
 func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 	return paxos.CommittedInfo{
-		Members: s.lastMembers,
-		Pos:     s.lastCommitted,
+		Members:            s.lastMembers,
+		FullyReplicatedPos: s.lastCommitted,
 	}
 }
 
