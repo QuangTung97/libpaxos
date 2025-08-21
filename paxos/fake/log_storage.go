@@ -7,11 +7,19 @@ type LogStorageFake struct {
 	lastCommitted paxos.LogPos
 	lastMembers   []paxos.MemberInfo
 	Term          paxos.TermNum
+
+	PutPosList [][]paxos.LogPos
 }
 
 var _ paxos.LogStorage = &LogStorageFake{}
 
 func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
+	posList := make([]paxos.LogPos, 0, len(entries))
+	for _, e := range entries {
+		posList = append(posList, e.Pos)
+	}
+	s.PutPosList = append(s.PutPosList, posList)
+
 	newLen := len(s.logEntries)
 
 	maxPos := paxos.LogPos(0)

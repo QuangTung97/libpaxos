@@ -9,9 +9,11 @@ type LeaderLogGetter interface {
 	GetEntries(from LogPos, limit int) []PosLogEntry
 }
 
+// StateMachineLogGetter is implemented by both CoreLogic & AcceptorLogic
 type StateMachineLogGetter interface {
 	GetCommittedEntriesWithWait(
-		ctx context.Context, fromPos LogPos, limit int,
+		ctx context.Context, term TermNum,
+		fromPos LogPos, limit int,
 	) ([]PosLogEntry, error)
 }
 

@@ -17,8 +17,9 @@ type acceptorLogicImpl struct {
 	currentNode NodeID
 	limit       int
 
-	mut sync.Mutex
-	log LogStorage
+	mut           sync.Mutex
+	log           LogStorage
+	lastCommitted LogPos
 }
 
 func NewAcceptorLogic(
@@ -26,11 +27,14 @@ func NewAcceptorLogic(
 	log LogStorage,
 	limit int,
 ) AcceptorLogic {
+	commitInfo := log.GetCommittedInfo()
+
 	return &acceptorLogicImpl{
 		currentNode: currentNode,
 		limit:       limit,
 
-		log: log,
+		log:           log,
+		lastCommitted: commitInfo.FullyReplicatedPos,
 	}
 }
 
@@ -138,6 +142,11 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		})
 	}
 
+	putEntries = s.getNeedUpdateTermToInf(input.Committed, putEntries)
+
+	for i := range putEntries {
+		s.updateTermToInf(&putEntries[i])
+	}
 	s.log.UpsertEntries(putEntries)
 
 	return AcceptEntriesOutput{
@@ -145,6 +154,40 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		Term:    s.log.GetTerm(),
 		PosList: posList,
 	}, nil
+}
+
+func (s *acceptorLogicImpl) isSameTerm(term InfiniteTerm) bool {
+	return term == s.log.GetTerm().ToInf()
+}
+
+func (s *acceptorLogicImpl) updateTermToInf(entry *PosLogEntry) {
+	if entry.Pos > s.lastCommitted {
+		return
+	}
+	if !s.isSameTerm(entry.Entry.Term) {
+		return
+	}
+	entry.Entry.Term = InfiniteTerm{}
+}
+
+func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos, putEntries []PosLogEntry) []PosLogEntry {
+	if newLastCommitted <= s.lastCommitted {
+		return putEntries
+	}
+
+	getLimit := int(newLastCommitted - s.lastCommitted)
+	entries := s.log.GetEntries(s.lastCommitted+1, getLimit)
+
+	for _, entry := range entries {
+		if entry.Entry.Type == LogTypeNull {
+			continue
+		}
+		putEntries = append(putEntries, entry)
+	}
+
+	s.lastCommitted = newLastCommitted
+
+	return putEntries
 }
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(

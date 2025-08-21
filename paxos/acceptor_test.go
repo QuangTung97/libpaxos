@@ -296,3 +296,69 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 		Term:    s.currentTerm,
 	}, resp)
 }
+
+func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
+	s := newAcceptorLogicTest()
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 01"),
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// increase committed to 3
+	resp = s.doAcceptEntries(
+		3,
+		newAcceptLogEntries(6,
+			s.newCmd("cmd test 04"),
+			s.newCmd("cmd test 05"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	entries := s.log.GetEntries(2, 100)
+	entry1 := s.newCmd("cmd test 01")
+	entry1.Term = InfiniteTerm{}
+	entry2 := s.newCmd("cmd test 02")
+	entry2.Term = InfiniteTerm{}
+	assert.Equal(t, newPosLogEntries(
+		2,
+		entry1,
+		entry2,
+		s.newCmd("cmd test 03"),
+		LogEntry{},
+		s.newCmd("cmd test 04"),
+		s.newCmd("cmd test 05"),
+	), entries)
+
+	// do accept only increase commit pos
+	resp = s.doAcceptEntries(6)
+	assert.Equal(t, true, resp.Success)
+
+	// check log entries again
+	entries = s.log.GetEntries(2, 100)
+
+	entry3 := s.newCmd("cmd test 03")
+	entry4 := s.newCmd("cmd test 04")
+	entry5 := s.newCmd("cmd test 05")
+
+	entry3.Term = InfiniteTerm{}
+	entry4.Term = InfiniteTerm{}
+
+	assert.Equal(t, newPosLogEntries(
+		2,
+		entry1, entry2, entry3,
+		LogEntry{}, entry4, entry5,
+	), entries)
+
+	assert.Equal(t, [][]LogPos{
+		{1},
+		{2, 3, 4},
+		{6, 7, 2, 3},
+		{4, 6},
+	}, s.log.PutPosList)
+}
