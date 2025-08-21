@@ -89,3 +89,115 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		Pos:     2,
 	}, s.GetCommittedInfo())
 }
+
+func newCmdLog(term paxos.TermNum, cmd string) paxos.LogEntry {
+	return paxos.LogEntry{
+		Type:    paxos.LogTypeCmd,
+		Term:    term.ToInf(),
+		CmdData: []byte(cmd),
+	}
+}
+
+func newMembershipLog(term paxos.TermNum, nodes ...paxos.NodeID) paxos.LogEntry {
+	members := []paxos.MemberInfo{
+		{Nodes: nodes, CreatedAt: 1},
+	}
+	return paxos.LogEntry{
+		Type:    paxos.LogTypeMembership,
+		Term:    term.ToInf(),
+		Members: members,
+	}
+}
+
+func TestLogStorageFake_MarkCommitted(t *testing.T) {
+	s := &LogStorageFake{}
+
+	term := paxos.TermNum{
+		Num:    21,
+		NodeID: NewNodeID(1),
+	}
+	entry1 := newCmdLog(term, "cmd test 01")
+	entry2 := newCmdLog(term, "cmd test 02")
+
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 2, Entry: entry1},
+		{Pos: 4, Entry: entry2},
+	})
+
+	assert.Equal(t, []paxos.LogEntry{
+		{},
+		entry1,
+		{},
+		entry2,
+	}, s.Entries)
+	assert.Equal(t, paxos.CommittedInfo{}, s.GetCommittedInfo())
+
+	entry3 := newMembershipLog(term,
+		NewNodeID(1),
+		NewNodeID(2),
+	)
+
+	// upsert member log entry
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 1, Entry: entry3},
+	})
+	assert.Equal(t, []paxos.LogEntry{
+		entry3,
+		entry1,
+		{},
+		entry2,
+	}, s.Entries)
+
+	// mark committed
+	s.MarkCommitted(1)
+	assert.Equal(t, paxos.CommittedInfo{
+		Pos:     1,
+		Members: entry3.Members,
+	}, s.GetCommittedInfo())
+
+	s.MarkCommitted(2, 4)
+	assert.Equal(t, paxos.CommittedInfo{
+		Pos:     2,
+		Members: entry3.Members,
+	}, s.GetCommittedInfo())
+
+	// add committed entry
+	entry4 := newCmdLog(term, "cmd test 04")
+	entry4.Term = paxos.InfiniteTerm{}
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 3, Entry: entry4},
+	})
+	assert.Equal(t, paxos.CommittedInfo{
+		Pos:     4,
+		Members: entry3.Members,
+	}, s.GetCommittedInfo())
+
+	// get entries
+	entries := s.GetEntries(1, 100)
+
+	entry1.Term = paxos.InfiniteTerm{}
+	entry2.Term = paxos.InfiniteTerm{}
+	entry3.Term = paxos.InfiniteTerm{}
+
+	assert.Equal(t, []paxos.PosLogEntry{
+		{Pos: 1, Entry: entry3},
+		{Pos: 2, Entry: entry1},
+		{Pos: 3, Entry: entry4},
+		{Pos: 4, Entry: entry2},
+	}, entries)
+
+	// get entries, from 3
+	entries = s.GetEntries(3, 100)
+	assert.Equal(t, []paxos.PosLogEntry{
+		{Pos: 3, Entry: entry4},
+		{Pos: 4, Entry: entry2},
+	}, entries)
+
+	// get entries, with limit
+	entries = s.GetEntries(1, 3)
+	assert.Equal(t, []paxos.PosLogEntry{
+		{Pos: 1, Entry: entry3},
+		{Pos: 2, Entry: entry1},
+		{Pos: 3, Entry: entry4},
+	}, entries)
+}

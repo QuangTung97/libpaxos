@@ -29,10 +29,17 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
 		index := e.Pos - 1
 		newEntries[index] = e.Entry
 	}
+	s.Entries = newEntries
+
+	s.increaseLastCommitted()
+}
+
+func (s *LogStorageFake) increaseLastCommitted() {
+	maxPos := paxos.LogPos(len(s.Entries))
 
 	for pos := s.lastCommitted + 1; pos <= maxPos; pos++ {
 		index := pos - 1
-		entry := newEntries[index]
+		entry := s.Entries[index]
 
 		if entry.Type == paxos.LogTypeNull {
 			break
@@ -40,14 +47,21 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
 		if entry.Term.IsFinite {
 			break
 		}
+
 		s.lastCommitted = pos
 
 		if entry.Type == paxos.LogTypeMembership {
 			s.lastMembers = entry.Members
 		}
 	}
+}
 
-	s.Entries = newEntries
+func (s *LogStorageFake) MarkCommitted(posList ...paxos.LogPos) {
+	for _, pos := range posList {
+		index := pos - 1
+		s.Entries[index].Term = paxos.InfiniteTerm{}
+	}
+	s.increaseLastCommitted()
 }
 
 func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
@@ -58,5 +72,23 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 }
 
 func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLogEntry {
-	return nil
+	maxPos := paxos.LogPos(len(s.Entries))
+
+	num := maxPos - from + 1
+	if num > paxos.LogPos(limit) {
+		num = paxos.LogPos(limit)
+	}
+
+	maxPos = from + num - 1
+
+	result := make([]paxos.PosLogEntry, 0)
+	for pos := from; pos <= maxPos; pos++ {
+		index := pos - 1
+		result = append(result, paxos.PosLogEntry{
+			Pos:   pos,
+			Entry: s.Entries[index],
+		})
+	}
+
+	return result
 }
