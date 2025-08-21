@@ -17,6 +17,9 @@ type LogStorage interface {
 
 	// GetEntries does not wait when not found any entries from log pos
 	GetEntries(from LogPos, limit int) []PosLogEntry
+
+	SetTerm(term TermNum)
+	GetTerm() TermNum
 }
 
 type PosLogEntry struct {

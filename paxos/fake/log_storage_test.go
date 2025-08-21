@@ -36,7 +36,7 @@ func TestLogStorageFake(t *testing.T) {
 		entry1,
 		{},
 		entry2,
-	}, s.Entries)
+	}, s.logEntries)
 
 	assert.Equal(t, paxos.CommittedInfo{}, s.GetCommittedInfo())
 }
@@ -81,7 +81,7 @@ func TestLogStorageFake_Membership(t *testing.T) {
 
 	assert.Equal(t, []paxos.LogEntry{
 		entry1, entry2, entry3,
-	}, s.Entries)
+	}, s.logEntries)
 
 	// check committed info
 	assert.Equal(t, paxos.CommittedInfo{
@@ -129,7 +129,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		entry1,
 		{},
 		entry2,
-	}, s.Entries)
+	}, s.logEntries)
 	assert.Equal(t, paxos.CommittedInfo{}, s.GetCommittedInfo())
 
 	entry3 := newMembershipLog(term,
@@ -146,7 +146,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		entry1,
 		{},
 		entry2,
-	}, s.Entries)
+	}, s.logEntries)
 
 	// mark committed
 	s.MarkCommitted(1)
@@ -200,4 +200,16 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		{Pos: 2, Entry: entry1},
 		{Pos: 3, Entry: entry4},
 	}, entries)
+}
+
+func TestLogStorageFake_SetTerm(t *testing.T) {
+	s := &LogStorageFake{}
+
+	term := paxos.TermNum{
+		Num:    21,
+		NodeID: NewNodeID(1),
+	}
+	s.SetTerm(term)
+
+	assert.Equal(t, term, s.GetTerm())
 }

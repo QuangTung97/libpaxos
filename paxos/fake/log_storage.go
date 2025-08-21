@@ -3,15 +3,16 @@ package fake
 import "github.com/QuangTung97/libpaxos/paxos"
 
 type LogStorageFake struct {
-	Entries       []paxos.LogEntry
+	logEntries    []paxos.LogEntry
 	lastCommitted paxos.LogPos
 	lastMembers   []paxos.MemberInfo
+	Term          paxos.TermNum
 }
 
 var _ paxos.LogStorage = &LogStorageFake{}
 
 func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
-	newLen := len(s.Entries)
+	newLen := len(s.logEntries)
 
 	maxPos := paxos.LogPos(0)
 	for _, e := range entries {
@@ -23,23 +24,23 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry) {
 	}
 
 	newEntries := make([]paxos.LogEntry, newLen)
-	copy(newEntries, s.Entries)
+	copy(newEntries, s.logEntries)
 
 	for _, e := range entries {
 		index := e.Pos - 1
 		newEntries[index] = e.Entry
 	}
-	s.Entries = newEntries
+	s.logEntries = newEntries
 
 	s.increaseLastCommitted()
 }
 
 func (s *LogStorageFake) increaseLastCommitted() {
-	maxPos := paxos.LogPos(len(s.Entries))
+	maxPos := paxos.LogPos(len(s.logEntries))
 
 	for pos := s.lastCommitted + 1; pos <= maxPos; pos++ {
 		index := pos - 1
-		entry := s.Entries[index]
+		entry := s.logEntries[index]
 
 		if entry.Type == paxos.LogTypeNull {
 			break
@@ -59,7 +60,7 @@ func (s *LogStorageFake) increaseLastCommitted() {
 func (s *LogStorageFake) MarkCommitted(posList ...paxos.LogPos) {
 	for _, pos := range posList {
 		index := pos - 1
-		s.Entries[index].Term = paxos.InfiniteTerm{}
+		s.logEntries[index].Term = paxos.InfiniteTerm{}
 	}
 	s.increaseLastCommitted()
 }
@@ -72,7 +73,7 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 }
 
 func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLogEntry {
-	maxPos := paxos.LogPos(len(s.Entries))
+	maxPos := paxos.LogPos(len(s.logEntries))
 
 	num := maxPos - from + 1
 	if num > paxos.LogPos(limit) {
@@ -86,9 +87,17 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLog
 		index := pos - 1
 		result = append(result, paxos.PosLogEntry{
 			Pos:   pos,
-			Entry: s.Entries[index],
+			Entry: s.logEntries[index],
 		})
 	}
 
 	return result
+}
+
+func (s *LogStorageFake) SetTerm(term paxos.TermNum) {
+	s.Term = term
+}
+
+func (s *LogStorageFake) GetTerm() paxos.TermNum {
+	return s.Term
 }
