@@ -196,6 +196,17 @@ func GetAllMembers(members []MemberInfo) map[NodeID]struct{} {
 	return resultSet
 }
 
+func IsNodeInMembers(members []MemberInfo, nodeID NodeID) bool {
+	for _, conf := range members {
+		for _, id := range conf.Nodes {
+			if id == nodeID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ----------------------------------------------------------
 
 type TimestampMilli int64

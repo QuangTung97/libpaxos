@@ -32,6 +32,8 @@ type CoreLogic interface {
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
+	IsNoCurrentLeader() bool
+
 	// -------------------------------------------------------
 	// Testing Utility Functions
 	// -------------------------------------------------------
@@ -88,8 +90,9 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt TimestampMilli
-	waitCond *NodeCond
+	wakeUpAt     TimestampMilli
+	leaderActive bool
+	waitCond     *NodeCond
 }
 
 type candidateStateInfo struct {
@@ -150,6 +153,11 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 	c.state = StateCandidate
 	commitInfo := c.log.GetCommittedInfo()
+
+	if !IsNodeInMembers(commitInfo.Members, c.persistent.GetNodeID()) {
+		// TODO testing
+		return fmt.Errorf("current node is not in its membership config")
+	}
 
 	c.generateNextProposeTerm(maxTermValue)
 
@@ -462,19 +470,12 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 		return nil
 	}
 
-	c.stepDownToFollower()
+	c.stepDownToFollower(false)
 	return fmt.Errorf("current leader has just stepped down")
 }
 
 func (c *coreLogicImpl) isInMemberList(nodeID NodeID) bool {
-	for _, conf := range c.leader.members {
-		for _, id := range conf.Nodes {
-			if id == nodeID {
-				return true
-			}
-		}
-	}
-	return false
+	return IsNodeInMembers(c.leader.members, nodeID)
 }
 
 func (c *coreLogicImpl) switchFromCandidateToLeader() error {
@@ -594,17 +595,22 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos
 	c.persistent.UpdateLastTerm(term)
 
 	if c.state == StateFollower {
-		c.follower.wakeUpAt = c.computeNextWakeUp()
+		c.updateFollowerWakeUpAt(true)
 		c.updateAllRunners()
 		return true
 	}
 
 	// when state = candidate / leader
-	c.stepDownToFollower()
+	c.stepDownToFollower(true)
 	return true
 }
 
-func (c *coreLogicImpl) stepDownToFollower() {
+func (c *coreLogicImpl) updateFollowerWakeUpAt(causedByAnotherLeader bool) {
+	c.follower.wakeUpAt = c.computeNextWakeUp()
+	c.follower.leaderActive = causedByAnotherLeader
+}
+
+func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.state = StateFollower
 	c.candidate = nil
 
@@ -613,8 +619,9 @@ func (c *coreLogicImpl) stepDownToFollower() {
 	c.leader = nil
 
 	c.follower = &followerStateInfo{
-		wakeUpAt: c.computeNextWakeUp(),
-		waitCond: NewNodeCond(&c.mut),
+		wakeUpAt:     c.computeNextWakeUp(),
+		leaderActive: causedByAnotherLeader,
+		waitCond:     NewNodeCond(&c.mut),
 	}
 
 	c.updateAllRunners()
@@ -920,7 +927,7 @@ StartLoop:
 		goto StartLoop
 	}
 
-	c.follower.wakeUpAt = c.computeNextWakeUp()
+	c.updateFollowerWakeUpAt(false)
 	return nil
 }
 
@@ -942,6 +949,17 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 		Term:    c.getCurrentTerm(),
 		Entries: c.leader.logBuffer.GetEntries(input.PosList...),
 	}, nil
+}
+
+func (c *coreLogicImpl) IsNoCurrentLeader() bool {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if c.state != StateFollower {
+		return false
+	}
+
+	return !c.follower.leaderActive
 }
 
 // ---------------------------------------------------------------------------
