@@ -32,7 +32,7 @@ type CoreLogic interface {
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
-	IsNoCurrentLeader() bool
+	GetChoosingLeaderInfo() ChooseLeaderInfo
 
 	// -------------------------------------------------------
 	// Testing Utility Functions
@@ -90,10 +90,18 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt     TimestampMilli
-	leaderActive bool
-	waitCond     *NodeCond
+	wakeUpAt    TimestampMilli
+	checkStatus followerCheckOtherStatus
+	waitCond    *NodeCond
 }
+
+type followerCheckOtherStatus int
+
+const (
+	followerCheckOtherStatusRunning followerCheckOtherStatus = iota
+	followerCheckOtherStatusLeaderIsActive
+	followerCheckOtherStatusStartingNewElection
+)
 
 type candidateStateInfo struct {
 	remainPosMap map[NodeID]InfiniteLogPos
@@ -607,7 +615,12 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos
 
 func (c *coreLogicImpl) updateFollowerWakeUpAt(causedByAnotherLeader bool) {
 	c.follower.wakeUpAt = c.computeNextWakeUp()
-	c.follower.leaderActive = causedByAnotherLeader
+
+	if causedByAnotherLeader {
+		c.follower.checkStatus = followerCheckOtherStatusLeaderIsActive
+	} else {
+		c.follower.checkStatus = followerCheckOtherStatusRunning
+	}
 }
 
 func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
@@ -619,10 +632,9 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.leader = nil
 
 	c.follower = &followerStateInfo{
-		wakeUpAt:     c.computeNextWakeUp(),
-		leaderActive: causedByAnotherLeader,
-		waitCond:     NewNodeCond(&c.mut),
+		waitCond: NewNodeCond(&c.mut),
 	}
+	c.updateFollowerWakeUpAt(causedByAnotherLeader)
 
 	c.updateAllRunners()
 }
@@ -862,7 +874,7 @@ func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {
 		return
 	}
 
-	for {
+	for c.leader.logBuffer.Size() > 0 {
 		frontPos := c.leader.logBuffer.GetFrontPos()
 		if frontPos > pos {
 			return
@@ -951,15 +963,26 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	}, nil
 }
 
-func (c *coreLogicImpl) IsNoCurrentLeader() bool {
+func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateFollower {
-		return false
+	noActiveLeader := true
+	if c.state == StateFollower {
+		if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
+			noActiveLeader = false
+		}
+	} else {
+		noActiveLeader = false
 	}
 
-	return !c.follower.leaderActive
+	commitInfo := c.log.GetCommittedInfo()
+
+	return ChooseLeaderInfo{
+		NoActiveLeader:  noActiveLeader,
+		Members:         commitInfo.Members,
+		FullyReplicated: commitInfo.FullyReplicated,
+	}
 }
 
 // ---------------------------------------------------------------------------

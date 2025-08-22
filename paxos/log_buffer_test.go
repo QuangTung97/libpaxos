@@ -148,4 +148,23 @@ func TestLogBuffer(t *testing.T) {
 			{Pos: 27},
 		}, entries)
 	})
+
+	t.Run("pop with panic", func(t *testing.T) {
+		lastCommitted := LogPos(20)
+		b := NewLogBuffer(&lastCommitted, 2)
+
+		entry1 := newCmd("test cmd 01")
+		entry2 := newCmd("test cmd 02")
+
+		lastCommitted += 2
+		b.Insert(entry1)
+		b.Insert(entry2)
+
+		b.PopFront()
+		b.PopFront()
+
+		assert.PanicsWithValue(t, "queue size must not be empty", func() {
+			b.PopFront()
+		})
+	})
 }

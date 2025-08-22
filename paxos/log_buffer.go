@@ -54,6 +54,10 @@ func (b *LogBuffer) GetFrontPos() LogPos {
 }
 
 func (b *LogBuffer) PopFront() {
+	if b.queueSize <= 0 {
+		panic("queue size must not be empty")
+	}
+
 	realIndex := b.computeRealIndex(0)
 	b.queueData[realIndex] = LogEntry{}
 	b.startIndex++

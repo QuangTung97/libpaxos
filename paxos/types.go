@@ -210,3 +210,11 @@ func IsNodeInMembers(members []MemberInfo, nodeID NodeID) bool {
 // ----------------------------------------------------------
 
 type TimestampMilli int64
+
+// ----------------------------------------------------------
+
+type ChooseLeaderInfo struct {
+	NoActiveLeader  bool
+	Members         []MemberInfo
+	FullyReplicated LogPos
+}
