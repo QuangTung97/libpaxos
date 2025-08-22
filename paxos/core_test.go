@@ -44,11 +44,14 @@ type coreLogicTestConfig struct {
 	maxBufferLen LogPos
 }
 
-func newCoreLogicTest(t *testing.T) *coreLogicTest {
-	config := coreLogicTestConfig{
+func newCoreTestConfig() coreLogicTestConfig {
+	return coreLogicTestConfig{
 		maxBufferLen: 1000,
 	}
-	return newCoreLogicTestWithConfig(t, config)
+}
+
+func newCoreLogicTest(t *testing.T) *coreLogicTest {
+	return newCoreLogicTestWithConfig(t, newCoreTestConfig())
 }
 
 func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreLogicTest {
@@ -155,7 +158,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 	}
 
 	if err := c.core.HandleVoteResponse(c.ctx, nodeID, voteOutput); err != nil {
-		panic("Should handle vote response ok, but got: " + err.Error())
+		panic(err.Error())
 	}
 
 	c.core.CheckInvariant()
@@ -1923,4 +1926,81 @@ func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
 			{Pos: 5, Entry: LogEntry{}},
 		},
 	}, input)
+}
+
+func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.doStartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 18)
+	entry3 := c.newLogEntry("cmd data 03", 18)
+	entry4 := c.newLogEntry("cmd data 04", 18)
+
+	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2, entry3)
+
+	synctest.Test(t, func(t *testing.T) {
+		finishFn, assertNotFinish := testutil.RunAsync(t, func() bool {
+			c.doHandleVoteResp(nodeID1, 5, true, entry4)
+			return true
+		})
+
+		c.doHandleVoteResp(nodeID2, 2, true)
+		assertNotFinish()
+
+		c.doHandleAccept(nodeID1, 2)
+		assertNotFinish()
+		assert.Equal(t, LogPos(1), c.core.GetLastCommitted())
+
+		c.doHandleAccept(nodeID2, 2)
+		assertNotFinish()
+		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+
+		// update other node id
+		c.doUpdateFullyReplicated(nodeID2, 2)
+		assertNotFinish()
+
+		c.doUpdateFullyReplicated(nodeID1, 2)
+		assert.Equal(t, true, finishFn())
+	})
+}
+
+func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting__State_Change_To_Follower(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.doStartElection()
+
+	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry2 := c.newLogEntry("cmd data 02", 18)
+	entry3 := c.newLogEntry("cmd data 03", 18)
+	entry4 := c.newLogEntry("cmd data 04", 18)
+
+	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2, entry3)
+
+	synctest.Test(t, func(t *testing.T) {
+		finishFn, _ := testutil.RunAsync(t, func() bool {
+			assert.PanicsWithValue(t, "expected state 'Candidate', got: 'Follower'", func() {
+				c.doHandleVoteResp(nodeID1, 5, true, entry4)
+			})
+			return true
+		})
+
+		newTerm := TermNum{
+			Num:    c.currentTerm.Num + 1,
+			NodeID: nodeID2,
+		}
+		err := c.core.HandleAcceptEntriesResponse(nodeID1, AcceptEntriesOutput{
+			Success: false,
+			Term:    newTerm,
+		})
+		assert.Equal(t, nil, err)
+
+		// unblocked
+		assert.Equal(t, true, finishFn())
+	})
 }

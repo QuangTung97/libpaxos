@@ -300,17 +300,22 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	pos := entry.Pos
+
 	if entry.IsFinal {
 		if pos > remainPos.Pos {
 			return handleStatusFailed, nil
 		}
-	} else {
-		if remainPos.Pos != pos {
-			return handleStatusFailed, nil
-		}
-		if pos <= c.candidate.acceptPos {
-			return handleStatusFailed, nil
-		}
+
+		c.candidate.remainPosMap[id] = InfiniteLogPos{}
+		c.updateVoteRunners()
+		return handleStatusSuccess, nil
+	}
+
+	if remainPos.Pos != pos {
+		return handleStatusFailed, nil
+	}
+	if pos <= c.candidate.acceptPos {
+		return handleStatusFailed, nil
 	}
 
 	return c.waitForFreeSpace(ctx, id, entry.Pos, func() {
@@ -325,7 +330,6 @@ func (c *coreLogicImpl) waitForFreeSpace(
 	frontPos := c.leader.logBuffer.GetFrontPos()
 	maxBufferPos := frontPos + c.maxBufferLen - 1
 
-	// TODO testing
 	if pos > maxBufferPos {
 		if err := c.leader.bufferMaxCond.Wait(ctx, id); err != nil {
 			return handleStatusFailed, err
@@ -339,12 +343,6 @@ func (c *coreLogicImpl) waitForFreeSpace(
 
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 	pos := entry.Pos
-
-	if entry.IsFinal {
-		c.candidate.remainPosMap[id] = InfiniteLogPos{}
-		c.updateVoteRunners()
-		return
-	}
 
 	putEntry := entry.Entry
 	if !putEntry.Term.IsFinite {
@@ -609,6 +607,7 @@ func (c *coreLogicImpl) stepDownToFollower() {
 	c.candidate = nil
 
 	c.broadcastAllAcceptors()
+	c.leader.bufferMaxCond.Broadcast()
 	c.leader = nil
 
 	c.follower = &followerStateInfo{
@@ -830,10 +829,23 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 
 func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) {
 	c.leader.acceptorFullyReplicated[nodeID] = pos
-
-	// TODO pop from log buffer when nodeID == current node id
-
+	c.removeFromLogBuffer(nodeID, pos)
 	c.finishMembershipChange()
+}
+
+func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {
+	if id != c.persistent.GetNodeID() {
+		return
+	}
+
+	for {
+		frontPos := c.leader.logBuffer.GetFrontPos()
+		if frontPos > pos {
+			return
+		}
+		c.leader.logBuffer.PopFront()
+		c.leader.bufferMaxCond.Broadcast()
+	}
 }
 
 func (c *coreLogicImpl) finishMembershipChange() {
