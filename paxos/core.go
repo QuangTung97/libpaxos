@@ -768,7 +768,6 @@ StartFunction:
 			return err
 		}
 		if status == handleStatusNeedReCheck {
-			// TODO testing
 			goto StartFunction
 		}
 

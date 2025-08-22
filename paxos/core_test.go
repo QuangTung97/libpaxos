@@ -132,6 +132,10 @@ func (c *coreLogicTest) newInfLogEntry(cmdStr string) LogEntry {
 	}
 }
 
+func (c *coreLogicTest) newAcceptLogEntry(cmdStr string) LogEntry {
+	return NewCmdLogEntry(c.currentTerm.ToInf(), []byte(cmdStr))
+}
+
 func (c *coreLogicTest) doHandleVoteResp(
 	nodeID NodeID, fromPos LogPos, withFinal bool, entries ...LogEntry,
 ) {
@@ -1967,4 +1971,64 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting__State_Change_To_Fol
 		// unblocked
 		assert.Equal(t, true, finishFn())
 	})
+}
+
+func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd test 01",
+		"cmd test 02",
+	)
+
+	synctest.Test(t, func(t *testing.T) {
+		finishFn, assertNotFinish := testutil.RunAsync(t, func() bool {
+			c.doInsertCmd(
+				"cmd test 03",
+				"cmd test 04",
+			)
+			return true
+		})
+
+		c.doHandleAccept(nodeID1, 2)
+		c.doHandleAccept(nodeID2, 2)
+		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+		assertNotFinish()
+
+		c.doUpdateFullyReplicated(nodeID1, 2)
+		assert.Equal(t, true, finishFn())
+
+		accReq := c.doGetAcceptReq(nodeID3, 0, 0)
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID3,
+			Term:   c.currentTerm,
+			Entries: []AcceptLogEntry{
+				{Pos: 3, Entry: c.newAcceptLogEntry("cmd test 02")},
+				{Pos: 4, Entry: c.newAcceptLogEntry("cmd test 03")},
+				{Pos: 5, Entry: c.newAcceptLogEntry("cmd test 04")},
+			},
+			Committed: 2,
+		}, accReq)
+	})
+}
+
+func TestCoreLogic__Leader__Insert_Cmd__Waiting__Context_Cancel(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd test 01",
+		"cmd test 02",
+		"cmd test 03",
+	)
+
+	err := c.core.InsertCommand(c.cancelCtx, c.currentTerm, []byte("cmd test 04"))
+	assert.Equal(t, context.Canceled, err)
 }
