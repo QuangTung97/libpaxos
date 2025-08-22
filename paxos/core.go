@@ -91,9 +91,14 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt    TimestampMilli
-	checkStatus followerCheckOtherStatus
-	waitCond    *NodeCond
+	wakeUpAt TimestampMilli
+
+	checkStatus       followerCheckOtherStatus
+	members           []MemberInfo
+	checkedSet        map[NodeID]struct{}
+	noActiveLeaderSet map[NodeID]struct{}
+
+	waitCond *NodeCond
 }
 
 type followerCheckOtherStatus int
@@ -644,18 +649,27 @@ func (c *coreLogicImpl) updateAllRunners() {
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
 
-	term := c.getCurrentTerm()
-	if c.state == StateFollower {
-		c.runner.StartFollowerRunner(term, true)
-	} else {
-		c.runner.StartFollowerRunner(term, false)
-	}
+	c.updateFetchingFollowerInfoRunners()
 
+	term := c.getCurrentTerm()
 	if c.state == StateLeader {
 		c.runner.SetLeader(term, true)
 	} else {
 		c.runner.SetLeader(term, false)
 	}
+}
+
+func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
+	term := c.getCurrentTerm()
+
+	if c.state != StateFollower {
+		c.runner.StartFetchingFollowerInfoRunners(term, nil)
+		return
+	}
+
+	allMembers := GetAllMembers(c.follower.members)
+	// TODO remove from checked set
+	c.runner.StartFetchingFollowerInfoRunners(term, allMembers)
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(

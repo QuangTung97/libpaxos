@@ -206,15 +206,14 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 	})
 }
 
-func TestNodeRunner__Follower(t *testing.T) {
+func TestNodeRunner__Fetching_Followers(t *testing.T) {
 	currentTerm := TermNum{
 		Num:    21,
 		NodeID: nodeID1,
 	}
 
 	synctest.Test(t, func(t *testing.T) {
-		var numActive atomic.Int64
-		var inputTerm TermNum
+		runningSet := map[NodeID]TermNum{}
 		var mut sync.Mutex
 
 		r, finish := NewNodeRunner(
@@ -222,32 +221,38 @@ func TestNodeRunner__Follower(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, term TermNum) error {
-				numActive.Add(1)
+			func(ctx context.Context, nodeID NodeID, term TermNum) error {
 				mut.Lock()
-				inputTerm = term
+				runningSet[nodeID] = term
 				mut.Unlock()
 
 				<-ctx.Done()
 
-				numActive.Add(-1)
+				mut.Lock()
+				delete(runningSet, nodeID)
+				mut.Unlock()
+
 				return nil
 			},
 		)
 
-		r.StartFollowerRunner(currentTerm, true)
+		nodes := map[NodeID]struct{}{
+			nodeID1: {},
+			nodeID2: {},
+			nodeID3: {},
+		}
+		r.StartFetchingFollowerInfoRunners(currentTerm, nodes)
+
 		synctest.Wait()
 
-		mut.Lock()
-		assert.Equal(t, int64(1), numActive.Load())
-		assert.Equal(t, currentTerm, inputTerm)
-		mut.Unlock()
-
-		r.StartFollowerRunner(currentTerm, false)
-		synctest.Wait()
-		assert.Equal(t, int64(0), numActive.Load())
+		assert.Equal(t, map[NodeID]TermNum{
+			nodeID1: currentTerm,
+			nodeID2: currentTerm,
+			nodeID3: currentTerm,
+		}, runningSet)
 
 		finish()
-		assert.Equal(t, int64(0), numActive.Load())
+
+		assert.Equal(t, map[NodeID]TermNum{}, runningSet)
 	})
 }

@@ -16,8 +16,8 @@ type NodeRunnerFake struct {
 	LeaderTerm paxos.TermNum
 	IsLeader   bool
 
-	FollowerTerm    paxos.TermNum
-	FollowerRunning bool
+	FetchFollowerTerm paxos.TermNum
+	FetchFollowers    []paxos.NodeID
 }
 
 var _ paxos.NodeRunner = &NodeRunnerFake{}
@@ -41,9 +41,11 @@ func (r *NodeRunnerFake) SetLeader(term paxos.TermNum, isLeader bool) {
 	r.IsLeader = isLeader
 }
 
-func (r *NodeRunnerFake) StartFollowerRunner(term paxos.TermNum, running bool) {
-	r.FollowerRunning = running
-	r.FollowerTerm = term
+func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
+	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+) {
+	r.FetchFollowerTerm = term
+	r.FetchFollowers = nodeSetToSlice(nodes)
 }
 
 func nodeSetToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {

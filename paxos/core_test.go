@@ -197,8 +197,8 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	// check leader & follower runners before election
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.LeaderTerm)
 	assert.Equal(t, false, c.runner.IsLeader)
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FollowerTerm)
-	assert.Equal(t, true, c.runner.FollowerRunning)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, true, c.runner.FetchFollowers)
 	assert.Equal(t, ChooseLeaderInfo{
 		NoActiveLeader:  true,
 		Members:         c.log.GetCommittedInfo().Members,
@@ -219,8 +219,8 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	// check leader & follower runners
 	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
 	assert.Equal(t, false, c.runner.IsLeader)
-	assert.Equal(t, c.currentTerm, c.runner.FollowerTerm)
-	assert.Equal(t, false, c.runner.FollowerRunning)
+	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, false, c.runner.FetchFollowers)
 
 	// get vote request
 	voteReq, err := c.core.GetVoteRequest(c.currentTerm, nodeID2)
@@ -1278,8 +1278,8 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		assert.Equal(t, newTerm, c.runner.LeaderTerm)
 		assert.Equal(t, false, c.runner.IsLeader)
 
-		assert.Equal(t, newTerm, c.runner.FollowerTerm)
-		assert.Equal(t, true, c.runner.FollowerRunning)
+		assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
+		assert.Equal(t, true, c.runner.FetchFollowers)
 
 		// check follower waiting
 		c.now.Add(4000)
@@ -1306,8 +1306,8 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
 		// check follower runner
-		assert.Equal(t, true, c.runner.FollowerRunning)
-		assert.Equal(t, newTerm, c.runner.FollowerTerm)
+		assert.Equal(t, true, c.runner.FetchFollowers)
+		assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 		assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 
 		checkFn, _ := testutil.RunAsync(t, func() error {
@@ -1564,8 +1564,8 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
 	assert.Equal(t, false, c.runner.IsLeader)
 
-	assert.Equal(t, c.currentTerm, c.runner.FollowerTerm)
-	assert.Equal(t, true, c.runner.FollowerRunning)
+	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, true, c.runner.FetchFollowers)
 
 	// try to insert command
 	err = c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))
