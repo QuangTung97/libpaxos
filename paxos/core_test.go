@@ -198,7 +198,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.LeaderTerm)
 	assert.Equal(t, false, c.runner.IsLeader)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
-	assert.Equal(t, true, c.runner.FetchFollowers)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, ChooseLeaderInfo{
 		NoActiveLeader:  true,
 		Members:         c.log.GetCommittedInfo().Members,
@@ -220,7 +220,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
 	assert.Equal(t, false, c.runner.IsLeader)
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
-	assert.Equal(t, false, c.runner.FetchFollowers)
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 
 	// get vote request
 	voteReq, err := c.core.GetVoteRequest(c.currentTerm, nodeID2)
@@ -1231,7 +1231,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		assert.Equal(t, false, c.runner.IsLeader)
 
 		assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
-		assert.Equal(t, true, c.runner.FetchFollowers)
+		assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	})
 }
 
@@ -1246,8 +1246,8 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 
 	c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
 	// check follower runner
-	assert.Equal(t, true, c.runner.FetchFollowers)
 	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 }
 
@@ -1495,7 +1495,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, false, c.runner.IsLeader)
 
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
-	assert.Equal(t, true, c.runner.FetchFollowers)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 
 	// try to insert command
 	err = c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))

@@ -62,10 +62,7 @@ func NewCoreLogic(
 		runner:     runner,
 	}
 
-	c.follower = &followerStateInfo{
-		wakeUpAt: c.nowFunc(),
-	}
-
+	c.updateFollowerWakeUpAt(false)
 	c.updateAllRunners()
 
 	return c
@@ -88,9 +85,13 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt          TimestampMilli
-	checkStatus       followerCheckOtherStatus
-	members           []MemberInfo
+	wakeUpAt    TimestampMilli
+	checkStatus followerCheckOtherStatus
+
+	members    []MemberInfo
+	lastPos    LogPos
+	lastNodeID NodeID
+
 	checkedSet        map[NodeID]struct{}
 	noActiveLeaderSet map[NodeID]struct{}
 }
@@ -613,13 +614,33 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos
 }
 
 func (c *coreLogicImpl) updateFollowerWakeUpAt(causedByAnotherLeader bool) {
-	c.follower.wakeUpAt = c.computeNextWakeUp()
+	c.follower = &followerStateInfo{
+		wakeUpAt: c.computeNextWakeUp(),
+	}
 
 	if causedByAnotherLeader {
 		c.follower.checkStatus = followerCheckOtherStatusLeaderIsActive
-	} else {
-		c.follower.checkStatus = followerCheckOtherStatusRunning
+		c.updateFetchingFollowerInfoRunners()
+		return
 	}
+
+	c.follower.checkStatus = followerCheckOtherStatusRunning
+
+	commitInfo := c.log.GetCommittedInfo()
+	c.follower.members = commitInfo.Members
+	c.follower.lastPos = commitInfo.FullyReplicated
+
+	currentNodeID := c.persistent.GetNodeID()
+	c.follower.lastNodeID = currentNodeID
+	c.follower.checkedSet = map[NodeID]struct{}{
+		currentNodeID: {},
+	}
+	c.follower.noActiveLeaderSet = map[NodeID]struct{}{
+		currentNodeID: {},
+	}
+
+	// TODO run job to start election
+	c.updateFetchingFollowerInfoRunners()
 }
 
 func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
@@ -639,7 +660,6 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 func (c *coreLogicImpl) updateAllRunners() {
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
-
 	c.updateFetchingFollowerInfoRunners()
 
 	term := c.getCurrentTerm()
@@ -654,6 +674,11 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
 	term := c.getCurrentTerm()
 
 	if c.state != StateFollower {
+		c.runner.StartFetchingFollowerInfoRunners(term, nil)
+		return
+	}
+
+	if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
 		c.runner.StartFetchingFollowerInfoRunners(term, nil)
 		return
 	}
