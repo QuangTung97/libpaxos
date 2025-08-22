@@ -47,14 +47,17 @@ func (m *MemLog) GetFrontTerm() InfiniteTerm {
 	return entry.entry.Term
 }
 
-func (m *MemLog) PopFront() {
+func (m *MemLog) PopFront() LogEntry {
 	index := m.getQueueIndex(0)
+	oldEntry := m.queueData[index].entry
 	m.queueData[index] = memLogEntry{}
 
 	mask := len(m.queueData) - 1
 	m.frontIndex = (m.frontIndex + 1) & mask
 	*m.lastCommitted++
 	m.queueLen--
+
+	return oldEntry
 }
 
 func (m *MemLog) getQueueIndex(offset int) int {

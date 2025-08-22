@@ -104,7 +104,7 @@ type leaderStateInfo struct {
 
 	acceptorFullyReplicated map[NodeID]LogPos
 
-	// TODO add log buffer
+	logBuffer *LogBuffer
 }
 
 func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
@@ -139,7 +139,9 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
+
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
+	c.leader.logBuffer = NewLogBuffer(&c.leader.lastCommitted, 10)
 
 	// init candidate state
 	c.candidate = &candidateStateInfo{
@@ -641,7 +643,8 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 		}
 
 		// when term = +infinity
-		memLog.PopFront()
+		popEntry := memLog.PopFront()
+		c.leader.logBuffer.Insert(popEntry)
 
 		c.finishMembershipChange()
 		c.broadcastAllAcceptors()
@@ -890,6 +893,7 @@ func (c *coreLogicImpl) CheckInvariant() {
 		AssertTrue(c.follower == nil)
 		AssertTrue(c.candidate != nil)
 		AssertTrue(c.leader != nil)
+		AssertTrue(c.candidate.acceptPos <= c.leader.memLog.MaxLogPos())
 
 	default:
 		AssertTrue(c.follower != nil)

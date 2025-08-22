@@ -102,8 +102,11 @@ func TestMemLog(t *testing.T) {
 		m.Put(22, entry2)
 		assert.Equal(t, 2, m.GetQueueSize())
 
-		m.PopFront()
-		m.PopFront()
+		popEntry := m.PopFront()
+		assert.Equal(t, entry1, popEntry)
+
+		popEntry = m.PopFront()
+		assert.Equal(t, entry2, popEntry)
 		assert.Equal(t, 0, m.GetQueueSize())
 
 		m.Put(27, entry3)
