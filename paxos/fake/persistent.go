@@ -28,13 +28,3 @@ func (s *PersistentStateFake) GetLastTerm() paxos.TermNum {
 func (s *PersistentStateFake) GetNodeID() paxos.NodeID {
 	return s.NodeID
 }
-
-func (s *PersistentStateFake) UpdateForceStayAsFollower(maxPos paxos.LogPos, stayed bool) {
-	s.UpdateStayCalls++
-	s.StayMaxPos = maxPos
-	s.StayAsFollower = stayed
-}
-
-func (s *PersistentStateFake) GetForceStayAsFollower() (paxos.LogPos, bool) {
-	return s.StayMaxPos, s.StayAsFollower
-}

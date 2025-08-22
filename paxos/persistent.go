@@ -6,7 +6,4 @@ type PersistentState interface {
 	GetLastTerm() TermNum
 
 	GetNodeID() NodeID
-
-	UpdateForceStayAsFollower(maxPos LogPos, stayed bool)
-	GetForceStayAsFollower() (LogPos, bool)
 }

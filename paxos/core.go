@@ -66,7 +66,7 @@ func NewCoreLogic(
 		waitCond: NewNodeCond(&c.mut),
 	}
 
-	c.resetRunnersForFollower()
+	c.updateAllRunners()
 
 	return c
 }
@@ -123,11 +123,13 @@ func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
 	c.persistent.UpdateLastTerm(newTerm)
 }
 
-func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos) {
+func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos) error {
 	c.leader.members = newMembers
+	c.updateVoteRunners()
+	c.updateAcceptRunners()
 
 	if c.isInMemberList(c.persistent.GetNodeID()) {
-		return
+		return nil
 	}
 
 	c.leader.leaderStepDownAt = NullLogPos{
@@ -135,7 +137,7 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 		Pos:   pos,
 	}
 
-	c.stepDownWhenNotInMemberList()
+	return c.stepDownWhenNotInMemberList()
 }
 
 func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue) error {
@@ -161,9 +163,6 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
 
-	newMembers := slices.Clone(commitInfo.Members)
-	c.updateLeaderMembers(newMembers, commitInfo.FullyReplicated)
-
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 	c.leader.logBuffer = NewLogBuffer(&c.leader.lastCommitted, 10)
 	c.leader.bufferMaxCond = NewNodeCond(&c.mut)
@@ -178,24 +177,22 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 	c.follower.waitCond.Broadcast()
 	c.follower = nil
 
-	c.updateVoteRunners()
-	c.updateAcceptRunners()
+	newMembers := slices.Clone(commitInfo.Members)
+	if err := c.updateLeaderMembers(newMembers, commitInfo.FullyReplicated); err != nil {
+		return err
+	}
 
-	term := c.getCurrentTerm()
-	c.runner.SetLeader(term, false)
-	c.runner.StartFollowerRunner(term, false)
-
+	c.updateAllRunners()
 	return nil
 }
 
 func (c *coreLogicImpl) updateVoteRunners() {
-	if c.state == StateLeader {
+	if c.state == StateFollower || c.state == StateLeader {
 		c.runner.StartVoteRequestRunners(c.getCurrentTerm(), nil)
 		return
 	}
 
 	allMembers := GetAllMembers(c.leader.members)
-
 	for nodeID := range allMembers {
 		_, ok := c.candidate.remainPosMap[nodeID]
 		if ok {
@@ -217,6 +214,11 @@ func (c *coreLogicImpl) updateVoteRunners() {
 }
 
 func (c *coreLogicImpl) updateAcceptRunners() {
+	if c.state == StateFollower {
+		c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), nil)
+		return
+	}
+
 	allMembers := GetAllMembers(c.leader.members)
 	c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), allMembers)
 }
@@ -291,10 +293,11 @@ StartFunction:
 		output.Entries = output.Entries[1:]
 	}
 
-	c.increaseAcceptPos()
-	c.switchFromCandidateToLeader()
+	if err := c.increaseAcceptPos(); err != nil {
+		return err
+	}
 
-	return nil
+	return c.switchFromCandidateToLeader()
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
@@ -388,18 +391,22 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 	}
 }
 
-func (c *coreLogicImpl) increaseAcceptPos() {
+func (c *coreLogicImpl) increaseAcceptPos() error {
 	for {
-		ok := c.tryIncreaseAcceptPosAt(c.candidate.acceptPos + 1)
+		ok, err := c.tryIncreaseAcceptPosAt(c.candidate.acceptPos + 1)
+		if err != nil {
+			return err
+		}
 		if !ok {
 			break
 		}
 	}
+	return nil
 }
 
-func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
+func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 	if pos > c.leader.memLog.MaxLogPos() {
-		return false
+		return false, nil
 	}
 
 	remainOkSet := map[NodeID]struct{}{}
@@ -416,7 +423,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	}
 
 	if !IsQuorum(c.leader.members, remainOkSet) {
-		return false
+		return false, nil
 	}
 
 	c.candidate.acceptPos = pos
@@ -437,27 +444,26 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	}
 
 	if logEntry.Type == LogTypeMembership {
-		c.updateLeaderMembers(logEntry.Members, pos)
-		c.updateVoteRunners()
-		c.updateAcceptRunners()
+		if err := c.updateLeaderMembers(logEntry.Members, pos); err != nil {
+			return false, err
+		}
 	}
 
-	return true
+	return true, nil
 }
 
-func (c *coreLogicImpl) stepDownWhenNotInMemberList() bool {
+func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 	stepDownAt := c.leader.leaderStepDownAt
 	if !stepDownAt.Valid {
-		return false
+		return nil
 	}
 
 	if stepDownAt.Pos > c.leader.lastCommitted {
-		return false
+		return nil
 	}
 
-	c.persistent.UpdateForceStayAsFollower(c.leader.lastCommitted, true)
 	c.stepDownToFollower()
-	return true
+	return fmt.Errorf("current leader has just stepped down")
 }
 
 func (c *coreLogicImpl) isInMemberList(nodeID NodeID) bool {
@@ -471,7 +477,7 @@ func (c *coreLogicImpl) isInMemberList(nodeID NodeID) bool {
 	return false
 }
 
-func (c *coreLogicImpl) switchFromCandidateToLeader() {
+func (c *coreLogicImpl) switchFromCandidateToLeader() error {
 	infiniteSet := map[NodeID]struct{}{}
 	for nodeID, remainPos := range c.candidate.remainPosMap {
 		if !remainPos.IsFinite {
@@ -480,7 +486,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 	}
 
 	if !IsQuorum(c.leader.members, infiniteSet) {
-		return
+		return nil
 	}
 
 	c.state = StateLeader
@@ -488,7 +494,7 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() {
 	c.updateVoteRunners()
 	c.runner.SetLeader(c.getCurrentTerm(), true)
 
-	c.finishMembershipChange()
+	return c.finishMembershipChange()
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
@@ -569,24 +575,6 @@ func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	return false
 }
 
-func (c *coreLogicImpl) clearForceStayAsFollower(pos LogPos) {
-	if c.state != StateFollower {
-		return
-	}
-
-	maxPos, stayed := c.persistent.GetForceStayAsFollower()
-	if !stayed {
-		return
-	}
-
-	if pos <= maxPos {
-		return
-	}
-
-	c.persistent.UpdateForceStayAsFollower(0, false)
-	c.follower.waitCond.Broadcast()
-}
-
 func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
 	term TermNum, pos LogPos,
 ) bool {
@@ -596,16 +584,8 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
 	return c.followDoCheckAcceptEntriesRequest(term, pos)
 }
 
-func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, pos LogPos) bool {
+func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos) bool {
 	cmpResult := CompareTermNum(c.getCurrentTerm(), term)
-
-	if pos > 0 {
-		if cmpResult <= 0 {
-			// TODO test if condition
-			c.clearForceStayAsFollower(pos)
-		}
-	}
-
 	if cmpResult >= 0 {
 		// current term >= term => do nothing
 		return false
@@ -615,7 +595,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, pos LogP
 
 	if c.state == StateFollower {
 		c.follower.wakeUpAt = c.computeNextWakeUp()
-		c.resetRunnersForFollower()
+		c.updateAllRunners()
 		return true
 	}
 
@@ -637,16 +617,25 @@ func (c *coreLogicImpl) stepDownToFollower() {
 		waitCond: NewNodeCond(&c.mut),
 	}
 
-	c.resetRunnersForFollower()
+	c.updateAllRunners()
 }
 
-func (c *coreLogicImpl) resetRunnersForFollower() {
-	term := c.getCurrentTerm()
+func (c *coreLogicImpl) updateAllRunners() {
+	c.updateVoteRunners()
+	c.updateAcceptRunners()
 
-	c.runner.StartVoteRequestRunners(term, nil)
-	c.runner.StartAcceptRequestRunners(term, nil)
-	c.runner.StartFollowerRunner(term, true)
-	c.runner.SetLeader(term, false)
+	term := c.getCurrentTerm()
+	if c.state == StateFollower {
+		c.runner.StartFollowerRunner(term, true)
+	} else {
+		c.runner.StartFollowerRunner(term, false)
+	}
+
+	if c.state == StateLeader {
+		c.runner.SetLeader(term, true)
+	} else {
+		c.runner.SetLeader(term, false)
+	}
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(
@@ -668,7 +657,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		c.handleAcceptResponseForPos(fromNode, pos)
 	}
 
-	c.increaseLastCommitted()
+	_ = c.increaseLastCommitted()
 	return nil
 }
 
@@ -702,7 +691,7 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 	return true
 }
 
-func (c *coreLogicImpl) increaseLastCommitted() {
+func (c *coreLogicImpl) increaseLastCommitted() error {
 	memLog := c.leader.memLog
 
 	for memLog.GetQueueSize() > 0 {
@@ -715,12 +704,17 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 		popEntry := memLog.PopFront()
 		c.leader.logBuffer.Insert(popEntry)
 
-		c.finishMembershipChange()
+		if err := c.finishMembershipChange(); err != nil {
+			return err
+		}
 		c.broadcastAllAcceptors()
-		if c.stepDownWhenNotInMemberList() {
-			return
+
+		if err := c.stepDownWhenNotInMemberList(); err != nil {
+			return err
 		}
 	}
+
+	return nil
 }
 
 func (c *coreLogicImpl) isValidLeader(term TermNum) error {
@@ -840,23 +834,20 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 		Nodes:     newNodes,
 		CreatedAt: pos,
 	})
-	c.updateLeaderMembers(newMembers, pos)
 
-	entry := LogEntry{
-		Type:    LogTypeMembership,
-		Term:    c.getCurrentTerm().ToInf(),
-		Members: c.leader.members,
-	}
+	entry := NewMembershipLogEntry(
+		c.getCurrentTerm().ToInf(),
+		newMembers,
+	)
 	c.appendNewEntry(pos, entry)
-	c.updateAcceptRunners()
 
-	return nil
+	return c.updateLeaderMembers(newMembers, pos)
 }
 
-func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) {
+func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) error {
 	c.leader.acceptorFullyReplicated[nodeID] = pos
 	c.removeFromLogBuffer(nodeID, pos)
-	c.finishMembershipChange()
+	return c.finishMembershipChange()
 }
 
 func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {
@@ -874,18 +865,18 @@ func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {
 	}
 }
 
-func (c *coreLogicImpl) finishMembershipChange() {
+func (c *coreLogicImpl) finishMembershipChange() error {
 	if c.state != StateLeader {
-		return
+		return nil
 	}
 
 	if len(c.leader.members) <= 1 {
-		return
+		return nil
 	}
 
 	newConf := c.leader.members[1]
 	if newConf.CreatedAt > c.leader.lastCommitted {
-		return
+		return nil
 	}
 
 	validSet := map[NodeID]struct{}{}
@@ -897,21 +888,20 @@ func (c *coreLogicImpl) finishMembershipChange() {
 	}
 
 	if !IsQuorum([]MemberInfo{newConf}, validSet) {
-		return
+		return nil
 	}
 
 	pos := c.leader.memLog.MaxLogPos() + 1
 	newMembers := slices.Clone(c.leader.members[1:])
 	newMembers[0].CreatedAt = 1
-	c.updateLeaderMembers(newMembers, pos)
 
-	entry := LogEntry{
-		Type:    LogTypeMembership,
-		Term:    c.getCurrentTerm().ToInf(),
-		Members: c.leader.members,
-	}
+	entry := NewMembershipLogEntry(
+		c.getCurrentTerm().ToInf(),
+		newMembers,
+	)
 	c.appendNewEntry(pos, entry)
-	c.updateAcceptRunners()
+
+	return c.updateLeaderMembers(newMembers, pos)
 }
 
 func (c *coreLogicImpl) GetReadyToStartElection(ctx context.Context, term TermNum) error {
@@ -923,9 +913,7 @@ StartLoop:
 		return err
 	}
 
-	_, stayed := c.persistent.GetForceStayAsFollower()
-
-	if stayed || !c.isExpired(c.follower.wakeUpAt) {
+	if !c.isExpired(c.follower.wakeUpAt) {
 		if err := c.follower.waitCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
 			return err
 		}
@@ -943,7 +931,9 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 		return AcceptEntriesInput{}, err
 	}
 
-	c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated)
+	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
+		return AcceptEntriesInput{}, err
+	}
 
 	// TODO get entries from log storage
 
@@ -1012,11 +1002,6 @@ func (c *coreLogicImpl) CheckInvariant() {
 		AssertTrue(c.follower != nil)
 		AssertTrue(c.candidate == nil)
 		AssertTrue(c.leader == nil)
-		AssertTrue(c.state == StateFollower)
-	}
-
-	_, stayed := c.persistent.GetForceStayAsFollower()
-	if stayed {
 		AssertTrue(c.state == StateFollower)
 	}
 }
