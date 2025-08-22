@@ -981,19 +981,22 @@ func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	noActiveLeader := true
-	if c.state == StateFollower {
-		if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
-			noActiveLeader = false
+	if c.state != StateFollower {
+		return ChooseLeaderInfo{
+			NoActiveLeader: false,
 		}
-	} else {
-		noActiveLeader = false
+	}
+
+	if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
+		return ChooseLeaderInfo{
+			NoActiveLeader: false,
+		}
 	}
 
 	commitInfo := c.log.GetCommittedInfo()
 
 	return ChooseLeaderInfo{
-		NoActiveLeader:  noActiveLeader,
+		NoActiveLeader:  true,
 		Members:         commitInfo.Members,
 		FullyReplicated: commitInfo.FullyReplicated,
 	}

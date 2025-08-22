@@ -31,9 +31,10 @@ type AcceptLogEntry struct {
 }
 
 type AcceptEntriesOutput struct {
-	Success bool
-	Term    TermNum
-	PosList []LogPos
+	Success   bool
+	Term      TermNum
+	PosList   []LogPos
+	Committed LogPos // TODO produce and handle
 }
 
 type CommittedInfo struct {
