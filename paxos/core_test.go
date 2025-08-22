@@ -40,7 +40,18 @@ type coreLogicTest struct {
 	currentTerm TermNum
 }
 
+type coreLogicTestConfig struct {
+	maxBufferLen LogPos
+}
+
 func newCoreLogicTest(t *testing.T) *coreLogicTest {
+	config := coreLogicTestConfig{
+		maxBufferLen: 1000,
+	}
+	return newCoreLogicTestWithConfig(t, config)
+}
+
+func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreLogicTest {
 	c := &coreLogicTest{}
 
 	c.ctx = context.Background()
@@ -91,6 +102,7 @@ func newCoreLogicTest(t *testing.T) *coreLogicTest {
 		func() TimestampMilli {
 			return TimestampMilli(c.now.Load())
 		},
+		config.maxBufferLen,
 	)
 
 	t.Cleanup(c.core.CheckInvariant)
@@ -142,7 +154,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 		Entries: voteEntries,
 	}
 
-	if err := c.core.HandleVoteResponse(nodeID, voteOutput); err != nil {
+	if err := c.core.HandleVoteResponse(c.ctx, nodeID, voteOutput); err != nil {
 		panic("Should handle vote response ok, but got: " + err.Error())
 	}
 
@@ -165,7 +177,7 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 	for _, cmd := range cmdList {
 		cmdListBytes = append(cmdListBytes, []byte(cmd))
 	}
-	if err := c.core.InsertCommand(c.currentTerm, cmdListBytes...); err != nil {
+	if err := c.core.InsertCommand(c.ctx, c.currentTerm, cmdListBytes...); err != nil {
 		panic("can not insert, error: " + err.Error())
 	}
 
@@ -240,14 +252,14 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	}
 
 	// handle vote response
-	err := c.core.HandleVoteResponse(nodeID1, voteOutput)
+	err := c.core.HandleVoteResponse(c.ctx, nodeID1, voteOutput)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.VoteRunners)
 
 	// switch to leader state
-	err = c.core.HandleVoteResponse(nodeID2, voteOutput)
+	err = c.core.HandleVoteResponse(c.ctx, nodeID2, voteOutput)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, StateLeader, c.core.GetState())
 
@@ -256,7 +268,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	assert.Equal(t, true, c.runner.IsLeader)
 
 	// do nothing
-	err = c.core.HandleVoteResponse(nodeID3, voteOutput)
+	err = c.core.HandleVoteResponse(c.ctx, nodeID3, voteOutput)
 	assert.Equal(t, errors.New("expected state 'Candidate', got: 'Leader'"), err)
 }
 
@@ -1517,7 +1529,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	// try to insert command
-	err := c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
+	err := c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))
 	assert.Equal(t, errors.New("current leader is stopping"), err)
 
 	// try to change membership again
@@ -1543,7 +1555,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, LogPos(4), stayMaxPos)
 
 	// try to insert command
-	err = c.core.InsertCommand(c.currentTerm, []byte("data test 01"))
+	err = c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))
 	assert.Equal(t, errors.New("expected state 'Leader', got: 'Follower'"), err)
 
 	newTerm := TermNum{
@@ -1804,7 +1816,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp__Not_Success__Higher_Term(t *tes
 		Num:    22,
 		NodeID: nodeID2,
 	}
-	err := c.core.HandleVoteResponse(nodeID3, RequestVoteOutput{
+	err := c.core.HandleVoteResponse(c.ctx, nodeID3, RequestVoteOutput{
 		Success: false,
 		Term:    newTerm,
 	})
@@ -1824,7 +1836,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp__Not_Success__Lower_Term__Do_Not
 		Num:    15,
 		NodeID: nodeID2,
 	}
-	err := c.core.HandleVoteResponse(nodeID3, RequestVoteOutput{
+	err := c.core.HandleVoteResponse(c.ctx, nodeID3, RequestVoteOutput{
 		Success: false,
 		Term:    newTerm,
 	})

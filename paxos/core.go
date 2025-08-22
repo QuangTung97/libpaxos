@@ -11,7 +11,7 @@ type CoreLogic interface {
 	StartElection(term TermNum, maxTermValue TermValue) error
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
-	HandleVoteResponse(fromNode NodeID, output RequestVoteOutput) error
+	HandleVoteResponse(ctx context.Context, fromNode NodeID, output RequestVoteOutput) error
 
 	GetAcceptEntriesRequest(
 		ctx context.Context, term TermNum, toNode NodeID,
@@ -22,7 +22,7 @@ type CoreLogic interface {
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
-	InsertCommand(term TermNum, cmdDataList ...[]byte) error
+	InsertCommand(ctx context.Context, term TermNum, cmdDataList ...[]byte) error
 
 	CheckTimeout()
 
@@ -48,10 +48,13 @@ func NewCoreLogic(
 	log LeaderLogGetter,
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
+	maxBufferLen LogPos,
 ) CoreLogic {
 	c := &coreLogicImpl{
-		state:   StateFollower,
-		nowFunc: nowFunc,
+		nowFunc:      nowFunc,
+		maxBufferLen: maxBufferLen,
+
+		state: StateFollower,
 
 		persistent: persistent,
 		log:        log,
@@ -69,7 +72,8 @@ func NewCoreLogic(
 }
 
 type coreLogicImpl struct {
-	nowFunc func() TimestampMilli
+	nowFunc      func() TimestampMilli
+	maxBufferLen LogPos
 
 	mut   sync.Mutex
 	state State
@@ -104,7 +108,8 @@ type leaderStateInfo struct {
 
 	acceptorFullyReplicated map[NodeID]LogPos
 
-	logBuffer *LogBuffer
+	logBuffer     *LogBuffer
+	bufferMaxCond *NodeCond
 }
 
 func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
@@ -142,6 +147,7 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 	c.leader.logBuffer = NewLogBuffer(&c.leader.lastCommitted, 10)
+	c.leader.bufferMaxCond = NewNodeCond(&c.mut)
 
 	// init candidate state
 	c.candidate = &candidateStateInfo{
@@ -236,7 +242,9 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 	}, nil
 }
 
-func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) error {
+func (c *coreLogicImpl) HandleVoteResponse(
+	ctx context.Context, id NodeID, output RequestVoteOutput,
+) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -245,12 +253,23 @@ func (c *coreLogicImpl) HandleVoteResponse(id NodeID, output RequestVoteOutput) 
 		return nil
 	}
 
+StartFunction:
 	if err := c.checkStateEqual(output.Term, StateCandidate); err != nil {
 		return err
 	}
 
-	for _, entry := range output.Entries {
-		c.handleVoteResponseEntry(id, entry)
+	for len(output.Entries) > 0 {
+		entry := output.Entries[0]
+
+		status, err := c.handleVoteResponseEntry(ctx, id, entry)
+		if err != nil {
+			return err
+		}
+		if status == handleStatusNeedReCheck {
+			goto StartFunction
+		}
+
+		output.Entries = output.Entries[1:]
 	}
 
 	c.increaseAcceptPos()
@@ -263,30 +282,59 @@ func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
 	c.followDoCheckAcceptEntriesRequest(inputTerm, 0)
 }
 
+type handleStatus int
+
+const (
+	handleStatusSuccess handleStatus = iota + 1
+	handleStatusFailed
+	handleStatusNeedReCheck
+)
+
 func (c *coreLogicImpl) handleVoteResponseEntry(
-	id NodeID, entry VoteLogEntry,
-) {
+	ctx context.Context, id NodeID, entry VoteLogEntry,
+) (handleStatus, error) {
 	remainPos := c.candidate.remainPosMap[id]
 	if !remainPos.IsFinite {
 		// is infinite => do nothing
-		return
+		return handleStatusFailed, nil
 	}
 
 	pos := entry.Pos
 	if entry.IsFinal {
 		if pos > remainPos.Pos {
-			return
+			return handleStatusFailed, nil
 		}
 	} else {
 		if remainPos.Pos != pos {
-			return
+			return handleStatusFailed, nil
 		}
 		if pos <= c.candidate.acceptPos {
-			return
+			return handleStatusFailed, nil
 		}
 	}
 
-	c.candidatePutVoteEntry(id, entry)
+	return c.waitForFreeSpace(ctx, id, entry.Pos, func() {
+		c.candidatePutVoteEntry(id, entry)
+	})
+}
+
+func (c *coreLogicImpl) waitForFreeSpace(
+	ctx context.Context, id NodeID, pos LogPos,
+	callback func(),
+) (handleStatus, error) {
+	frontPos := c.leader.logBuffer.GetFrontPos()
+	maxBufferPos := frontPos + c.maxBufferLen - 1
+
+	// TODO testing
+	if pos > maxBufferPos {
+		if err := c.leader.bufferMaxCond.Wait(ctx, id); err != nil {
+			return handleStatusFailed, err
+		}
+		return handleStatusNeedReCheck, nil
+	}
+
+	callback()
+	return handleStatusSuccess, nil
 }
 
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
@@ -533,7 +581,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, pos LogP
 
 	if pos > 0 {
 		if cmpResult <= 0 {
-			// TODO test condition
+			// TODO test if condition
 			c.clearForceStayAsFollower(pos)
 		}
 	}
@@ -664,26 +712,44 @@ func (c *coreLogicImpl) isValidLeader(term TermNum) error {
 	return nil
 }
 
-func (c *coreLogicImpl) InsertCommand(term TermNum, cmdList ...[]byte) error {
+func (c *coreLogicImpl) InsertCommand(
+	ctx context.Context, term TermNum, cmdList ...[]byte,
+) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+StartFunction:
 	if err := c.isValidLeader(term); err != nil {
 		return err
 	}
 
 	for _, cmd := range cmdList {
-		maxPos := c.leader.memLog.MaxLogPos()
-		pos := maxPos + 1
+		status, err := c.handleInsertSingleCmd(ctx, cmd)
+		if err != nil {
+			return err
+		}
+		if status == handleStatusNeedReCheck {
+			goto StartFunction
+		}
+	}
+
+	return nil
+}
+
+func (c *coreLogicImpl) handleInsertSingleCmd(
+	ctx context.Context, cmd []byte,
+) (handleStatus, error) {
+	maxPos := c.leader.memLog.MaxLogPos()
+	pos := maxPos + 1
+
+	return c.waitForFreeSpace(ctx, c.persistent.GetNodeID(), pos, func() {
 		entry := LogEntry{
 			Type:    LogTypeCmd,
 			Term:    c.getCurrentTerm().ToInf(),
 			CmdData: cmd,
 		}
 		c.appendNewEntry(pos, entry)
-	}
-
-	return nil
+	})
 }
 
 func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {
@@ -764,6 +830,9 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 
 func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) {
 	c.leader.acceptorFullyReplicated[nodeID] = pos
+
+	// TODO pop from log buffer when nodeID == current node id
+
 	c.finishMembershipChange()
 }
 
@@ -836,6 +905,8 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	}
 
 	c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated)
+
+	// TODO get entries from log storage
 
 	return AcceptEntriesInput{
 		ToNode:  input.FromNode,
