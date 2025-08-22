@@ -1895,10 +1895,10 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting(t *testing.T) {
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 18)
-	entry3 := c.newLogEntry("cmd data 03", 18)
-	entry4 := c.newLogEntry("cmd data 04", 18)
+	entry1 := c.newLogEntry("cmd data 01", 18) // pos = 2
+	entry2 := c.newLogEntry("cmd data 02", 18) // pos = 3
+	entry3 := c.newLogEntry("cmd data 03", 18) // pos = 4
+	entry4 := c.newLogEntry("cmd data 04", 18) // pos = 5
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2, entry3)
 
@@ -1918,13 +1918,17 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting(t *testing.T) {
 		c.doHandleAccept(nodeID2, 2)
 		assertNotFinish()
 		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+		assert.Equal(t, LogPos(2), c.core.GetMinBufferLogPos())
 
 		// update other node id
 		c.doUpdateFullyReplicated(nodeID2, 2)
 		assertNotFinish()
+		assert.Equal(t, LogPos(2), c.core.GetMinBufferLogPos())
 
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, true, finishFn())
+		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+		assert.Equal(t, LogPos(3), c.core.GetMinBufferLogPos())
 	})
 }
 

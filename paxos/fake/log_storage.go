@@ -115,6 +115,10 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLog
 	return result
 }
 
+func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosLogEntry {
+	return nil
+}
+
 func (s *LogStorageFake) SetTerm(term paxos.TermNum) {
 	s.Term = term
 }

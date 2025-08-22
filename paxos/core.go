@@ -40,6 +40,7 @@ type CoreLogic interface {
 
 	GetState() State
 	GetLastCommitted() LogPos
+	GetMinBufferLogPos() LogPos
 
 	// CheckInvariant for testing only
 	CheckInvariant()
@@ -759,7 +760,9 @@ StartFunction:
 		return err
 	}
 
-	for _, cmd := range cmdList {
+	for len(cmdList) > 0 {
+		cmd := cmdList[0]
+
 		status, err := c.handleInsertSingleCmd(ctx, cmd)
 		if err != nil {
 			return err
@@ -768,6 +771,8 @@ StartFunction:
 			// TODO testing
 			goto StartFunction
 		}
+
+		cmdList = cmdList[1:]
 	}
 
 	return nil
@@ -999,6 +1004,12 @@ func (c *coreLogicImpl) GetLastCommitted() LogPos {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	return c.leader.lastCommitted
+}
+
+func (c *coreLogicImpl) GetMinBufferLogPos() LogPos {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.leader.logBuffer.GetFrontPos()
 }
 
 func (c *coreLogicImpl) computeNextWakeUp() TimestampMilli {
