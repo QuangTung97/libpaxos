@@ -28,8 +28,6 @@ type CoreLogic interface {
 
 	ChangeMembership(term TermNum, newNodes []NodeID) error
 
-	GetReadyToStartElection(ctx context.Context, term TermNum) error
-
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
 	GetChoosingLeaderInfo() ChooseLeaderInfo
@@ -66,7 +64,6 @@ func NewCoreLogic(
 
 	c.follower = &followerStateInfo{
 		wakeUpAt: c.nowFunc(),
-		waitCond: NewNodeCond(&c.mut),
 	}
 
 	c.updateAllRunners()
@@ -91,14 +88,11 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt TimestampMilli
-
+	wakeUpAt          TimestampMilli
 	checkStatus       followerCheckOtherStatus
 	members           []MemberInfo
 	checkedSet        map[NodeID]struct{}
 	noActiveLeaderSet map[NodeID]struct{}
-
-	waitCond *NodeCond
 }
 
 type followerCheckOtherStatus int
@@ -196,7 +190,6 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 	}
 
 	// clear follower
-	c.follower.waitCond.Broadcast()
 	c.follower = nil
 
 	newMembers := slices.Clone(commitInfo.Members)
@@ -637,9 +630,7 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.leader.bufferMaxCond.Broadcast()
 	c.leader = nil
 
-	c.follower = &followerStateInfo{
-		waitCond: NewNodeCond(&c.mut),
-	}
+	c.follower = &followerStateInfo{}
 	c.updateFollowerWakeUpAt(causedByAnotherLeader)
 
 	c.updateAllRunners()
@@ -818,7 +809,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 
 	if c.state == StateFollower {
 		if c.isExpired(c.follower.wakeUpAt) {
-			c.follower.waitCond.Broadcast()
+			// TODO
 		}
 		return
 	}
@@ -939,26 +930,6 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 	c.appendNewEntry(pos, entry)
 
 	return c.updateLeaderMembers(newMembers, pos)
-}
-
-func (c *coreLogicImpl) GetReadyToStartElection(ctx context.Context, term TermNum) error {
-	c.mut.Lock()
-	defer c.mut.Unlock()
-
-StartLoop:
-	if err := c.checkStateEqual(term, StateFollower); err != nil {
-		return err
-	}
-
-	if !c.isExpired(c.follower.wakeUpAt) {
-		if err := c.follower.waitCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
-			return err
-		}
-		goto StartLoop
-	}
-
-	c.updateFollowerWakeUpAt(false)
-	return nil
 }
 
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(

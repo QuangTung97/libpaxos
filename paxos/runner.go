@@ -15,9 +15,10 @@ type NodeRunner interface {
 }
 
 type nodeTermInfo struct {
-	nodeID   NodeID
-	term     TermNum
-	isLeader bool
+	nodeID     NodeID
+	term       TermNum
+	isLeader   bool
+	retryCount int
 }
 
 func (i nodeTermInfo) getNodeID() NodeID {
