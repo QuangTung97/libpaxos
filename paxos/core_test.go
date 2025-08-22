@@ -109,6 +109,14 @@ func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
 	}
 }
 
+func (c *coreLogicTest) newInfLogEntry(cmdStr string) LogEntry {
+	return LogEntry{
+		Type:    LogTypeCmd,
+		Term:    InfiniteTerm{},
+		CmdData: []byte(cmdStr),
+	}
+}
+
 func (c *coreLogicTest) doHandleVoteResp(
 	nodeID NodeID, fromPos LogPos, withFinal bool, entries ...LogEntry,
 ) {
@@ -1861,4 +1869,46 @@ func TestAssertTrue(t *testing.T) {
 	assert.PanicsWithValue(t, "Should be true here", func() {
 		AssertTrue(false)
 	})
+}
+
+func (c *coreLogicTest) doGetNeedReplicated(nodeID NodeID, posList ...LogPos) AcceptEntriesInput {
+	input, err := c.core.GetNeedReplicatedLogEntries(NeedReplicatedInput{
+		Term:     c.currentTerm,
+		FromNode: nodeID,
+		PosList:  posList,
+
+		FullyReplicated: 0,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return input
+}
+
+func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd data 02",
+		"cmd data 03",
+		"cmd data 04",
+		"cmd data 05",
+	)
+
+	c.doHandleAccept(nodeID1, 2, 3, 4)
+	c.doHandleAccept(nodeID2, 2, 3, 4)
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	input := c.doGetNeedReplicated(nodeID1, 2, 4, 5)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []AcceptLogEntry{
+			{Pos: 2, Entry: c.newInfLogEntry("cmd data 02")},
+			{Pos: 4, Entry: c.newInfLogEntry("cmd data 04")},
+			{Pos: 5, Entry: LogEntry{}},
+		},
+	}, input)
 }

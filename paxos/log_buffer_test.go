@@ -30,27 +30,27 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries := b.GetEntries(19, 20)
-		assert.Equal(t, []LogEntry{
-			entry1,
-			entry2,
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 19, Entry: entry1},
+			{Pos: 20, Entry: entry2},
 		}, entries)
 
 		// get single
 		entries = b.GetEntries(19)
-		assert.Equal(t, []LogEntry{
-			entry1,
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 19, Entry: entry1},
 		}, entries)
 
 		// get not found
 		entries = b.GetEntries(18)
-		assert.Equal(t, []LogEntry{
-			{},
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 18},
 		}, entries)
 
 		// get not found
 		entries = b.GetEntries(21)
-		assert.Equal(t, []LogEntry{
-			{},
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 21},
 		}, entries)
 
 		// extend queue
@@ -62,18 +62,18 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(19, 20, 21, 22)
-		assert.Equal(t, []LogEntry{
-			entry1,
-			entry2,
-			entry3,
-			entry4,
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 19, Entry: entry1},
+			{Pos: 20, Entry: entry2},
+			{Pos: 21, Entry: entry3},
+			{Pos: 22, Entry: entry4},
 		}, entries)
 
 		// get half
 		entries = b.GetEntries(19, 21)
-		assert.Equal(t, []LogEntry{
-			entry1,
-			entry3,
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 19, Entry: entry1},
+			{Pos: 21, Entry: entry3},
 		}, entries)
 	})
 
@@ -94,17 +94,21 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries := b.GetEntries(21, 22, 23)
-		assert.Equal(t, []LogEntry{
-			{},
-			entry2,
-			entry3,
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 21},
+			{Pos: 22, Entry: entry2},
+			{Pos: 23, Entry: entry3},
 		}, entries)
 
 		entries = b.GetEntries(21)
-		assert.Equal(t, []LogEntry{{}}, entries)
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 21},
+		}, entries)
 
 		entries = b.GetEntries(24)
-		assert.Equal(t, []LogEntry{{}}, entries)
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 24},
+		}, entries)
 
 		// insert wrap around
 		entry4 := newCmd("test cmd 04")
@@ -117,14 +121,14 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(21, 22, 23, 24, 25, 26, 27)
-		assert.Equal(t, []LogEntry{
-			{},
-			entry2,
-			entry3,
-			entry4,
-			entry5,
-			entry6,
-			{},
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 21},
+			{Pos: 22, Entry: entry2},
+			{Pos: 23, Entry: entry3},
+			{Pos: 24, Entry: entry4},
+			{Pos: 25, Entry: entry5},
+			{Pos: 26, Entry: entry6},
+			{Pos: 27},
 		}, entries)
 
 		assert.Equal(t, LogPos(22), b.GetFrontPos())
@@ -136,12 +140,12 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(23, 24, 25, 26, 27)
-		assert.Equal(t, []LogEntry{
-			{},
-			entry4,
-			entry5,
-			entry6,
-			{},
+		assert.Equal(t, []AcceptLogEntry{
+			{Pos: 23},
+			{Pos: 24, Entry: entry4},
+			{Pos: 25, Entry: entry5},
+			{Pos: 26, Entry: entry6},
+			{Pos: 27},
 		}, entries)
 	})
 }

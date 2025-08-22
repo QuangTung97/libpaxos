@@ -837,8 +837,11 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 
 	c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated)
 
-	// TODO return accept input
-	return AcceptEntriesInput{}, nil
+	return AcceptEntriesInput{
+		ToNode:  input.FromNode,
+		Term:    c.getCurrentTerm(),
+		Entries: c.leader.logBuffer.GetEntries(input.PosList...),
+	}, nil
 }
 
 // ---------------------------------------------------------------------------

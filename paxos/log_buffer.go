@@ -60,16 +60,19 @@ func (b *LogBuffer) PopFront() {
 	b.queueSize--
 }
 
-func (b *LogBuffer) GetEntries(posList ...LogPos) []LogEntry {
-	result := make([]LogEntry, 0, len(posList))
+func (b *LogBuffer) GetEntries(posList ...LogPos) []AcceptLogEntry {
+	result := make([]AcceptLogEntry, 0, len(posList))
 
 	for _, pos := range posList {
 		queueIndex := int(pos + LogPos(b.queueSize-1) - *b.lastCommitted)
 		if queueIndex < 0 || queueIndex >= b.queueSize {
-			result = append(result, LogEntry{})
+			result = append(result, AcceptLogEntry{Pos: pos})
 		} else {
 			realIndex := b.computeRealIndex(queueIndex)
-			result = append(result, b.queueData[realIndex])
+			result = append(result, AcceptLogEntry{
+				Pos:   pos,
+				Entry: b.queueData[realIndex],
+			})
 		}
 	}
 
