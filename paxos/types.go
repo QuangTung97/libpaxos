@@ -24,6 +24,11 @@ type InfiniteLogPos struct {
 	Pos      LogPos
 }
 
+type NullLogPos struct {
+	Valid bool
+	Pos   LogPos
+}
+
 // ----------------------------------------------------------
 
 type TermValue int64

@@ -98,7 +98,9 @@ type candidateStateInfo struct {
 }
 
 type leaderStateInfo struct {
-	members       []MemberInfo
+	members          []MemberInfo
+	leaderStepDownAt NullLogPos
+
 	lastCommitted LogPos
 
 	memLog *MemLog
@@ -121,6 +123,21 @@ func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
 	c.persistent.UpdateLastTerm(newTerm)
 }
 
+func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos) {
+	c.leader.members = newMembers
+
+	if c.isInMemberList(c.persistent.GetNodeID()) {
+		return
+	}
+
+	c.leader.leaderStepDownAt = NullLogPos{
+		Valid: true,
+		Pos:   pos,
+	}
+
+	c.stepDownWhenNotInMemberList()
+}
+
 func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -136,7 +153,6 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 	// init leader state
 	c.leader = &leaderStateInfo{
-		members:       slices.Clone(commitInfo.Members),
 		lastCommitted: commitInfo.FullyReplicated,
 
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
@@ -144,6 +160,9 @@ func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue)
 
 		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
+
+	newMembers := slices.Clone(commitInfo.Members)
+	c.updateLeaderMembers(newMembers, commitInfo.FullyReplicated)
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 	c.leader.logBuffer = NewLogBuffer(&c.leader.lastCommitted, 10)
@@ -418,7 +437,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	}
 
 	if logEntry.Type == LogTypeMembership {
-		c.leader.members = logEntry.Members
+		c.updateLeaderMembers(logEntry.Members, pos)
 		c.updateVoteRunners()
 		c.updateAcceptRunners()
 	}
@@ -426,16 +445,19 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) bool {
 	return true
 }
 
-func (c *coreLogicImpl) stepDownWhenNotInMemberList() {
-	if c.leader.memLog.GetQueueSize() > 0 {
-		return
+func (c *coreLogicImpl) stepDownWhenNotInMemberList() bool {
+	stepDownAt := c.leader.leaderStepDownAt
+	if !stepDownAt.Valid {
+		return false
 	}
-	if c.isInMemberList(c.persistent.GetNodeID()) {
-		return
+
+	if stepDownAt.Pos > c.leader.lastCommitted {
+		return false
 	}
 
 	c.persistent.UpdateForceStayAsFollower(c.leader.lastCommitted, true)
 	c.stepDownToFollower()
+	return true
 }
 
 func (c *coreLogicImpl) isInMemberList(nodeID NodeID) bool {
@@ -695,7 +717,9 @@ func (c *coreLogicImpl) increaseLastCommitted() {
 
 		c.finishMembershipChange()
 		c.broadcastAllAcceptors()
-		c.stepDownWhenNotInMemberList()
+		if c.stepDownWhenNotInMemberList() {
+			return
+		}
 	}
 }
 
@@ -728,6 +752,7 @@ StartFunction:
 			return err
 		}
 		if status == handleStatusNeedReCheck {
+			// TODO testing
 			goto StartFunction
 		}
 	}
@@ -811,10 +836,11 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 	}
 
 	pos := c.leader.memLog.MaxLogPos() + 1
-	c.leader.members = append(c.leader.members, MemberInfo{
+	newMembers := append(c.leader.members, MemberInfo{
 		Nodes:     newNodes,
 		CreatedAt: pos,
 	})
+	c.updateLeaderMembers(newMembers, pos)
 
 	entry := LogEntry{
 		Type:    LogTypeMembership,
@@ -875,8 +901,9 @@ func (c *coreLogicImpl) finishMembershipChange() {
 	}
 
 	pos := c.leader.memLog.MaxLogPos() + 1
-	c.leader.members = slices.Clone(c.leader.members[1:])
-	c.leader.members[0].CreatedAt = 1
+	newMembers := slices.Clone(c.leader.members[1:])
+	newMembers[0].CreatedAt = 1
+	c.updateLeaderMembers(newMembers, pos)
 
 	entry := LogEntry{
 		Type:    LogTypeMembership,
