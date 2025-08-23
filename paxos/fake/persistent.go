@@ -9,10 +9,6 @@ func NewNodeID(num int) paxos.NodeID {
 type PersistentStateFake struct {
 	NodeID   paxos.NodeID
 	LastTerm paxos.TermNum
-
-	StayMaxPos      paxos.LogPos
-	StayAsFollower  bool
-	UpdateStayCalls int
 }
 
 var _ paxos.PersistentState = &PersistentStateFake{}

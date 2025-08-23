@@ -1789,7 +1789,6 @@ func TestCoreLogic__Leader__Handle_Accept_Resp__Not_Success__Higher_Term(t *test
 		Term:    newTerm,
 	})
 	assert.Equal(t, nil, err)
-	assert.Equal(t, 0, c.persistent.UpdateStayCalls)
 }
 
 func TestAssertTrue(t *testing.T) {
