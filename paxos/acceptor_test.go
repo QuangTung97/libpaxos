@@ -84,10 +84,10 @@ func newPosLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	return result
 }
 
-func newAcceptLogEntries(from LogPos, entries ...LogEntry) []AcceptLogEntry {
-	result := make([]AcceptLogEntry, 0, len(entries))
+func newAcceptLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
+	result := make([]PosLogEntry, 0, len(entries))
 	for index, e := range entries {
-		result = append(result, AcceptLogEntry{
+		result = append(result, PosLogEntry{
 			Pos:   from + LogPos(index),
 			Entry: e,
 		})
@@ -108,7 +108,7 @@ func (s *acceptorLogicTest) newCmdTerm(term TermNum, cmd string) LogEntry {
 }
 
 func (s *acceptorLogicTest) doAcceptEntries(
-	committed LogPos, entries ...AcceptLogEntry,
+	committed LogPos, entries ...PosLogEntry,
 ) AcceptEntriesOutput {
 	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
 		ToNode:    nodeID2,

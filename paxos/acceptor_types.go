@@ -21,13 +21,8 @@ type VoteLogEntry struct {
 type AcceptEntriesInput struct {
 	ToNode    NodeID
 	Term      TermNum
-	Entries   []AcceptLogEntry
+	Entries   []PosLogEntry
 	Committed LogPos
-}
-
-type AcceptLogEntry struct {
-	Pos   LogPos
-	Entry LogEntry
 }
 
 type AcceptEntriesOutput struct {

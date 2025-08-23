@@ -213,3 +213,33 @@ func TestLogStorageFake_SetTerm(t *testing.T) {
 
 	assert.Equal(t, term, s.GetTerm())
 }
+
+func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
+	s := &LogStorageFake{}
+
+	term := paxos.TermNum{
+		Num:    21,
+		NodeID: NewNodeID(1),
+	}
+	entry1 := newCmdLog(term, "cmd test 01")
+	entry2 := newCmdLog(term, "cmd test 02")
+	entry3 := newCmdLog(term, "cmd test 03")
+
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 2, Entry: entry1},
+		{Pos: 4, Entry: entry2},
+		{Pos: 5, Entry: entry3},
+	}, nil)
+
+	entries := s.GetEntriesWithPos(2, 3, 4)
+	assert.Equal(t, []paxos.PosLogEntry{
+		{Pos: 2, Entry: entry1},
+		{Pos: 3, Entry: paxos.LogEntry{}},
+		{Pos: 4, Entry: entry2},
+	}, entries)
+
+	// with outside of max
+	assert.PanicsWithValue(t, "Outside of log range", func() {
+		s.GetEntriesWithPos(6)
+	})
+}

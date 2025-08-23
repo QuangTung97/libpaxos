@@ -554,9 +554,9 @@ StartFunction:
 		goto StartFunction
 	}
 
-	var acceptEntries []AcceptLogEntry
+	var acceptEntries []PosLogEntry
 	for pos := fromPos; pos <= maxLogPos; pos++ {
-		acceptEntries = append(acceptEntries, AcceptLogEntry{
+		acceptEntries = append(acceptEntries, PosLogEntry{
 			Pos:   pos,
 			Entry: c.leader.memLog.Get(pos),
 		})
@@ -967,21 +967,47 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	input NeedReplicatedInput,
 ) (AcceptEntriesInput, error) {
-	if err := c.isCandidateOrLeader(input.Term); err != nil {
+	acceptInput, diskPosList, err := c.getNeedReplicatedFromMem(input)
+	if err != nil {
 		return AcceptEntriesInput{}, err
+	}
+
+	diskEntries := c.log.GetEntriesWithPos(diskPosList...)
+	acceptInput.Entries = append(diskEntries, acceptInput.Entries...)
+
+	return acceptInput, nil
+}
+
+func (c *coreLogicImpl) getNeedReplicatedFromMem(
+	input NeedReplicatedInput,
+) (AcceptEntriesInput, []LogPos, error) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if err := c.isCandidateOrLeader(input.Term); err != nil {
+		return AcceptEntriesInput{}, nil, err
 	}
 
 	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
-		return AcceptEntriesInput{}, err
+		return AcceptEntriesInput{}, nil, err
 	}
 
-	// TODO get entries from log storage
+	minPos := c.leader.logBuffer.GetFrontPos()
+	var memPosList []LogPos
+	var diskPosList []LogPos
+	for _, pos := range input.PosList {
+		if pos >= minPos {
+			memPosList = append(memPosList, pos)
+		} else {
+			diskPosList = append(diskPosList, pos)
+		}
+	}
 
 	return AcceptEntriesInput{
 		ToNode:  input.FromNode,
 		Term:    c.getCurrentTerm(),
-		Entries: c.leader.logBuffer.GetEntries(input.PosList...),
-	}, nil
+		Entries: c.leader.logBuffer.GetEntries(memPosList...),
+	}, diskPosList, nil
 }
 
 func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {

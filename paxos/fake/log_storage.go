@@ -116,7 +116,22 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLog
 }
 
 func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosLogEntry {
-	return nil
+	maxPos := paxos.LogPos(len(s.logEntries))
+
+	result := make([]paxos.PosLogEntry, 0)
+	for _, pos := range posList {
+		if pos > maxPos {
+			panic("Outside of log range")
+		}
+
+		index := pos - 1
+		result = append(result, paxos.PosLogEntry{
+			Pos:   pos,
+			Entry: s.logEntries[index],
+		})
+	}
+
+	return result
 }
 
 func (s *LogStorageFake) SetTerm(term paxos.TermNum) {

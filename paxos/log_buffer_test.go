@@ -30,26 +30,26 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries := b.GetEntries(19, 20)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 19, Entry: entry1},
 			{Pos: 20, Entry: entry2},
 		}, entries)
 
 		// get single
 		entries = b.GetEntries(19)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 19, Entry: entry1},
 		}, entries)
 
 		// get not found
 		entries = b.GetEntries(18)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 18},
 		}, entries)
 
 		// get not found
 		entries = b.GetEntries(21)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 21},
 		}, entries)
 
@@ -62,7 +62,7 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(19, 20, 21, 22)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 19, Entry: entry1},
 			{Pos: 20, Entry: entry2},
 			{Pos: 21, Entry: entry3},
@@ -71,7 +71,7 @@ func TestLogBuffer(t *testing.T) {
 
 		// get half
 		entries = b.GetEntries(19, 21)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 19, Entry: entry1},
 			{Pos: 21, Entry: entry3},
 		}, entries)
@@ -94,19 +94,19 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries := b.GetEntries(21, 22, 23)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 21},
 			{Pos: 22, Entry: entry2},
 			{Pos: 23, Entry: entry3},
 		}, entries)
 
 		entries = b.GetEntries(21)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 21},
 		}, entries)
 
 		entries = b.GetEntries(24)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 24},
 		}, entries)
 
@@ -121,7 +121,7 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(21, 22, 23, 24, 25, 26, 27)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 21},
 			{Pos: 22, Entry: entry2},
 			{Pos: 23, Entry: entry3},
@@ -140,7 +140,7 @@ func TestLogBuffer(t *testing.T) {
 
 		// get all
 		entries = b.GetEntries(23, 24, 25, 26, 27)
-		assert.Equal(t, []AcceptLogEntry{
+		assert.Equal(t, []PosLogEntry{
 			{Pos: 23},
 			{Pos: 24, Entry: entry4},
 			{Pos: 25, Entry: entry5},
