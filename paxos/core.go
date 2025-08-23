@@ -18,7 +18,7 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
-	FollowerReceiveAcceptEntriesRequest(term TermNum, pos LogPos) bool
+	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
@@ -32,6 +32,8 @@ type CoreLogic interface {
 
 	GetChoosingLeaderInfo() ChooseLeaderInfo
 
+	HandleChoosingLeaderInfo(fromNode NodeID, term TermNum, info ChooseLeaderInfo) error
+
 	// -------------------------------------------------------
 	// Testing Utility Functions
 	// -------------------------------------------------------
@@ -39,6 +41,7 @@ type CoreLogic interface {
 	GetState() State
 	GetLastCommitted() LogPos
 	GetMinBufferLogPos() LogPos
+	GetFollowerWakeUpAt() TimestampMilli
 
 	// CheckInvariant for testing only
 	CheckInvariant()
@@ -62,7 +65,7 @@ func NewCoreLogic(
 		runner:     runner,
 	}
 
-	c.updateFollowerWakeUpAt(false)
+	c.updateFollowerCheckOtherStatus(false)
 	c.updateAllRunners()
 
 	return c
@@ -78,6 +81,8 @@ type coreLogicImpl struct {
 	follower  *followerStateInfo
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
+
+	followerRetryCount int
 
 	persistent PersistentState
 	log        LeaderLogGetter
@@ -317,7 +322,7 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
-	c.followDoCheckAcceptEntriesRequest(inputTerm, 0)
+	c.followDoCheckAcceptEntriesRequest(inputTerm)
 }
 
 type handleStatus int
@@ -584,18 +589,15 @@ func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	return false
 }
 
-func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(
-	term TermNum, pos LogPos,
-) bool {
+func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	return c.followDoCheckAcceptEntriesRequest(term, pos)
+	return c.followDoCheckAcceptEntriesRequest(term)
 }
 
-func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos) bool {
-	cmpResult := CompareTermNum(c.getCurrentTerm(), term)
-	if cmpResult >= 0 {
+func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
+	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
 		// current term >= term => do nothing
 		return false
 	}
@@ -603,8 +605,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos
 	c.persistent.UpdateLastTerm(term)
 
 	if c.state == StateFollower {
-		c.updateFollowerWakeUpAt(true)
-		c.updateAllRunners()
+		c.updateFollowerCheckOtherStatus(true)
 		return true
 	}
 
@@ -613,7 +614,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum, _ LogPos
 	return true
 }
 
-func (c *coreLogicImpl) updateFollowerWakeUpAt(causedByAnotherLeader bool) {
+func (c *coreLogicImpl) updateFollowerCheckOtherStatus(causedByAnotherLeader bool) {
 	c.follower = &followerStateInfo{
 		wakeUpAt: c.computeNextWakeUp(),
 	}
@@ -625,21 +626,16 @@ func (c *coreLogicImpl) updateFollowerWakeUpAt(causedByAnotherLeader bool) {
 	}
 
 	c.follower.checkStatus = followerCheckOtherStatusRunning
+	c.followerRetryCount++
 
 	commitInfo := c.log.GetCommittedInfo()
 	c.follower.members = commitInfo.Members
 	c.follower.lastPos = commitInfo.FullyReplicated
+	c.follower.lastNodeID = c.persistent.GetNodeID()
 
-	currentNodeID := c.persistent.GetNodeID()
-	c.follower.lastNodeID = currentNodeID
-	c.follower.checkedSet = map[NodeID]struct{}{
-		currentNodeID: {},
-	}
-	c.follower.noActiveLeaderSet = map[NodeID]struct{}{
-		currentNodeID: {},
-	}
+	c.follower.checkedSet = map[NodeID]struct{}{}
+	c.follower.noActiveLeaderSet = map[NodeID]struct{}{}
 
-	// TODO run job to start election
 	c.updateFetchingFollowerInfoRunners()
 }
 
@@ -651,9 +647,7 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.leader.bufferMaxCond.Broadcast()
 	c.leader = nil
 
-	c.follower = &followerStateInfo{}
-	c.updateFollowerWakeUpAt(causedByAnotherLeader)
-
+	c.updateFollowerCheckOtherStatus(causedByAnotherLeader)
 	c.updateAllRunners()
 }
 
@@ -674,18 +668,31 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
 	term := c.getCurrentTerm()
 
 	if c.state != StateFollower {
-		c.runner.StartFetchingFollowerInfoRunners(term, nil)
+		c.runner.StartFetchingFollowerInfoRunners(term, nil, 0)
+		c.runner.StartElectionRunner(term, false, NodeID{}, 0)
 		return
 	}
 
-	if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
-		c.runner.StartFetchingFollowerInfoRunners(term, nil)
-		return
+	if c.follower.checkStatus == followerCheckOtherStatusRunning {
+		allMembers := GetAllMembers(c.follower.members)
+		for id := range allMembers {
+			_, ok := c.follower.checkedSet[id]
+			if ok {
+				delete(allMembers, id)
+			}
+		}
+		c.runner.StartFetchingFollowerInfoRunners(term, allMembers, c.followerRetryCount)
+	} else {
+		c.runner.StartFetchingFollowerInfoRunners(term, nil, 0)
 	}
 
-	allMembers := GetAllMembers(c.follower.members)
-	// TODO remove from checked set
-	c.runner.StartFetchingFollowerInfoRunners(term, allMembers)
+	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
+		c.runner.StartElectionRunner(
+			term, true, c.follower.lastNodeID, c.followerRetryCount,
+		)
+	} else {
+		c.runner.StartElectionRunner(term, false, NodeID{}, 0)
+	}
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(
@@ -834,7 +841,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 
 	if c.state == StateFollower {
 		if c.isExpired(c.follower.wakeUpAt) {
-			// TODO
+			c.updateFollowerCheckOtherStatus(false)
 		}
 		return
 	}
@@ -940,6 +947,7 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 		validSet[nodeID] = struct{}{}
 	}
 
+	// TODO use old membership config
 	if !IsQuorum([]MemberInfo{newConf}, validSet) {
 		return nil
 	}
@@ -981,25 +989,55 @@ func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if c.state != StateFollower {
-		return ChooseLeaderInfo{
-			NoActiveLeader: false,
-		}
-	}
-
-	if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
-		return ChooseLeaderInfo{
-			NoActiveLeader: false,
-		}
-	}
-
 	commitInfo := c.log.GetCommittedInfo()
-
-	return ChooseLeaderInfo{
-		NoActiveLeader:  true,
+	output := ChooseLeaderInfo{
 		Members:         commitInfo.Members,
 		FullyReplicated: commitInfo.FullyReplicated,
 	}
+
+	if c.state != StateFollower {
+		return output
+	}
+
+	if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
+		return output
+	}
+
+	output.NoActiveLeader = true
+	return output
+}
+
+func (c *coreLogicImpl) HandleChoosingLeaderInfo(
+	fromNode NodeID, term TermNum, info ChooseLeaderInfo,
+) error {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	if err := c.checkStateEqual(term, StateFollower); err != nil {
+		return err
+	}
+
+	if c.follower.checkStatus != followerCheckOtherStatusRunning {
+		return fmt.Errorf("check status is not running, got: %d", c.follower.checkStatus)
+	}
+
+	c.follower.checkedSet[fromNode] = struct{}{}
+	if info.NoActiveLeader {
+		c.follower.noActiveLeaderSet[fromNode] = struct{}{}
+	}
+
+	if c.follower.lastPos < info.FullyReplicated {
+		c.follower.lastNodeID = fromNode
+		c.follower.lastPos = info.FullyReplicated
+	}
+
+	if IsQuorum(c.follower.members, c.follower.noActiveLeaderSet) {
+		c.follower.checkStatus = followerCheckOtherStatusStartingNewElection
+		c.follower.wakeUpAt = c.computeNextWakeUp()
+	}
+
+	c.updateFetchingFollowerInfoRunners()
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,6 +1060,12 @@ func (c *coreLogicImpl) GetMinBufferLogPos() LogPos {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	return c.leader.logBuffer.GetFrontPos()
+}
+
+func (c *coreLogicImpl) GetFollowerWakeUpAt() TimestampMilli {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.follower.wakeUpAt
 }
 
 func (c *coreLogicImpl) computeNextWakeUp() TimestampMilli {

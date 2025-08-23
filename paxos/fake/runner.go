@@ -18,6 +18,12 @@ type NodeRunnerFake struct {
 
 	FetchFollowerTerm paxos.TermNum
 	FetchFollowers    []paxos.NodeID
+	FetchRetryCount   int
+
+	ElectionTerm       paxos.TermNum
+	ElectionStarted    bool
+	ElectionChosen     paxos.NodeID
+	ElectionRetryCount int
 }
 
 var _ paxos.NodeRunner = &NodeRunnerFake{}
@@ -42,10 +48,20 @@ func (r *NodeRunnerFake) SetLeader(term paxos.TermNum, isLeader bool) {
 }
 
 func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
-	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+	term paxos.TermNum, nodes map[paxos.NodeID]struct{}, retryCount int,
 ) {
 	r.FetchFollowerTerm = term
 	r.FetchFollowers = nodeSetToSlice(nodes)
+	r.FetchRetryCount = retryCount
+}
+
+func (r *NodeRunnerFake) StartElectionRunner(
+	term paxos.TermNum, started bool, chosen paxos.NodeID, retryCount int,
+) {
+	r.ElectionTerm = term
+	r.ElectionStarted = started
+	r.ElectionChosen = chosen
+	r.ElectionRetryCount = retryCount
 }
 
 func nodeSetToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {

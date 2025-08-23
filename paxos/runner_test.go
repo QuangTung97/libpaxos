@@ -241,7 +241,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 			nodeID2: {},
 			nodeID3: {},
 		}
-		r.StartFetchingFollowerInfoRunners(currentTerm, nodes)
+		r.StartFetchingFollowerInfoRunners(currentTerm, nodes, 1)
 
 		synctest.Wait()
 

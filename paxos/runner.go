@@ -13,7 +13,8 @@ type NodeRunner interface {
 	SetLeader(term TermNum, isLeader bool)
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
-	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{})
+	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int)
+	StartElectionRunner(term TermNum, started bool, chosen NodeID, retryCount int)
 }
 
 type nodeTermInfo struct {
@@ -132,14 +133,21 @@ func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {
 }
 
 func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
-	term TermNum, nodes map[NodeID]struct{},
+	term TermNum, nodes map[NodeID]struct{}, retryCount int,
 ) {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
-			nodeID: id,
-			term:   term,
+			nodeID:     id,
+			term:       term,
+			retryCount: retryCount,
 		})
 	}
 	r.fetchFollower.Upsert(infos)
+}
+
+func (r *nodeRunnerImpl) StartElectionRunner(
+	term TermNum, started bool, chosen NodeID, retryCount int,
+) {
+	// TODO implement
 }

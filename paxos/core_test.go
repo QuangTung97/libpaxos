@@ -1212,7 +1212,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 			Num:    22,
 			NodeID: nodeID2,
 		}
-		c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
+		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
 		assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 
 		assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), acceptResult())
@@ -1244,7 +1244,7 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		NodeID: nodeID2,
 	}
 
-	c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
+	c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
 	// check follower runner
 	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
@@ -1259,14 +1259,14 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 		Num:    17,
 		NodeID: nodeID2,
 	}
-	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm, 2)
+	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
 	assert.Equal(t, false, affected)
 
 	// no change in state
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// same term
-	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm, 2)
+	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
 	assert.Equal(t, false, affected)
 
 	// no change in state
@@ -1951,4 +1951,115 @@ func TestCoreLogic__Leader__Insert_Cmd__Waiting__Context_Cancel(t *testing.T) {
 
 	err := c.core.InsertCommand(c.cancelCtx, c.currentTerm, []byte("cmd test 04"))
 	assert.Equal(t, context.Canceled, err)
+}
+
+func (c *coreLogicTest) doHandleLeaderInfo(node NodeID, info ChooseLeaderInfo) {
+	err := c.core.HandleChoosingLeaderInfo(node, c.persistent.GetLastTerm(), info)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+
+	assert.Equal(t, false, c.runner.ElectionStarted)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+
+	assert.Equal(t, TimestampMilli(15_000), c.core.GetFollowerWakeUpAt())
+
+	info := c.core.GetChoosingLeaderInfo()
+
+	assert.Equal(t, ChooseLeaderInfo{
+		NoActiveLeader:  true,
+		Members:         c.log.GetCommittedInfo().Members,
+		FullyReplicated: 1,
+	}, info)
+
+	c.now.Add(50)
+
+	// first handle leader info
+	c.doHandleLeaderInfo(nodeID1, info)
+	assert.Equal(t, TimestampMilli(15_000), c.core.GetFollowerWakeUpAt())
+
+	// check runners
+	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, 1, c.runner.FetchRetryCount)
+	assert.Equal(t, false, c.runner.ElectionStarted)
+
+	// second handle leader info
+	c.doHandleLeaderInfo(nodeID2, info)
+	assert.Equal(t, TimestampMilli(15_050), c.core.GetFollowerWakeUpAt())
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
+
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, 1, c.runner.ElectionRetryCount)
+	assert.Equal(t, nodeID1, c.runner.ElectionChosen)
+}
+
+func TestCoreLogic__Candidate__Check_Start_Election_Runner(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	assert.Equal(t, false, c.runner.ElectionStarted)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+
+	c.doStartElection()
+
+	assert.Equal(t, false, c.runner.ElectionStarted)
+	assert.Equal(t, c.currentTerm, c.runner.ElectionTerm)
+}
+
+func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicated_Pos(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := c.core.GetChoosingLeaderInfo()
+
+	// first handle leader info
+	c.doHandleLeaderInfo(nodeID1, info)
+
+	// second handle leader info
+	info.FullyReplicated = 3
+	c.doHandleLeaderInfo(nodeID2, info)
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
+
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, 1, c.runner.ElectionRetryCount)
+	assert.Equal(t, nodeID2, c.runner.ElectionChosen)
+
+	c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
+
+	assert.Equal(t, false, c.runner.ElectionStarted)
+	assert.Equal(t, c.currentTerm, c.runner.ElectionTerm)
+	assert.Equal(t, 0, c.runner.ElectionRetryCount)
+	assert.Equal(t, NodeID{}, c.runner.ElectionChosen)
+
+	// after 4000 ms
+	c.now.Add(4000)
+	c.core.CheckTimeout()
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+
+	// after 6000 ms timeout
+	c.now.Add(2000)
+	c.core.CheckTimeout()
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, false, c.runner.ElectionStarted)
 }
