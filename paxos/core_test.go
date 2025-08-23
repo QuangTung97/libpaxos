@@ -1315,7 +1315,18 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 		Committed: 4,
 	}, accReq)
 
+	// not yet finish change
 	c.doUpdateFullyReplicated(nodeID4, 4)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5,
+	}, c.runner.AcceptRunners)
+
+	// finish member change
+	c.doUpdateFullyReplicated(nodeID2, 4)
+	assert.Equal(t, []NodeID{
+		nodeID3, nodeID4, nodeID5,
+	}, c.runner.AcceptRunners)
 
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 0, 0)
@@ -1347,8 +1358,13 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 	})
 	assert.Equal(t, nil, err)
 
+	c.doUpdateFullyReplicated(nodeID2, 4)
 	c.doUpdateFullyReplicated(nodeID3, 4)
 	c.doUpdateFullyReplicated(nodeID4, 4)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2,
+		nodeID3, nodeID4, nodeID5,
+	}, c.runner.AcceptRunners)
 
 	// check accept entries
 	accReq := c.doGetAcceptReq(nodeID5, 5, 0)
@@ -1362,6 +1378,10 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 	c.doHandleAccept(nodeID3, 2, 3, 4)
 	c.doHandleAccept(nodeID4, 2, 3, 4)
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	assert.Equal(t, []NodeID{
+		nodeID3, nodeID4, nodeID5,
+	}, c.runner.AcceptRunners)
 
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 5, 0)
@@ -1599,7 +1619,7 @@ func TestCoreLogic__Follower__Update_Fully_Replicated(t *testing.T) {
 	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
 }
 
-func TestCoreLogic__Candidate__Update_Fully_Replicated__Not_Finish_Member_Change(t *testing.T) {
+func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	c.doStartElection()
@@ -1642,7 +1662,14 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Not_Finish_Member_Change
 	c.doHandleAccept(nodeID5, 2)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
+
 	// fully replicated
+	c.doUpdateFullyReplicated(nodeID1, 2)
+	c.doUpdateFullyReplicated(nodeID2, 2)
 	c.doUpdateFullyReplicated(nodeID4, 2)
 	c.doUpdateFullyReplicated(nodeID5, 2)
 
@@ -1660,6 +1687,11 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Not_Finish_Member_Change
 	c.doHandleVoteResp(nodeID4, 3, true)
 	c.doHandleVoteResp(nodeID5, 3, true)
 	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// finally finish member change
+	assert.Equal(t, []NodeID{
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
 
 	// get accept req again, node6
 	accReq = c.doGetAcceptReq(nodeID6, 0, 0)

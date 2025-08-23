@@ -947,8 +947,7 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 		validSet[nodeID] = struct{}{}
 	}
 
-	// TODO use old membership config
-	if !IsQuorum([]MemberInfo{newConf}, validSet) {
+	if !IsQuorum(c.leader.members, validSet) {
 		return nil
 	}
 
