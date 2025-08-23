@@ -2063,3 +2063,66 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.runner.ElectionStarted)
 }
+
+func TestCoreLogic__Retry__Handle_Leader_Info(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := c.core.GetChoosingLeaderInfo()
+	c.doHandleLeaderInfo(nodeID1, info)
+
+	// then timeout
+	c.now.Add(5100)
+	c.core.CheckTimeout()
+
+	c.doHandleLeaderInfo(nodeID2, info)
+	assert.Equal(t, []NodeID{nodeID1, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, 2, c.runner.FetchRetryCount)
+
+	// final handle
+	c.doHandleLeaderInfo(nodeID3, info)
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, 2, c.runner.ElectionRetryCount)
+
+	// error
+	err := c.core.HandleChoosingLeaderInfo(nodeID1, c.persistent.GetLastTerm(), info)
+	assert.Equal(t, errors.New("check status is not running, got: 2"), err)
+}
+
+func TestCoreLogic__Handle_Leader_Info__With_New_Members(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := c.core.GetChoosingLeaderInfo()
+	c.doHandleLeaderInfo(nodeID1, info)
+
+	info2 := ChooseLeaderInfo{
+		NoActiveLeader:  true,
+		FullyReplicated: 2,
+		Members: []MemberInfo{
+			{CreatedAt: 1, Nodes: []NodeID{nodeID4}},
+		},
+	}
+
+	c.doHandleLeaderInfo(nodeID3, info2)
+	assert.Equal(t, []NodeID{nodeID4}, c.runner.FetchFollowers)
+	assert.Equal(t, false, c.runner.ElectionStarted)
+
+	// finally can switch to starting new leader
+	info3 := info2
+	info3.FullyReplicated = 3
+	c.doHandleLeaderInfo(nodeID4, info3)
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, nodeID4, c.runner.ElectionChosen)
+}
+
+func TestCoreLogic__Handle_Leader_Info__Invalid_Term(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := c.core.GetChoosingLeaderInfo()
+
+	lowerTerm := c.persistent.GetLastTerm()
+	lowerTerm.Num--
+	err := c.core.HandleChoosingLeaderInfo(nodeID1, lowerTerm, info)
+	assert.Equal(t, ErrMismatchTerm(lowerTerm, c.persistent.GetLastTerm()), err)
+}

@@ -1021,14 +1021,15 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 		return fmt.Errorf("check status is not running, got: %d", c.follower.checkStatus)
 	}
 
-	c.follower.checkedSet[fromNode] = struct{}{}
-	if info.NoActiveLeader {
-		c.follower.noActiveLeaderSet[fromNode] = struct{}{}
-	}
-
 	if c.follower.lastPos < info.FullyReplicated {
 		c.follower.lastNodeID = fromNode
 		c.follower.lastPos = info.FullyReplicated
+		c.follower.members = info.Members
+	}
+
+	c.follower.checkedSet[fromNode] = struct{}{}
+	if info.NoActiveLeader {
+		c.follower.noActiveLeaderSet[fromNode] = struct{}{}
 	}
 
 	if IsQuorum(c.follower.members, c.follower.noActiveLeaderSet) {
