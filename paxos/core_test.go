@@ -2155,3 +2155,53 @@ func TestCoreLogic__Handle_Leader_Info__Invalid_Term(t *testing.T) {
 	err := c.core.HandleChoosingLeaderInfo(nodeID1, lowerTerm, info)
 	assert.Equal(t, ErrMismatchTerm(lowerTerm, c.persistent.GetLastTerm()), err)
 }
+
+func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd test 02",
+		"cmd test 03",
+		"cmd test 04",
+	)
+
+	input1 := c.doGetAcceptReq(nodeID1, 0, 0)
+	for i := range input1.Entries {
+		input1.Entries[i].Entry.Term = InfiniteTerm{}
+	}
+	c.log.UpsertEntries(input1.Entries, nil)
+
+	c.doHandleAccept(nodeID1, 2, 3, 4)
+	c.doHandleAccept(nodeID2, 2, 3, 4)
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+	assert.Equal(t, LogPos(2), c.core.GetMinBufferLogPos())
+
+	c.doUpdateFullyReplicated(nodeID1, 2)
+	assert.Equal(t, LogPos(3), c.core.GetMinBufferLogPos())
+
+	input2 := c.doGetNeedReplicated(nodeID1, 1, 2, 3)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []PosLogEntry{
+			{
+				Pos: 1,
+				Entry: NewMembershipLogEntry(
+					InfiniteTerm{},
+					[]MemberInfo{
+						{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
+					},
+				),
+			},
+			{
+				Pos:   2,
+				Entry: c.newInfLogEntry("cmd test 02"),
+			},
+			{
+				Pos:   3,
+				Entry: c.newInfLogEntry("cmd test 03"),
+			},
+		},
+	}, input2)
+}
