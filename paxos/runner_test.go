@@ -42,6 +42,7 @@ func TestNodeRunner__Voter_Runners(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
 		)
 
 		nodes := map[NodeID]struct{}{
@@ -79,6 +80,7 @@ func TestNodeRunner__Voter_Runners__With_Error(t *testing.T) {
 				calls.Add(1)
 				return errors.New("test error")
 			},
+			nil,
 			nil,
 			nil,
 			nil,
@@ -127,6 +129,7 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 
 				return nil
 			},
+			nil,
 			nil,
 			nil,
 		)
@@ -181,6 +184,7 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 				return nil
 			},
 			nil,
+			nil,
 		)
 
 		r.SetLeader(currentTerm, true)
@@ -234,6 +238,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 
 				return nil
 			},
+			nil,
 		)
 
 		nodes := map[NodeID]struct{}{
@@ -254,5 +259,115 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 		finish()
 
 		assert.Equal(t, map[NodeID]TermNum{}, runningSet)
+	})
+}
+
+func TestNodeRunner__Start_Election_Runner(t *testing.T) {
+	currentTerm := TermNum{
+		Num:    21,
+		NodeID: nodeID1,
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		runningSet := map[NodeID]struct{}{}
+		var mut sync.Mutex
+		var runCount atomic.Int64
+
+		r, finish := NewNodeRunner(
+			NodeID{},
+			nil,
+			nil,
+			nil,
+			nil,
+			func(ctx context.Context, nodeID NodeID) error {
+				mut.Lock()
+				runningSet[nodeID] = struct{}{}
+				mut.Unlock()
+
+				runCount.Add(1)
+
+				<-ctx.Done()
+
+				mut.Lock()
+				delete(runningSet, nodeID)
+				mut.Unlock()
+
+				return nil
+			},
+		)
+
+		r.StartElectionRunner(currentTerm, true, nodeID1, 1)
+		synctest.Wait()
+		assert.Equal(t, map[NodeID]struct{}{
+			nodeID1: {},
+		}, runningSet)
+		assert.Equal(t, int64(1), runCount.Load())
+
+		// start again same retry count
+		r.StartElectionRunner(currentTerm, true, nodeID1, 1)
+		synctest.Wait()
+		assert.Equal(t, int64(1), runCount.Load())
+
+		// start again different retry count
+		r.StartElectionRunner(currentTerm, true, nodeID1, 2)
+		synctest.Wait()
+		assert.Equal(t, int64(2), runCount.Load())
+
+		finish()
+
+		assert.Equal(t, map[NodeID]struct{}{}, runningSet)
+	})
+}
+
+func TestNodeRunner__Start_Election_Runner__Start_Then_Stop(t *testing.T) {
+	currentTerm := TermNum{
+		Num:    21,
+		NodeID: nodeID1,
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		runningSet := map[NodeID]struct{}{}
+		var mut sync.Mutex
+		var runCount atomic.Int64
+
+		r, finish := NewNodeRunner(
+			NodeID{},
+			nil,
+			nil,
+			nil,
+			nil,
+			func(ctx context.Context, nodeID NodeID) error {
+				mut.Lock()
+				runningSet[nodeID] = struct{}{}
+				mut.Unlock()
+
+				runCount.Add(1)
+
+				<-ctx.Done()
+
+				mut.Lock()
+				delete(runningSet, nodeID)
+				mut.Unlock()
+
+				return nil
+			},
+		)
+
+		r.StartElectionRunner(currentTerm, true, nodeID1, 1)
+		synctest.Wait()
+		assert.Equal(t, map[NodeID]struct{}{
+			nodeID1: {},
+		}, runningSet)
+		assert.Equal(t, int64(1), runCount.Load())
+
+		// stop
+		r.StartElectionRunner(currentTerm, false, NodeID{}, 0)
+		synctest.Wait()
+		assert.Equal(t, map[NodeID]struct{}{}, runningSet)
+		assert.Equal(t, int64(1), runCount.Load())
+
+		finish()
+
+		assert.Equal(t, map[NodeID]struct{}{}, runningSet)
 	})
 }

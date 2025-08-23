@@ -35,6 +35,7 @@ type nodeRunnerImpl struct {
 	acceptors     *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	stateMachine  *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	fetchFollower *key_runner.KeyRunner[NodeID, nodeTermInfo]
+	startElection *key_runner.KeyRunner[NodeID, nodeTermInfo]
 
 	// TODO add replicate runner
 }
@@ -45,6 +46,7 @@ func NewNodeRunner(
 	acceptorRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	stateMachineFunc func(ctx context.Context, term TermNum, isLeader bool) error,
 	fetchFollowerInfoFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
+	startElectionFunc func(ctx context.Context, nodeID NodeID) error,
 ) (NodeRunner, func()) {
 	r := &nodeRunnerImpl{
 		currentNodeID: currentNodeID,
@@ -84,11 +86,18 @@ func NewNodeRunner(
 		})
 	})
 
+	r.startElection = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return startElectionFunc(ctx, val.nodeID)
+		})
+	})
+
 	return r, func() {
 		r.voters.Shutdown()
 		r.acceptors.Shutdown()
 		r.stateMachine.Shutdown()
 		r.fetchFollower.Shutdown()
+		r.startElection.Shutdown()
 	}
 }
 
@@ -149,5 +158,16 @@ func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
 func (r *nodeRunnerImpl) StartElectionRunner(
 	term TermNum, started bool, chosen NodeID, retryCount int,
 ) {
-	// TODO implement
+	if started {
+		infos := []nodeTermInfo{
+			{
+				nodeID:     chosen,
+				term:       term,
+				retryCount: retryCount,
+			},
+		}
+		r.startElection.Upsert(infos)
+	} else {
+		r.startElection.Upsert(nil)
+	}
 }
