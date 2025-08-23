@@ -33,17 +33,17 @@ type nodeRunnerImpl struct {
 
 	voters        *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	acceptors     *key_runner.KeyRunner[NodeID, nodeTermInfo]
+	replicators   *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	stateMachine  *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	fetchFollower *key_runner.KeyRunner[NodeID, nodeTermInfo]
 	startElection *key_runner.KeyRunner[NodeID, nodeTermInfo]
-
-	// TODO add replicate runner
 }
 
 func NewNodeRunner(
 	currentNodeID NodeID,
 	voteRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	acceptorRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
+	replicateRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	stateMachineFunc func(ctx context.Context, term TermNum, isLeader bool) error,
 	fetchFollowerInfoFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	startElectionFunc func(ctx context.Context, nodeID NodeID) error,
@@ -74,6 +74,12 @@ func NewNodeRunner(
 		})
 	})
 
+	r.replicators = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx context.Context) error {
+			return replicateRunnerFunc(ctx, val.nodeID, val.term)
+		})
+	})
+
 	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
 		loopWithSleep(ctx, func(ctx context.Context) error {
 			return stateMachineFunc(ctx, val.term, val.isLeader)
@@ -95,6 +101,7 @@ func NewNodeRunner(
 	return r, func() {
 		r.voters.Shutdown()
 		r.acceptors.Shutdown()
+		r.replicators.Shutdown()
 		r.stateMachine.Shutdown()
 		r.fetchFollower.Shutdown()
 		r.startElection.Shutdown()
@@ -128,6 +135,7 @@ func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeI
 		})
 	}
 	r.acceptors.Upsert(infos)
+	r.replicators.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {

@@ -43,6 +43,7 @@ func TestNodeRunner__Voter_Runners(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
 		)
 
 		nodes := map[NodeID]struct{}{
@@ -84,6 +85,7 @@ func TestNodeRunner__Voter_Runners__With_Error(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
 		)
 
 		nodes := map[NodeID]struct{}{
@@ -111,6 +113,7 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		runningSet := map[NodeID]TermNum{}
+		replicateSet := map[NodeID]TermNum{}
 		var mut sync.Mutex
 
 		r, finish := NewNodeRunner(
@@ -129,7 +132,21 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 
 				return nil
 			},
+			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+				mut.Lock()
+				replicateSet[nodeID] = term
+				mut.Unlock()
+
+				<-ctx.Done()
+
+				mut.Lock()
+				delete(replicateSet, nodeID)
+				mut.Unlock()
+
+				return nil
+			},
 			nil,
+
 			nil,
 			nil,
 		)
@@ -149,9 +166,16 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 			nodeID3: currentTerm,
 		}, runningSet)
 
+		assert.Equal(t, map[NodeID]TermNum{
+			nodeID1: currentTerm,
+			nodeID2: currentTerm,
+			nodeID3: currentTerm,
+		}, replicateSet)
+
 		finish()
 
 		assert.Equal(t, map[NodeID]TermNum{}, runningSet)
+		assert.Equal(t, map[NodeID]TermNum{}, replicateSet)
 	})
 }
 
@@ -169,6 +193,7 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 
 		r, finish := NewNodeRunner(
 			NodeID{},
+			nil,
 			nil,
 			nil,
 			func(ctx context.Context, term TermNum, isLeader bool) error {
@@ -222,6 +247,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 
 		r, finish := NewNodeRunner(
 			NodeID{},
+			nil,
 			nil,
 			nil,
 			nil,
@@ -279,6 +305,7 @@ func TestNodeRunner__Start_Election_Runner(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			nil,
 			func(ctx context.Context, nodeID NodeID) error {
 				mut.Lock()
 				runningSet[nodeID] = struct{}{}
@@ -332,6 +359,7 @@ func TestNodeRunner__Start_Election_Runner__Start_Then_Stop(t *testing.T) {
 
 		r, finish := NewNodeRunner(
 			NodeID{},
+			nil,
 			nil,
 			nil,
 			nil,
