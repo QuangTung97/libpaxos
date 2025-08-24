@@ -54,6 +54,7 @@ type simulationTestCase struct {
 	mut             sync.Mutex
 	waitMap         map[simulateActionKey]chan struct{}
 	shutdownWaitMap map[simulateActionKey]chan struct{}
+	activeConn      map[SimulationConn]struct{}
 }
 
 type simulateNodeState struct {
@@ -90,6 +91,7 @@ func newSimulationTestCase(
 
 	s.waitMap = map[simulateActionKey]chan struct{}{}
 	s.shutdownWaitMap = map[simulateActionKey]chan struct{}{}
+	s.activeConn = map[SimulationConn]struct{}{}
 
 	initNodeSet := map[NodeID]struct{}{}
 	for _, id := range initNodes {
@@ -407,6 +409,7 @@ func (s *simulationTestCase) printAllWaiting() {
 	s.mut.Lock()
 	fmt.Println("--------------------------------------")
 	fmt.Printf("%s:%d\n", file, line)
+
 	for key := range s.waitMap {
 		isResp := "Request"
 		if key.isResponse {
@@ -421,6 +424,7 @@ func (s *simulationTestCase) printAllWaiting() {
 			key.toNode.String()[:6],
 		)
 	}
+
 	for key := range s.shutdownWaitMap {
 		fmt.Printf(
 			"\tWait Shutdown On: %s, %s -> %s\n",
@@ -429,6 +433,11 @@ func (s *simulationTestCase) printAllWaiting() {
 			key.toNode.String()[:6],
 		)
 	}
+
+	for conn := range s.activeConn {
+		conn.Print()
+	}
+
 	fmt.Println("**********")
 	s.mut.Unlock()
 }
@@ -461,7 +470,7 @@ func (s *simulationTestCase) runAction(
 	synctest.Wait()
 }
 
-func (s *simulationTestCase) startShutdown(
+func (s *simulationTestCase) runShutdown(
 	t *testing.T, actionType simulateActionType, fromNode, toNode NodeID,
 ) {
 	t.Helper()
@@ -503,12 +512,12 @@ func TestPaxos__Single_Node(t *testing.T) {
 		s.runAction(t, simulateActionStartElection, false, nodeID1, nodeID1)
 		s.runAction(t, simulateActionStartElection, true, nodeID1, nodeID1)
 
-		s.startShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
-		s.startShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
 		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID1)
 		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID1)
-		s.startShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
 
 		assert.Equal(t, StateLeader, s.nodeMap[nodeID1].core.GetState())
 		assert.Equal(t, TermNum{Num: 21, NodeID: nodeID1}, s.nodeMap[nodeID1].persistent.GetLastTerm())

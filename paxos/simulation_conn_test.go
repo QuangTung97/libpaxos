@@ -2,16 +2,27 @@ package paxos_test
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"sync"
 
 	. "github.com/QuangTung97/libpaxos/paxos"
 )
 
+type SimulationConn interface {
+	CloseConn()
+	Print()
+}
+
 type simulateConn[Req, Resp any] struct {
-	root     *simulationTestCase
+	root       *simulationTestCase
+	actionType simulateActionType
+	fromNode   NodeID
+	toNode     NodeID
+
 	sendChan chan Req
 	recvChan chan Resp
+	cancel   func()
 	wg       sync.WaitGroup
 }
 
@@ -24,22 +35,28 @@ func newSimulateConn[Req, Resp any](
 	responseHandler func(resp Resp) error,
 ) *simulateConn[Req, Resp] {
 	c := &simulateConn[Req, Resp]{
-		root:     handlerState.root,
+		root:       handlerState.root,
+		actionType: actionType,
+		fromNode:   handlerState.current,
+		toNode:     toNode,
+
 		sendChan: make(chan Req, 1),
 		recvChan: make(chan Resp, 1),
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.root.mut.Lock()
+	c.root.activeConn[c] = struct{}{}
+	c.root.mut.Unlock()
+
+	c.wg.Go(func() {
 		defer cancel()
-
 		for {
 			select {
 			case req := <-c.sendChan:
-				err := c.doHandleRequest(ctx, handlerState, requestHandler, actionType, toNode, req)
+				err := c.doHandleRequest(ctx, handlerState, requestHandler, req)
 				if err != nil {
 					return
 				}
@@ -47,17 +64,14 @@ func newSimulateConn[Req, Resp any](
 				return
 			}
 		}
-	}()
+	})
 
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		defer cancel()
-
 		for {
 			select {
 			case resp := <-c.recvChan:
-				err := c.doHandleResponse(ctx, resp, handlerState, responseHandler, actionType, toNode)
+				err := c.doHandleResponse(ctx, resp, handlerState, responseHandler)
 				if err != nil {
 					return
 				}
@@ -65,7 +79,7 @@ func newSimulateConn[Req, Resp any](
 				return
 			}
 		}
-	}()
+	})
 
 	return c
 }
@@ -74,11 +88,9 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	ctx context.Context,
 	handlerState *simulationHandlers,
 	requestHandler func(req Req) (iter.Seq[Resp], error),
-	actionType simulateActionType,
-	toNode NodeID,
 	req Req,
 ) error {
-	if err := c.root.waitOnKey(ctx, actionType, false, handlerState.current, toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, c.actionType, false, handlerState.current, c.toNode); err != nil {
 		return err
 	}
 
@@ -104,10 +116,8 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 	resp Resp,
 	handlerState *simulationHandlers,
 	responseHandler func(resp Resp) error,
-	actionType simulateActionType,
-	toNode NodeID,
 ) error {
-	if err := c.root.waitOnKey(ctx, actionType, true, handlerState.current, toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, c.actionType, true, handlerState.current, c.toNode); err != nil {
 		return err
 	}
 	return responseHandler(resp)
@@ -119,4 +129,20 @@ func (c *simulateConn[Req, Resp]) sendReq(req Req) {
 
 func (c *simulateConn[Req, Resp]) shutdown() {
 	c.wg.Wait()
+	c.root.mut.Lock()
+	delete(c.root.activeConn, c)
+	c.root.mut.Unlock()
+}
+
+func (c *simulateConn[Req, Resp]) CloseConn() {
+	c.cancel()
+}
+
+func (c *simulateConn[Req, Resp]) Print() {
+	fmt.Printf(
+		"\tActive Conn: %s, %s -> %s\n",
+		c.actionType.String(),
+		c.fromNode.String()[:6],
+		c.toNode.String()[:6],
+	)
 }
