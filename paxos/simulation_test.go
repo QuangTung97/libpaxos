@@ -113,6 +113,12 @@ func newSimulationTestCase(
 	s.nodeMap = nodeMap
 
 	t.Cleanup(func() {
+		for _, state := range s.nodeMap {
+			state.runner.StartAcceptRequestRunners(TermNum{}, nil)
+		}
+
+		synctest.Wait()
+
 		s.mut.Lock()
 		for id, ch := range s.shutdownWaitMap {
 			delete(s.shutdownWaitMap, id)
@@ -402,9 +408,9 @@ func (s *simulationTestCase) printAllWaiting() {
 	fmt.Println("--------------------------------------")
 	fmt.Printf("%s:%d\n", file, line)
 	for key := range s.waitMap {
-		isResp := "Req"
+		isResp := "Request"
 		if key.isResponse {
-			isResp = "Resp"
+			isResp = "Response"
 		}
 
 		fmt.Printf(
@@ -483,7 +489,6 @@ func (s *simulationTestCase) startShutdown(
 }
 
 func TestPaxos__Single_Node(t *testing.T) {
-	t.Skip()
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
 			t,
@@ -507,8 +512,6 @@ func TestPaxos__Single_Node(t *testing.T) {
 
 		assert.Equal(t, StateLeader, s.nodeMap[nodeID1].core.GetState())
 		assert.Equal(t, TermNum{Num: 21, NodeID: nodeID1}, s.nodeMap[nodeID1].persistent.GetLastTerm())
-
-		s.printAllWaiting()
 
 		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
 		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)

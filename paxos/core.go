@@ -569,6 +569,7 @@ StartFunction:
 		ToNode:    toNode,
 		Term:      c.getCurrentTerm(),
 		Entries:   acceptEntries,
+		NextPos:   maxLogPos + 1,
 		Committed: c.leader.lastCommitted,
 	}, nil
 }

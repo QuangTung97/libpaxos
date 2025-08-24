@@ -313,6 +313,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 				Entry: entry1,
 			},
 		},
+		NextPos:   3,
 		Committed: 1,
 	}, acceptReq)
 
@@ -355,6 +356,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 				Entry: entry2,
 			},
 		},
+		NextPos:   4,
 		Committed: 1,
 	}, acceptReq)
 }
@@ -394,6 +396,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 				Entry: entry2,
 			},
 		},
+		NextPos:   4,
 		Committed: 1,
 	}, acceptReq)
 }
@@ -431,6 +434,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry__Replaced_By_Other_E
 				Entry: entry3,
 			},
 		},
+		NextPos:   4,
 		Committed: 1,
 	}, acceptReq)
 }
@@ -462,6 +466,7 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 				Entry: entry2,
 			},
 		},
+		NextPos:   3,
 		Committed: 1,
 	}, acceptReq)
 }
@@ -486,6 +491,7 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID1,
 		Term:      c.currentTerm,
+		NextPos:   2,
 		Committed: 1,
 	}, acceptReq)
 
@@ -533,6 +539,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 			Entries: []PosLogEntry{
 				{Pos: 2, Entry: acceptEntry1},
 			},
+			NextPos:   3,
 			Committed: 1,
 		}, acceptReq)
 	})
@@ -572,6 +579,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 				{Pos: 2, Entry: acceptEntry1},
 				{Pos: 3, Entry: acceptEntry2},
 			},
+			NextPos:   4,
 			Committed: 1,
 		}, acceptReq)
 	})
@@ -587,27 +595,27 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	c.doStartElection()
-
 	c.firstGetAcceptToSetTimeout()
 
-	testutil.RunInBackground(t, func() {
-		// check get accept req, waiting
-		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, nil, err)
+	synctest.Test(t, func(t *testing.T) {
+		fn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+			// check get accept req, waiting
+			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+			assert.Equal(t, nil, err)
+			return acceptReq
+		})
+
+		c.now.Add(6_000)
+		c.core.CheckTimeout()
 
 		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID1,
 			Term:      c.currentTerm,
 			Entries:   nil,
+			NextPos:   2,
 			Committed: 1,
-		}, acceptReq)
+		}, fn())
 	})
-
-	time.Sleep(10 * time.Millisecond)
-
-	c.now.Add(6_000)
-
-	c.core.CheckTimeout()
 }
 
 func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *testing.T) {
@@ -636,6 +644,7 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 		Entries: []PosLogEntry{
 			{Pos: 2, Entry: entry2},
 		},
+		NextPos:   3,
 		Committed: 1,
 	}, acceptReq)
 }
@@ -674,6 +683,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				},
 			},
 		},
+		NextPos:   4,
 		Committed: 1,
 	}, req)
 }
@@ -883,6 +893,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 				},
 			},
 		},
+		NextPos:   5,
 		Committed: 3,
 	}, acceptReq)
 }
@@ -1032,6 +1043,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 				{Pos: 3, Entry: entry2},
 				{Pos: 4, Entry: entry3},
 			},
+			NextPos:   5,
 			Committed: 1,
 		}, accReq)
 
@@ -1044,6 +1056,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID5,
 			Term:      c.currentTerm,
+			NextPos:   5,
 			Committed: 4,
 		}, accReq)
 	})
@@ -1101,6 +1114,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 			{Pos: 4, Entry: newCmdFunc("cmd data 02")},
 			{Pos: 5, Entry: newCmdFunc("cmd data 03")},
 		},
+		NextPos:   6,
 		Committed: 1,
 	}, acceptReq)
 
@@ -1119,6 +1133,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 			Entries: []PosLogEntry{
 				{Pos: 6, Entry: newCmdFunc("cmd data 04")},
 			},
+			NextPos:   7,
 			Committed: 1,
 		}, acceptReq)
 	})
@@ -1149,6 +1164,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 			{Pos: 3, Entry: newCmdFunc("cmd data 02")},
 			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
 		},
+		NextPos:   5,
 		Committed: 1,
 	}, acceptReq)
 
@@ -1164,6 +1180,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID3,
 			Term:      c.currentTerm,
+			NextPos:   5,
 			Committed: 3,
 		}, accReq)
 	})
@@ -1176,6 +1193,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		Entries: []PosLogEntry{
 			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
 		},
+		NextPos:   5,
 		Committed: 3,
 	}, acceptReq)
 }
@@ -1195,6 +1213,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
+		NextPos:   2,
 		Committed: 1,
 	}, accReq)
 
@@ -1310,6 +1329,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
+		NextPos:   5,
 		Committed: 4,
 	}, accReq)
 
@@ -1341,6 +1361,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 		Entries: []PosLogEntry{
 			{Pos: 5, Entry: newMembers},
 		},
+		NextPos:   6,
 		Committed: 4,
 	}, accReq)
 }
@@ -1369,6 +1390,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
+		NextPos:   5,
 		Committed: 1,
 	}, accReq)
 
@@ -1396,6 +1418,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 		Entries: []PosLogEntry{
 			{Pos: 5, Entry: newMembers},
 		},
+		NextPos:   6,
 		Committed: 4,
 	}, accReq)
 }
@@ -1421,6 +1444,7 @@ func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
+		NextPos:   3,
 		Committed: 2,
 	}, accReq)
 }
@@ -1489,6 +1513,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 			{Pos: 3, Entry: entry2},
 			{Pos: 4, Entry: entry3},
 		},
+		NextPos:   5,
 		Committed: 1,
 	}, accReq)
 
@@ -1593,6 +1618,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
+		NextPos:   2,
 		Committed: 1,
 	}, req)
 }
@@ -1648,6 +1674,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		Entries: []PosLogEntry{
 			{Pos: 2, Entry: entry1},
 		},
+		NextPos:   3,
 		Committed: 1,
 	}, accReq)
 
@@ -1676,6 +1703,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
+		NextPos:   3,
 		Committed: 2,
 	}, accReq)
 
@@ -1708,6 +1736,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		Entries: []PosLogEntry{
 			{Pos: 3, Entry: entry2},
 		},
+		NextPos:   4,
 		Committed: 2,
 	}, accReq)
 }
@@ -1960,6 +1989,7 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 				{Pos: 4, Entry: c.newAcceptLogEntry("cmd test 03")},
 				{Pos: 5, Entry: c.newAcceptLogEntry("cmd test 04")},
 			},
+			NextPos:   6,
 			Committed: 2,
 		}, accReq)
 	})
