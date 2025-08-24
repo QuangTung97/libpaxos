@@ -32,7 +32,8 @@ func (at simulateActionType) String() string {
 
 type simulateActionKey struct {
 	actionType simulateActionType
-	id         NodeID
+	fromNode   NodeID
+	toNode     NodeID
 }
 
 type simulationTestCase struct {
@@ -167,10 +168,14 @@ func (s *simulationTestCase) newRunnerForNode(state *simulateNodeState, id NodeI
 		nil,
 	)
 }
-func (s *simulationTestCase) waitOnKey(actionType simulateActionType, id NodeID) {
+func (s *simulationTestCase) waitOnKey(
+	ctx context.Context, actionType simulateActionType,
+	fromNode NodeID, toNode NodeID,
+) error {
 	key := simulateActionKey{
 		actionType: actionType,
-		id:         id,
+		fromNode:   fromNode,
+		toNode:     toNode,
 	}
 
 	waitCh := make(chan struct{})
@@ -179,7 +184,14 @@ func (s *simulationTestCase) waitOnKey(actionType simulateActionType, id NodeID)
 	s.waitMap[key] = waitCh
 	s.mut.Unlock()
 
-	<-waitCh
+	select {
+	case <-waitCh:
+		return nil
+
+	case <-ctx.Done():
+		// TODO remove from waitMap
+		return ctx.Err()
+	}
 }
 
 type simulationHandlers struct {
@@ -194,10 +206,16 @@ func (h *simulationHandlers) stateMachineHandler(ctx context.Context, term TermN
 }
 
 func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, id NodeID, term TermNum) error {
-	h.root.waitOnKey(simulateActionFetchFollower, id)
+	if err := h.root.waitOnKey(ctx, simulateActionFetchFollower, h.current, id); err != nil {
+		return err
+	}
+
 	info := h.root.nodeMap[id].core.GetChoosingLeaderInfo()
 
-	h.root.waitOnKey(simulateActionHandleFollowerInfo, id)
+	if err := h.root.waitOnKey(ctx, simulateActionHandleFollowerInfo, h.current, id); err != nil {
+		return err
+	}
+
 	if err := h.state.core.HandleChoosingLeaderInfo(id, term, info); err != nil {
 		return err
 	}
@@ -210,16 +228,24 @@ func (s *simulationTestCase) printAllWaiting() {
 	s.mut.Lock()
 	fmt.Println("--------------------------------------")
 	for key := range s.waitMap {
-		fmt.Printf("Wait On: %s, Node: %s\n", key.actionType.String(), key.id.String())
+		fmt.Printf(
+			"Wait On: %s, %s -> %s\n",
+			key.actionType.String(),
+			key.fromNode.String()[:8],
+			key.toNode.String()[:8],
+		)
 	}
 	fmt.Println("**********")
 	s.mut.Unlock()
 }
 
-func (s *simulationTestCase) runAction(t *testing.T, actionType simulateActionType, id NodeID) {
+func (s *simulationTestCase) runAction(
+	t *testing.T, actionType simulateActionType, fromNode, toNode NodeID,
+) {
 	key := simulateActionKey{
 		actionType: actionType,
-		id:         id,
+		fromNode:   fromNode,
+		toNode:     toNode,
 	}
 
 	s.mut.Lock()
@@ -246,7 +272,7 @@ func TestPaxos__Single_Node(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		s.runAction(t, simulateActionFetchFollower, nodeID1)
-		s.runAction(t, simulateActionHandleFollowerInfo, nodeID1)
+		s.runAction(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runAction(t, simulateActionHandleFollowerInfo, nodeID1, nodeID1)
 	})
 }
