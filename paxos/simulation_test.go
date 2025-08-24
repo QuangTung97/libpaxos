@@ -3,6 +3,7 @@ package paxos_test
 import (
 	"context"
 	"fmt"
+	"iter"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -40,8 +41,9 @@ type simulationTestCase struct {
 	now     atomic.Int64
 	nodeMap map[NodeID]*simulateNodeState
 
-	mut     sync.Mutex
-	waitMap map[simulateActionKey]chan struct{}
+	mut             sync.Mutex
+	waitMap         map[simulateActionKey]chan struct{}
+	shutdownWaitMap map[simulateActionKey]chan struct{}
 }
 
 type simulateNodeState struct {
@@ -77,6 +79,7 @@ func newSimulationTestCase(
 	s.now.Store(10_000)
 
 	s.waitMap = map[simulateActionKey]chan struct{}{}
+	s.shutdownWaitMap = map[simulateActionKey]chan struct{}{}
 
 	initNodeSet := map[NodeID]struct{}{}
 	for _, id := range initNodes {
@@ -100,6 +103,13 @@ func newSimulationTestCase(
 	s.nodeMap = nodeMap
 
 	t.Cleanup(func() {
+		s.mut.Lock()
+		for id, ch := range s.shutdownWaitMap {
+			delete(s.shutdownWaitMap, id)
+			close(ch)
+		}
+		s.mut.Unlock()
+
 		for _, state := range s.nodeMap {
 			state.runnerFinish()
 		}
@@ -194,6 +204,50 @@ func (s *simulationTestCase) waitOnKey(
 	}
 }
 
+func (s *simulationTestCase) waitOnShutdown(
+	ctx context.Context,
+	actionType simulateActionType,
+	fromNode NodeID, toNode NodeID,
+	fn func(ctx context.Context) error,
+) {
+	for ctx.Err() == nil {
+		s.internalWaitOnShutdown(ctx, actionType, fromNode, toNode, fn)
+	}
+}
+
+func (s *simulationTestCase) internalWaitOnShutdown(
+	ctx context.Context,
+	actionType simulateActionType,
+	fromNode NodeID, toNode NodeID,
+	fn func(ctx context.Context) error,
+) {
+	newCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		<-ctx.Done()
+		defer cancel()
+
+		key := simulateActionKey{
+			actionType: actionType,
+			fromNode:   fromNode,
+			toNode:     toNode,
+		}
+
+		ch := make(chan struct{})
+
+		s.mut.Lock()
+		s.shutdownWaitMap[key] = ch
+		s.mut.Unlock()
+
+		<-ch
+	})
+
+	_ = fn(newCtx)
+	wg.Wait()
+}
+
 type simulationHandlers struct {
 	root    *simulationTestCase
 	current NodeID
@@ -205,23 +259,35 @@ func (h *simulationHandlers) stateMachineHandler(ctx context.Context, term TermN
 	return ctx.Err()
 }
 
-func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, id NodeID, term TermNum) error {
-	if err := h.root.waitOnKey(ctx, simulateActionFetchFollower, h.current, id); err != nil {
-		return err
+func iterSingle[T any](value T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		yield(value)
+	}
+}
+
+func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode NodeID, term TermNum) error {
+	callback := func(ctx context.Context) error {
+		conn := newSimulateConn(
+			ctx, h, toNode,
+			func(req struct{}) (iter.Seq[ChooseLeaderInfo], error) {
+				info := h.root.nodeMap[toNode].core.GetChoosingLeaderInfo()
+				return iterSingle(info), nil
+			},
+			simulateActionFetchFollower,
+			func(info ChooseLeaderInfo) error {
+				return h.state.core.HandleChoosingLeaderInfo(toNode, term, info)
+			},
+			simulateActionHandleFollowerInfo,
+		)
+
+		conn.sendReq(struct{}{})
+
+		conn.shutdown()
+		return nil
 	}
 
-	info := h.root.nodeMap[id].core.GetChoosingLeaderInfo()
-
-	if err := h.root.waitOnKey(ctx, simulateActionHandleFollowerInfo, h.current, id); err != nil {
-		return err
-	}
-
-	if err := h.state.core.HandleChoosingLeaderInfo(id, term, info); err != nil {
-		return err
-	}
-
-	<-ctx.Done()
-	return ctx.Err()
+	h.root.waitOnShutdown(ctx, simulateActionFetchFollower, h.current, toNode, callback)
+	return nil
 }
 
 func (s *simulationTestCase) printAllWaiting() {
@@ -231,8 +297,16 @@ func (s *simulationTestCase) printAllWaiting() {
 		fmt.Printf(
 			"Wait On: %s, %s -> %s\n",
 			key.actionType.String(),
-			key.fromNode.String()[:8],
-			key.toNode.String()[:8],
+			key.fromNode.String()[:6],
+			key.toNode.String()[:6],
+		)
+	}
+	for key := range s.shutdownWaitMap {
+		fmt.Printf(
+			"Wait Shutdown On: %s, %s -> %s\n",
+			key.actionType.String(),
+			key.fromNode.String()[:6],
+			key.toNode.String()[:6],
 		)
 	}
 	fmt.Println("**********")
@@ -242,6 +316,8 @@ func (s *simulationTestCase) printAllWaiting() {
 func (s *simulationTestCase) runAction(
 	t *testing.T, actionType simulateActionType, fromNode, toNode NodeID,
 ) {
+	t.Helper()
+
 	key := simulateActionKey{
 		actionType: actionType,
 		fromNode:   fromNode,
@@ -254,11 +330,13 @@ func (s *simulationTestCase) runAction(
 		delete(s.waitMap, key)
 	}
 	s.mut.Unlock()
+	fmt.Println("RUN OK", ok)
 
-	if !ok {
+	if ok {
+		close(waitCh)
+	} else {
 		t.Fatalf("Missing wait key: %+v", key)
 	}
-	close(waitCh)
 
 	synctest.Wait()
 }
@@ -272,7 +350,10 @@ func TestPaxos__Single_Node(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
+		s.printAllWaiting()
 		s.runAction(t, simulateActionFetchFollower, nodeID1, nodeID1)
-		s.runAction(t, simulateActionHandleFollowerInfo, nodeID1, nodeID1)
+		synctest.Wait()
+		s.printAllWaiting()
+		//s.runAction(t, simulateActionHandleFollowerInfo, nodeID1, nodeID1)
 	})
 }
