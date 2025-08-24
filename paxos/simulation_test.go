@@ -15,13 +15,16 @@ import (
 type simulateActionType int
 
 const (
-	simulateActionBeforeFetchFollower simulateActionType = iota + 1
+	simulateActionFetchFollower simulateActionType = iota + 1
+	simulateActionHandleFollowerInfo
 )
 
 func (at simulateActionType) String() string {
 	switch at {
-	case simulateActionBeforeFetchFollower:
-		return "before_fetch_follower"
+	case simulateActionFetchFollower:
+		return "fetch_follower"
+	case simulateActionHandleFollowerInfo:
+		return "handle_follower"
 	default:
 		return "unknown"
 	}
@@ -88,7 +91,9 @@ func newSimulationTestCase(
 
 	nodeMap := map[NodeID]*simulateNodeState{}
 	for _, id := range allNodes {
-		nodeMap[id] = s.initNodeState(id, initNodeSet, initMembersEntry, conf)
+		state := &simulateNodeState{}
+		nodeMap[id] = state
+		s.initNodeState(state, id, initNodeSet, initMembersEntry, conf)
 	}
 
 	s.nodeMap = nodeMap
@@ -104,12 +109,13 @@ func newSimulationTestCase(
 }
 
 func (s *simulationTestCase) initNodeState(
+	state *simulateNodeState,
 	id NodeID,
 	initNodeSet map[NodeID]struct{},
 	initMembersEntry LogEntry,
 	conf simulationTestConfig,
-) *simulateNodeState {
-	persistent := &fake.PersistentStateFake{
+) {
+	state.persistent = &fake.PersistentStateFake{
 		NodeID: id,
 		LastTerm: TermNum{
 			Num:    20,
@@ -117,52 +123,47 @@ func (s *simulationTestCase) initNodeState(
 		},
 	}
 
-	log := &fake.LogStorageFake{}
+	state.log = &fake.LogStorageFake{}
 
-	_, ok := initNodeSet[id]
-	if ok {
-		log.UpsertEntries([]PosLogEntry{
+	if _, ok := initNodeSet[id]; ok {
+		state.log.UpsertEntries([]PosLogEntry{
 			{Pos: 1, Entry: initMembersEntry},
 		}, nil)
 	}
 
-	acceptor := NewAcceptorLogic(
+	state.acceptor = NewAcceptorLogic(
 		id,
-		log,
+		state.log,
 		conf.acceptorLimit,
 	)
 
-	runner, finish := s.newRunnerForNode(id)
-	state := &simulateNodeState{
-		persistent: persistent,
-		log:        log,
-		acceptor:   acceptor,
-
-		runner:       runner,
-		runnerFinish: finish,
-	}
+	state.runner, state.runnerFinish = s.newRunnerForNode(state, id)
 
 	state.core = NewCoreLogic(
-		persistent,
-		log,
-		runner,
+		state.persistent,
+		state.log,
+		state.runner,
 		func() TimestampMilli {
 			return TimestampMilli(s.now.Load())
 		},
 		LogPos(conf.maxBufferLen),
 	)
-
-	return state
 }
 
-func (s *simulationTestCase) newRunnerForNode(id NodeID) (NodeRunner, func()) {
+func (s *simulationTestCase) newRunnerForNode(state *simulateNodeState, id NodeID) (NodeRunner, func()) {
+	handlers := &simulationHandlers{
+		root:    s,
+		current: id,
+		state:   state,
+	}
+
 	return NewNodeRunner(
 		id,
 		nil,
 		nil,
 		nil,
-		s.stateMachineHandler,
-		s.fetchFollowerHandler,
+		handlers.stateMachineHandler,
+		handlers.fetchFollowerHandler,
 		nil,
 	)
 }
@@ -181,16 +182,27 @@ func (s *simulationTestCase) waitOnKey(actionType simulateActionType, id NodeID)
 	<-waitCh
 }
 
-func (s *simulationTestCase) stateMachineHandler(ctx context.Context, term TermNum, isLeader bool) error {
+type simulationHandlers struct {
+	root    *simulationTestCase
+	current NodeID
+	state   *simulateNodeState
+}
+
+func (h *simulationHandlers) stateMachineHandler(ctx context.Context, term TermNum, isLeader bool) error {
 	<-ctx.Done()
 	return ctx.Err()
 }
 
-func (s *simulationTestCase) fetchFollowerHandler(ctx context.Context, id NodeID, term TermNum) error {
-	s.waitOnKey(simulateActionBeforeFetchFollower, id)
+func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, id NodeID, term TermNum) error {
+	h.root.waitOnKey(simulateActionFetchFollower, id)
+	info := h.root.nodeMap[id].core.GetChoosingLeaderInfo()
+
+	h.root.waitOnKey(simulateActionHandleFollowerInfo, id)
+	if err := h.state.core.HandleChoosingLeaderInfo(id, term, info); err != nil {
+		return err
+	}
 
 	<-ctx.Done()
-
 	return ctx.Err()
 }
 
@@ -204,7 +216,7 @@ func (s *simulationTestCase) printAllWaiting() {
 	s.mut.Unlock()
 }
 
-func (s *simulationTestCase) runAction(actionType simulateActionType, id NodeID) {
+func (s *simulationTestCase) runAction(t *testing.T, actionType simulateActionType, id NodeID) {
 	key := simulateActionKey{
 		actionType: actionType,
 		id:         id,
@@ -218,7 +230,7 @@ func (s *simulationTestCase) runAction(actionType simulateActionType, id NodeID)
 	s.mut.Unlock()
 
 	if !ok {
-		panic(fmt.Sprintf("Missing wait key: %+v", key))
+		t.Fatalf("Missing wait key: %+v", key)
 	}
 	close(waitCh)
 
@@ -234,8 +246,7 @@ func TestPaxos__Single_Node(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		s.printAllWaiting()
-		s.runAction(simulateActionBeforeFetchFollower, nodeID1)
-		s.printAllWaiting()
+		s.runAction(t, simulateActionFetchFollower, nodeID1)
+		s.runAction(t, simulateActionHandleFollowerInfo, nodeID1)
 	})
 }
