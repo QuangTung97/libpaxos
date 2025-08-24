@@ -54,7 +54,7 @@ type simulationTestCase struct {
 	mut             sync.Mutex
 	waitMap         map[simulateActionKey]chan struct{}
 	shutdownWaitMap map[simulateActionKey]chan struct{}
-	activeConn      map[SimulationConn]struct{}
+	activeConn      map[simulateActionKey]SimulationConn
 }
 
 type simulateNodeState struct {
@@ -91,7 +91,7 @@ func newSimulationTestCase(
 
 	s.waitMap = map[simulateActionKey]chan struct{}{}
 	s.shutdownWaitMap = map[simulateActionKey]chan struct{}{}
-	s.activeConn = map[SimulationConn]struct{}{}
+	s.activeConn = map[simulateActionKey]SimulationConn{}
 
 	initNodeSet := map[NodeID]struct{}{}
 	for _, id := range initNodes {
@@ -229,10 +229,11 @@ func (s *simulationTestCase) waitOnShutdown(
 	actionType simulateActionType,
 	fromNode NodeID, toNode NodeID,
 	fn func(ctx context.Context) error,
-) {
+) error {
 	for ctx.Err() == nil {
 		s.internalWaitOnShutdown(ctx, actionType, fromNode, toNode, fn)
 	}
+	return ctx.Err()
 }
 
 func (s *simulationTestCase) internalWaitOnShutdown(
@@ -306,18 +307,17 @@ func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode No
 				return h.state.core.HandleChoosingLeaderInfo(toNode, term, info)
 			},
 		)
-		defer conn.shutdown()
+		defer conn.Shutdown()
 
-		conn.sendReq(struct{}{})
+		conn.SendRequest(struct{}{})
 		return nil
 	}
 
-	h.root.waitOnShutdown(ctx, simulateActionFetchFollower, h.current, toNode, callback)
-	return nil
+	return h.root.waitOnShutdown(ctx, simulateActionFetchFollower, h.current, toNode, callback)
 }
 
 func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode NodeID, termVal TermValue) error {
-	h.root.waitOnShutdown(ctx, simulateActionStartElection, h.current, toNode, func(ctx context.Context) error {
+	return h.root.waitOnShutdown(ctx, simulateActionStartElection, h.current, toNode, func(ctx context.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionStartElection,
@@ -332,16 +332,15 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 				return nil
 			},
 		)
-		defer conn.shutdown()
+		defer conn.Shutdown()
 
-		conn.sendReq(struct{}{})
+		conn.SendRequest(struct{}{})
 		return nil
 	})
-	return nil
 }
 
 func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	h.root.waitOnShutdown(ctx, simulateActionVoteRequest, h.current, toNode, func(ctx context.Context) error {
+	return h.root.waitOnShutdown(ctx, simulateActionVoteRequest, h.current, toNode, func(ctx context.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionVoteRequest,
@@ -355,16 +354,15 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 		if err != nil {
 			return err
 		}
-		defer conn.shutdown()
+		defer conn.Shutdown()
 
-		conn.sendReq(input)
+		conn.SendRequest(input)
 		return nil
 	})
-	return nil
 }
 
 func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	h.root.waitOnShutdown(ctx, simulateActionAcceptRequest, h.current, toNode, func(ctx context.Context) error {
+	return h.root.waitOnShutdown(ctx, simulateActionAcceptRequest, h.current, toNode, func(ctx context.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
@@ -379,7 +377,9 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 				return h.state.core.HandleAcceptEntriesResponse(toNode, resp)
 			},
 		)
-		defer conn.shutdown()
+		defer conn.Shutdown()
+
+		ctx = conn.GetContext()
 
 		var fromPos LogPos
 		var lastCommitted LogPos
@@ -388,14 +388,12 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 			if err != nil {
 				return err
 			}
-			conn.sendReq(input)
+			conn.SendRequest(input)
 
 			fromPos = input.NextPos
 			lastCommitted = input.Committed
 		}
 	})
-	<-ctx.Done()
-	return ctx.Err()
 }
 
 func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode NodeID, term TermNum) error {
@@ -434,7 +432,7 @@ func (s *simulationTestCase) printAllWaiting() {
 		)
 	}
 
-	for conn := range s.activeConn {
+	for _, conn := range s.activeConn {
 		conn.Print()
 	}
 
@@ -492,6 +490,33 @@ func (s *simulationTestCase) runShutdown(
 		close(waitCh)
 	} else {
 		t.Fatalf("Missing shutdown wait key: %+v", key)
+	}
+
+	synctest.Wait()
+}
+
+func (s *simulationTestCase) closeConn(
+	t *testing.T, actionType simulateActionType, fromNode, toNode NodeID,
+) {
+	t.Helper()
+
+	key := simulateActionKey{
+		actionType: actionType,
+		fromNode:   fromNode,
+		toNode:     toNode,
+	}
+
+	s.mut.Lock()
+	conn, ok := s.activeConn[key]
+	if ok {
+		delete(s.activeConn, key)
+	}
+	s.mut.Unlock()
+
+	if ok {
+		conn.CloseConn()
+	} else {
+		t.Fatalf("Missing active connection key: %+v", key)
 	}
 
 	synctest.Wait()

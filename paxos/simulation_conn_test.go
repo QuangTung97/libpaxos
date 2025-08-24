@@ -12,6 +12,7 @@ import (
 type SimulationConn interface {
 	CloseConn()
 	Print()
+	GetContext() context.Context
 }
 
 type simulateConn[Req, Resp any] struct {
@@ -20,9 +21,11 @@ type simulateConn[Req, Resp any] struct {
 	fromNode   NodeID
 	toNode     NodeID
 
+	ctx    context.Context
+	cancel func()
+
 	sendChan chan Req
 	recvChan chan Resp
-	cancel   func()
 	wg       sync.WaitGroup
 }
 
@@ -45,10 +48,12 @@ func newSimulateConn[Req, Resp any](
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
+	c.ctx = ctx
 	c.cancel = cancel
 
+	key := c.computeActionKey()
 	c.root.mut.Lock()
-	c.root.activeConn[c] = struct{}{}
+	c.root.activeConn[key] = c
 	c.root.mut.Unlock()
 
 	c.wg.Go(func() {
@@ -123,14 +128,16 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 	return responseHandler(resp)
 }
 
-func (c *simulateConn[Req, Resp]) sendReq(req Req) {
+func (c *simulateConn[Req, Resp]) SendRequest(req Req) {
 	c.sendChan <- req
 }
 
-func (c *simulateConn[Req, Resp]) shutdown() {
+func (c *simulateConn[Req, Resp]) Shutdown() {
 	c.wg.Wait()
+
+	key := c.computeActionKey()
 	c.root.mut.Lock()
-	delete(c.root.activeConn, c)
+	delete(c.root.activeConn, key)
 	c.root.mut.Unlock()
 }
 
@@ -145,4 +152,16 @@ func (c *simulateConn[Req, Resp]) Print() {
 		c.fromNode.String()[:6],
 		c.toNode.String()[:6],
 	)
+}
+
+func (c *simulateConn[Req, Resp]) computeActionKey() simulateActionKey {
+	return simulateActionKey{
+		actionType: c.actionType,
+		fromNode:   c.fromNode,
+		toNode:     c.toNode,
+	}
+}
+
+func (c *simulateConn[Req, Resp]) GetContext() context.Context {
+	return c.ctx
 }
