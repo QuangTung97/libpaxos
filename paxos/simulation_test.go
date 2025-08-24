@@ -10,6 +10,8 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/stretchr/testify/assert"
+
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
 )
@@ -19,6 +21,7 @@ type simulateActionType int
 const (
 	simulateActionFetchFollower simulateActionType = iota + 1
 	simulateActionStartElection
+	simulateActionVoteRequest
 )
 
 func (at simulateActionType) String() string {
@@ -27,6 +30,8 @@ func (at simulateActionType) String() string {
 		return "fetch_follower"
 	case simulateActionStartElection:
 		return "start_election"
+	case simulateActionVoteRequest:
+		return "vote_request"
 	default:
 		return "unknown"
 	}
@@ -230,7 +235,12 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-newCtx.Done():
+			return
+		}
+
 		defer cancel()
 
 		key := simulateActionKey{
@@ -248,7 +258,10 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 		<-ch
 	})
 
-	_ = fn(newCtx)
+	if err := fn(newCtx); err != nil {
+		cancel()
+	}
+
 	wg.Wait()
 }
 
@@ -319,8 +332,27 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 }
 
 func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	<-ctx.Done()
-	return ctx.Err()
+	h.root.waitOnShutdown(ctx, simulateActionVoteRequest, h.current, toNode, func(ctx context.Context) error {
+		conn := newSimulateConn(
+			ctx, h, toNode,
+			simulateActionVoteRequest,
+			h.root.nodeMap[toNode].acceptor.HandleRequestVote,
+			func(resp RequestVoteOutput) error {
+				return h.state.core.HandleVoteResponse(ctx, toNode, resp)
+			},
+		)
+
+		input, err := h.state.core.GetVoteRequest(term, toNode)
+		if err != nil {
+			return err
+		}
+
+		conn.sendReq(input)
+
+		conn.shutdown()
+		return nil
+	})
+	return nil
 }
 
 func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
@@ -439,6 +471,13 @@ func TestPaxos__Single_Node(t *testing.T) {
 
 		s.startShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.startShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+
+		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID1)
+		s.startShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+
+		assert.Equal(t, StateLeader, s.nodeMap[nodeID1].core.GetState())
+		assert.Equal(t, TermNum{Num: 21, NodeID: nodeID1}, s.nodeMap[nodeID1].persistent.GetLastTerm())
 
 		s.printAllWaiting()
 	})
