@@ -19,10 +19,9 @@ func newSimulateConn[Req, Resp any](
 	ctx context.Context,
 	handlerState *simulationHandlers,
 	toNode NodeID,
+	actionType simulateActionType,
 	requestHandler func(req Req) (iter.Seq[Resp], error),
-	requestAction simulateActionType,
 	responseHandler func(resp Resp) error,
-	responseAction simulateActionType,
 ) *simulateConn[Req, Resp] {
 	c := &simulateConn[Req, Resp]{
 		root:     handlerState.root,
@@ -40,7 +39,7 @@ func newSimulateConn[Req, Resp any](
 		for {
 			select {
 			case req := <-c.sendChan:
-				err := c.doHandleRequest(ctx, handlerState, requestHandler, requestAction, toNode, req)
+				err := c.doHandleRequest(ctx, handlerState, requestHandler, actionType, toNode, req)
 				if err != nil {
 					return
 				}
@@ -58,7 +57,7 @@ func newSimulateConn[Req, Resp any](
 		for {
 			select {
 			case resp := <-c.recvChan:
-				err := c.doHandleResponse(ctx, resp, handlerState, responseHandler, responseAction, toNode)
+				err := c.doHandleResponse(ctx, resp, handlerState, responseHandler, actionType, toNode)
 				if err != nil {
 					return
 				}
@@ -75,11 +74,11 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	ctx context.Context,
 	handlerState *simulationHandlers,
 	requestHandler func(req Req) (iter.Seq[Resp], error),
-	requestAction simulateActionType,
+	actionType simulateActionType,
 	toNode NodeID,
 	req Req,
 ) error {
-	if err := c.root.waitOnKey(ctx, requestAction, handlerState.current, toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, actionType, false, handlerState.current, toNode); err != nil {
 		return err
 	}
 
@@ -105,10 +104,10 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 	resp Resp,
 	handlerState *simulationHandlers,
 	responseHandler func(resp Resp) error,
-	responseAction simulateActionType,
+	actionType simulateActionType,
 	toNode NodeID,
 ) error {
-	if err := c.root.waitOnKey(ctx, responseAction, handlerState.current, toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, actionType, true, handlerState.current, toNode); err != nil {
 		return err
 	}
 	return responseHandler(resp)
