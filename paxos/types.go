@@ -217,4 +217,5 @@ type ChooseLeaderInfo struct {
 	NoActiveLeader  bool
 	Members         []MemberInfo
 	FullyReplicated LogPos
+	LastTermVal     TermValue
 }

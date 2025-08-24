@@ -14,7 +14,7 @@ type NodeRunner interface {
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
 	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int)
-	StartElectionRunner(term TermNum, started bool, chosen NodeID, retryCount int)
+	StartElectionRunner(termValue TermValue, started bool, chosen NodeID, retryCount int)
 }
 
 type nodeTermInfo struct {
@@ -46,7 +46,7 @@ func NewNodeRunner(
 	replicateRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	stateMachineFunc func(ctx context.Context, term TermNum, isLeader bool) error,
 	fetchFollowerInfoFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	startElectionFunc func(ctx context.Context, nodeID NodeID) error,
+	startElectionFunc func(ctx context.Context, nodeID NodeID, maxTermVal TermValue) error,
 ) (NodeRunner, func()) {
 	r := &nodeRunnerImpl{
 		currentNodeID: currentNodeID,
@@ -94,7 +94,7 @@ func NewNodeRunner(
 
 	r.startElection = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
 		loopWithSleep(ctx, func(ctx context.Context) error {
-			return startElectionFunc(ctx, val.nodeID)
+			return startElectionFunc(ctx, val.nodeID, val.term.Num)
 		})
 	})
 
@@ -164,13 +164,15 @@ func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
 }
 
 func (r *nodeRunnerImpl) StartElectionRunner(
-	term TermNum, started bool, chosen NodeID, retryCount int,
+	termValue TermValue, started bool, chosen NodeID, retryCount int,
 ) {
 	if started {
 		infos := []nodeTermInfo{
 			{
-				nodeID:     chosen,
-				term:       term,
+				nodeID: chosen,
+				term: TermNum{
+					Num: termValue,
+				},
 				retryCount: retryCount,
 			},
 		}

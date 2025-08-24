@@ -169,7 +169,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 }
 
 func (c *coreLogicTest) startAsLeader() {
-	if err := c.core.StartElection(c.persistent.GetLastTerm(), 0); err != nil {
+	if err := c.core.StartElection(0); err != nil {
 		panic("Should be able to start election, but got error: " + err.Error())
 	}
 
@@ -203,10 +203,11 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 		NoActiveLeader:  true,
 		Members:         c.log.GetCommittedInfo().Members,
 		FullyReplicated: c.log.GetFullyReplicated(),
+		LastTermVal:     20,
 	}, c.core.GetChoosingLeaderInfo())
 
 	// start election
-	err := c.core.StartElection(c.persistent.GetLastTerm(), 0)
+	err := c.core.StartElection(0)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 
@@ -1180,7 +1181,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 }
 
 func (c *coreLogicTest) doStartElection() {
-	if err := c.core.StartElection(c.persistent.GetLastTerm(), 0); err != nil {
+	if err := c.core.StartElection(0); err != nil {
 		panic("Should start election OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1563,7 +1564,7 @@ func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.startAsLeader()
 
-	err := c.core.StartElection(c.currentTerm, 0)
+	err := c.core.StartElection(0)
 	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
 }
 
@@ -1714,7 +1715,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 func TestCoreLogic__Start_Election__With_Max_Term_Value(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	err := c.core.StartElection(c.persistent.GetLastTerm(), 23)
+	err := c.core.StartElection(23)
 	assert.Equal(t, nil, err)
 
 	assert.Equal(t, TermNum{
@@ -1995,7 +1996,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 
 	assert.Equal(t, TimestampMilli(15_000), c.core.GetFollowerWakeUpAt())
 
@@ -2005,6 +2006,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 		NoActiveLeader:  true,
 		Members:         c.log.GetCommittedInfo().Members,
 		FullyReplicated: 1,
+		LastTermVal:     20,
 	}, info)
 
 	c.now.Add(50)
@@ -2029,7 +2031,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	assert.Equal(t, 0, c.runner.FetchRetryCount)
 
 	assert.Equal(t, true, c.runner.ElectionStarted)
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(20), c.runner.ElectionTerm)
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
 	assert.Equal(t, nodeID1, c.runner.ElectionChosen)
 }
@@ -2038,12 +2040,12 @@ func TestCoreLogic__Candidate__Check_Start_Election_Runner(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 
 	c.doStartElection()
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
-	assert.Equal(t, c.currentTerm, c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 }
 
 func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicated_Pos(t *testing.T) {
@@ -2064,7 +2066,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, 0, c.runner.FetchRetryCount)
 
 	assert.Equal(t, true, c.runner.ElectionStarted)
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(20), c.runner.ElectionTerm)
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
 	assert.Equal(t, nodeID2, c.runner.ElectionChosen)
 
@@ -2076,7 +2078,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, 0, c.runner.FetchRetryCount)
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
-	assert.Equal(t, c.currentTerm, c.runner.ElectionTerm)
+	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 	assert.Equal(t, 0, c.runner.ElectionRetryCount)
 	assert.Equal(t, NodeID{}, c.runner.ElectionChosen)
 

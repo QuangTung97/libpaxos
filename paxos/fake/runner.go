@@ -20,7 +20,7 @@ type NodeRunnerFake struct {
 	FetchFollowers    []paxos.NodeID
 	FetchRetryCount   int
 
-	ElectionTerm       paxos.TermNum
+	ElectionTerm       paxos.TermValue
 	ElectionStarted    bool
 	ElectionChosen     paxos.NodeID
 	ElectionRetryCount int
@@ -56,9 +56,9 @@ func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
 }
 
 func (r *NodeRunnerFake) StartElectionRunner(
-	term paxos.TermNum, started bool, chosen paxos.NodeID, retryCount int,
+	termValue paxos.TermValue, started bool, chosen paxos.NodeID, retryCount int,
 ) {
-	r.ElectionTerm = term
+	r.ElectionTerm = termValue
 	r.ElectionStarted = started
 	r.ElectionChosen = chosen
 	r.ElectionRetryCount = retryCount

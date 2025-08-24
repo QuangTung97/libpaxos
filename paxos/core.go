@@ -8,7 +8,7 @@ import (
 )
 
 type CoreLogic interface {
-	StartElection(term TermNum, maxTermValue TermValue) error
+	StartElection(maxTermValue TermValue) error
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(ctx context.Context, fromNode NodeID, output RequestVoteOutput) error
@@ -93,9 +93,10 @@ type followerStateInfo struct {
 	wakeUpAt    TimestampMilli
 	checkStatus followerCheckOtherStatus
 
-	members    []MemberInfo
-	lastPos    LogPos
-	lastNodeID NodeID
+	members     []MemberInfo
+	lastPos     LogPos
+	lastNodeID  NodeID
+	lastTermVal TermValue
 
 	checkedSet        map[NodeID]struct{}
 	noActiveLeaderSet map[NodeID]struct{}
@@ -157,12 +158,12 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 	return c.stepDownWhenNotInMemberList()
 }
 
-func (c *coreLogicImpl) StartElection(inputTerm TermNum, maxTermValue TermValue) error {
+func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	if err := c.checkStateEqual(inputTerm, StateFollower); err != nil {
-		return err
+	if c.state != StateFollower {
+		return fmt.Errorf("expected state '%s', got: '%s'", StateFollower.String(), c.state.String())
 	}
 
 	c.state = StateCandidate
@@ -669,7 +670,7 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
 
 	if c.state != StateFollower {
 		c.runner.StartFetchingFollowerInfoRunners(term, nil, 0)
-		c.runner.StartElectionRunner(term, false, NodeID{}, 0)
+		c.runner.StartElectionRunner(0, false, NodeID{}, 0)
 		return
 	}
 
@@ -688,10 +689,10 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
 		c.runner.StartElectionRunner(
-			term, true, c.follower.lastNodeID, c.followerRetryCount,
+			c.follower.lastTermVal, true, c.follower.lastNodeID, c.followerRetryCount,
 		)
 	} else {
-		c.runner.StartElectionRunner(term, false, NodeID{}, 0)
+		c.runner.StartElectionRunner(0, false, NodeID{}, 0)
 	}
 }
 
@@ -1018,6 +1019,7 @@ func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {
 	output := ChooseLeaderInfo{
 		Members:         commitInfo.Members,
 		FullyReplicated: commitInfo.FullyReplicated,
+		LastTermVal:     c.persistent.GetLastTerm().Num,
 	}
 
 	if c.state != StateFollower {
@@ -1045,6 +1047,8 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 	if c.follower.checkStatus != followerCheckOtherStatusRunning {
 		return fmt.Errorf("check status is not running, got: %d", c.follower.checkStatus)
 	}
+
+	c.follower.lastTermVal = max(c.follower.lastTermVal, info.LastTermVal)
 
 	if c.follower.lastPos < info.FullyReplicated {
 		c.follower.lastNodeID = fromNode

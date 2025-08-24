@@ -2,7 +2,6 @@ package paxos_test
 
 import (
 	"context"
-	"fmt"
 	"iter"
 	"sync"
 
@@ -32,7 +31,6 @@ func newSimulateConn[Req, Resp any](
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	c.wg.Add(1)
 	go func() {
@@ -42,7 +40,6 @@ func newSimulateConn[Req, Resp any](
 		for {
 			select {
 			case req := <-c.sendChan:
-				fmt.Println("BEGIN REQ", req)
 				err := c.doHandleRequest(ctx, handlerState, requestHandler, requestAction, toNode, req)
 				if err != nil {
 					return
@@ -61,7 +58,6 @@ func newSimulateConn[Req, Resp any](
 		for {
 			select {
 			case resp := <-c.recvChan:
-				fmt.Println("BEGIN RESP", resp)
 				err := c.doHandleResponse(ctx, resp, handlerState, responseHandler, responseAction, toNode)
 				if err != nil {
 					return
@@ -83,11 +79,9 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	toNode NodeID,
 	req Req,
 ) error {
-	fmt.Println("HANDLE REQ ONE", requestAction)
 	if err := c.root.waitOnKey(ctx, requestAction, handlerState.current, toNode); err != nil {
 		return err
 	}
-	fmt.Println("HANDLE REQ ONE AFTER", requestAction)
 
 	respIter, err := requestHandler(req)
 	if err != nil {
@@ -95,7 +89,6 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	}
 
 	for resp := range respIter {
-		fmt.Println("BUILD RESP:", resp)
 		select {
 		case c.recvChan <- resp:
 
@@ -122,7 +115,6 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 }
 
 func (c *simulateConn[Req, Resp]) sendReq(req Req) {
-	fmt.Println("SEND REQ:", req)
 	c.sendChan <- req
 }
 
