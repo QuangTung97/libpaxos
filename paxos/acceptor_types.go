@@ -22,14 +22,14 @@ type AcceptEntriesInput struct {
 	ToNode    NodeID
 	Term      TermNum
 	Entries   []PosLogEntry
+	NextPos   LogPos // TODO generate
 	Committed LogPos
 }
 
 type AcceptEntriesOutput struct {
-	Success   bool
-	Term      TermNum
-	PosList   []LogPos
-	Committed LogPos // TODO produce and handle
+	Success bool
+	Term    TermNum
+	PosList []LogPos
 }
 
 type CommittedInfo struct {

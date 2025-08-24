@@ -22,6 +22,7 @@ const (
 	simulateActionFetchFollower simulateActionType = iota + 1
 	simulateActionStartElection
 	simulateActionVoteRequest
+	simulateActionAcceptRequest
 )
 
 func (at simulateActionType) String() string {
@@ -32,6 +33,8 @@ func (at simulateActionType) String() string {
 		return "start_election"
 	case simulateActionVoteRequest:
 		return "vote_request"
+	case simulateActionAcceptRequest:
+		return "accept_request"
 	default:
 		return "unknown"
 	}
@@ -295,10 +298,9 @@ func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode No
 				return h.state.core.HandleChoosingLeaderInfo(toNode, term, info)
 			},
 		)
+		defer conn.shutdown()
 
 		conn.sendReq(struct{}{})
-
-		conn.shutdown()
 		return nil
 	}
 
@@ -322,10 +324,9 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 				return nil
 			},
 		)
+		defer conn.shutdown()
 
 		conn.sendReq(struct{}{})
-
-		conn.shutdown()
 		return nil
 	})
 	return nil
@@ -346,16 +347,45 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 		if err != nil {
 			return err
 		}
+		defer conn.shutdown()
 
 		conn.sendReq(input)
-
-		conn.shutdown()
 		return nil
 	})
 	return nil
 }
 
 func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
+	h.root.waitOnShutdown(ctx, simulateActionAcceptRequest, h.current, toNode, func(ctx context.Context) error {
+		conn := newSimulateConn(
+			ctx, h, toNode,
+			simulateActionAcceptRequest,
+			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+				output, err := h.root.nodeMap[toNode].acceptor.AcceptEntries(req)
+				if err != nil {
+					return nil, err
+				}
+				return iterSingle(output), nil
+			},
+			func(resp AcceptEntriesOutput) error {
+				return h.state.core.HandleAcceptEntriesResponse(toNode, resp)
+			},
+		)
+		defer conn.shutdown()
+
+		var fromPos LogPos
+		var lastCommitted LogPos
+		for {
+			input, err := h.state.core.GetAcceptEntriesRequest(ctx, term, toNode, fromPos, lastCommitted)
+			if err != nil {
+				return err
+			}
+			conn.sendReq(input)
+
+			fromPos = input.NextPos
+			lastCommitted = input.Committed
+		}
+	})
 	<-ctx.Done()
 	return ctx.Err()
 }
@@ -453,8 +483,7 @@ func (s *simulationTestCase) startShutdown(
 }
 
 func TestPaxos__Single_Node(t *testing.T) {
-	// t.Skip()
-
+	t.Skip()
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
 			t,
@@ -478,6 +507,11 @@ func TestPaxos__Single_Node(t *testing.T) {
 
 		assert.Equal(t, StateLeader, s.nodeMap[nodeID1].core.GetState())
 		assert.Equal(t, TermNum{Num: 21, NodeID: nodeID1}, s.nodeMap[nodeID1].persistent.GetLastTerm())
+
+		s.printAllWaiting()
+
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
 
 		s.printAllWaiting()
 	})
