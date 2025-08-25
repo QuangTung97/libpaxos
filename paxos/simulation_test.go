@@ -283,7 +283,9 @@ type simulationHandlers struct {
 	state   *simulateNodeState
 }
 
-func (h *simulationHandlers) stateMachineHandler(ctx context.Context, term TermNum, isLeader bool) error {
+func (h *simulationHandlers) stateMachineHandler(
+	ctx context.Context, term TermNum, info StateMachineRunnerInfo,
+) error {
 	<-ctx.Done()
 	return ctx.Err()
 }

@@ -10,18 +10,24 @@ import (
 type NodeRunner interface {
 	StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{})
 	StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{})
-	SetLeader(term TermNum, isLeader bool)
+	StartStateMachine(term TermNum, info StateMachineRunnerInfo)
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
 	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int)
 	StartElectionRunner(termValue TermValue, started bool, chosen NodeID, retryCount int)
 }
 
+type StateMachineRunnerInfo struct {
+	Running       bool
+	IsLeader      bool // when state = Candidate or state = Leader
+	AcceptCommand bool
+}
+
 type nodeTermInfo struct {
 	nodeID     NodeID
 	term       TermNum
-	isLeader   bool
 	retryCount int
+	info       StateMachineRunnerInfo
 }
 
 func (i nodeTermInfo) getNodeID() NodeID {
@@ -44,7 +50,7 @@ func NewNodeRunner(
 	voteRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	acceptorRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	replicateRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	stateMachineFunc func(ctx context.Context, term TermNum, isLeader bool) error,
+	stateMachineFunc func(ctx context.Context, term TermNum, info StateMachineRunnerInfo) error,
 	fetchFollowerInfoFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
 	startElectionFunc func(ctx context.Context, nodeID NodeID, maxTermVal TermValue) error,
 ) (NodeRunner, func()) {
@@ -82,7 +88,7 @@ func NewNodeRunner(
 
 	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
 		loopWithSleep(ctx, func(ctx context.Context) error {
-			return stateMachineFunc(ctx, val.term, val.isLeader)
+			return stateMachineFunc(ctx, val.term, val.info)
 		})
 	})
 
@@ -138,15 +144,19 @@ func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeI
 	r.replicators.Upsert(infos)
 }
 
-func (r *nodeRunnerImpl) SetLeader(term TermNum, isLeader bool) {
-	infos := []nodeTermInfo{
-		{
-			nodeID:   r.currentNodeID,
-			term:     term,
-			isLeader: isLeader,
-		},
+func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunnerInfo) {
+	if info.Running {
+		infos := []nodeTermInfo{
+			{
+				nodeID: r.currentNodeID,
+				term:   term,
+				info:   info,
+			},
+		}
+		r.stateMachine.Upsert(infos)
+	} else {
+		r.stateMachine.Upsert(nil)
 	}
-	r.stateMachine.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(

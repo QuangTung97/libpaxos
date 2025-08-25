@@ -195,8 +195,10 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	// check leader & follower runners before election
-	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.LeaderTerm)
-	assert.Equal(t, false, c.runner.IsLeader)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running: true,
+	}, c.runner.StateMachineInfo)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, ChooseLeaderInfo{
@@ -218,8 +220,11 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	assert.Equal(t, c.currentTerm, c.runner.AcceptTerm)
 
 	// check leader & follower runners
-	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
-	assert.Equal(t, false, c.runner.IsLeader)
+	assert.Equal(t, c.currentTerm, c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running:  true,
+		IsLeader: true,
+	}, c.runner.StateMachineInfo)
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 
@@ -278,8 +283,12 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
-	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
-	assert.Equal(t, true, c.runner.IsLeader)
+	assert.Equal(t, c.currentTerm, c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running:       true,
+		IsLeader:      true,
+		AcceptCommand: true,
+	}, c.runner.StateMachineInfo)
 
 	// do nothing
 	err = c.core.HandleVoteResponse(c.ctx, nodeID3, voteOutput)
@@ -1244,8 +1253,10 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		assert.Equal(t, newTerm, c.runner.AcceptTerm)
 		assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
 
-		assert.Equal(t, newTerm, c.runner.LeaderTerm)
-		assert.Equal(t, false, c.runner.IsLeader)
+		assert.Equal(t, newTerm, c.runner.StateMachineTerm)
+		assert.Equal(t, StateMachineRunnerInfo{
+			Running: true,
+		}, c.runner.StateMachineInfo)
 
 		assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 		assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
@@ -1534,8 +1545,10 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
 	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
 
-	assert.Equal(t, c.currentTerm, c.runner.LeaderTerm)
-	assert.Equal(t, false, c.runner.IsLeader)
+	assert.Equal(t, c.currentTerm, c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running: true,
+	}, c.runner.StateMachineInfo)
 
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)

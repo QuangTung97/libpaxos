@@ -507,7 +507,11 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() error {
 	c.state = StateLeader
 	c.candidate = nil
 	c.updateVoteRunners()
-	c.runner.SetLeader(c.getCurrentTerm(), true)
+	c.runner.StartStateMachine(c.getCurrentTerm(), StateMachineRunnerInfo{
+		Running:       true,
+		IsLeader:      true,
+		AcceptCommand: true,
+	})
 
 	return c.finishMembershipChange()
 }
@@ -660,9 +664,20 @@ func (c *coreLogicImpl) updateAllRunners() {
 
 	term := c.getCurrentTerm()
 	if c.state == StateLeader {
-		c.runner.SetLeader(term, true)
+		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+			Running:       true,
+			IsLeader:      true,
+			AcceptCommand: true,
+		})
+	} else if c.state == StateCandidate {
+		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+			Running:  true,
+			IsLeader: true,
+		})
 	} else {
-		c.runner.SetLeader(term, false)
+		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+			Running: true,
+		})
 	}
 }
 

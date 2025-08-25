@@ -188,7 +188,7 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var numActive atomic.Int64
 		var inputTerm TermNum
-		var inputIsLeader bool
+		var inputInfo StateMachineRunnerInfo
 		var mut sync.Mutex
 
 		r, finish := NewNodeRunner(
@@ -196,11 +196,11 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, term TermNum, isLeader bool) error {
+			func(ctx context.Context, term TermNum, info StateMachineRunnerInfo) error {
 				numActive.Add(1)
 				mut.Lock()
 				inputTerm = term
-				inputIsLeader = isLeader
+				inputInfo = info
 				mut.Unlock()
 
 				<-ctx.Done()
@@ -212,22 +212,29 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 			nil,
 		)
 
-		r.SetLeader(currentTerm, true)
+		r.StartStateMachine(currentTerm, StateMachineRunnerInfo{
+			Running:       true,
+			IsLeader:      true,
+			AcceptCommand: true,
+		})
 		synctest.Wait()
 
 		mut.Lock()
 		assert.Equal(t, int64(1), numActive.Load())
 		assert.Equal(t, currentTerm, inputTerm)
-		assert.Equal(t, true, inputIsLeader)
+		assert.Equal(t, StateMachineRunnerInfo{
+			Running:       true,
+			IsLeader:      true,
+			AcceptCommand: true,
+		}, inputInfo)
 		mut.Unlock()
 
-		r.SetLeader(currentTerm, false)
+		r.StartStateMachine(currentTerm, StateMachineRunnerInfo{})
 		synctest.Wait()
 
 		mut.Lock()
-		assert.Equal(t, int64(1), numActive.Load())
+		assert.Equal(t, int64(0), numActive.Load())
 		assert.Equal(t, currentTerm, inputTerm)
-		assert.Equal(t, false, inputIsLeader)
 		mut.Unlock()
 
 		finish()
