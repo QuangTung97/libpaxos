@@ -95,7 +95,7 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	requestHandler func(req Req) (iter.Seq[Resp], error),
 	req Req,
 ) error {
-	if err := c.root.waitOnKey(ctx, c.actionType, false, handlerState.current, c.toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, c.actionType, phaseHandleRequest, handlerState.current, c.toNode); err != nil {
 		return err
 	}
 
@@ -122,10 +122,14 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 	handlerState *simulationHandlers,
 	responseHandler func(resp Resp) error,
 ) error {
-	if err := c.root.waitOnKey(ctx, c.actionType, true, handlerState.current, c.toNode); err != nil {
+	if err := c.root.waitOnKey(ctx, c.actionType, phaseHandleResponse, handlerState.current, c.toNode); err != nil {
 		return err
 	}
 	return responseHandler(resp)
+}
+
+func (c *simulateConn[Req, Resp]) WaitBeforeSend(ctx context.Context) error {
+	return c.root.waitOnKey(ctx, c.actionType, phaseBeforeRequest, c.fromNode, c.toNode)
 }
 
 func (c *simulateConn[Req, Resp]) SendRequest(req Req) {

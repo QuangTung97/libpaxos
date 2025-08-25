@@ -1,10 +1,12 @@
 package paxos_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"iter"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,9 +45,38 @@ func (at simulateActionType) String() string {
 	}
 }
 
+type phaseType int
+
+const (
+	phaseBeforeRequest phaseType = iota + 1
+	phaseHandleRequest
+	phaseHandleResponse
+)
+
+func getAllPhases() []phaseType {
+	return []phaseType{
+		phaseBeforeRequest,
+		phaseHandleRequest,
+		phaseHandleResponse,
+	}
+}
+
+func (t phaseType) String() string {
+	switch t {
+	case phaseBeforeRequest:
+		return "BeforeReq"
+	case phaseHandleRequest:
+		return "Request"
+	case phaseHandleResponse:
+		return "Response"
+	default:
+		return "Unknown"
+	}
+}
+
 type simulateActionKey struct {
 	actionType simulateActionType
-	isResponse bool
+	phase      phaseType
 	fromNode   NodeID
 	toNode     NodeID
 }
@@ -211,12 +242,11 @@ func (s *simulationTestCase) newRunnerForNode(state *simulateNodeState, id NodeI
 }
 func (s *simulationTestCase) waitOnKey(
 	ctx context.Context, actionType simulateActionType,
-	isResponse bool,
-	fromNode NodeID, toNode NodeID,
+	phase phaseType, fromNode NodeID, toNode NodeID,
 ) error {
 	key := simulateActionKey{
 		actionType: actionType,
-		isResponse: isResponse,
+		phase:      phase,
 		fromNode:   fromNode,
 		toNode:     toNode,
 	}
@@ -258,17 +288,16 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 	fn func(ctx context.Context) error,
 ) {
 	newCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
+		defer cancel()
+
 		select {
 		case <-ctx.Done():
 		case <-newCtx.Done():
 			return
 		}
-
-		defer cancel()
 
 		key := simulateActionKey{
 			actionType: actionType,
@@ -421,12 +450,16 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 				return h.state.core.HandleVoteResponse(ctx, toNode, resp)
 			},
 		)
+		defer conn.Shutdown()
+
+		if err := conn.WaitBeforeSend(ctx); err != nil {
+			return err
+		}
 
 		input, err := h.state.core.GetVoteRequest(term, toNode)
 		if err != nil {
 			return err
 		}
-		defer conn.Shutdown()
 
 		conn.SendRequest(input)
 		return nil
@@ -459,10 +492,15 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 		var fromPos LogPos
 		var lastCommitted LogPos
 		for {
+			if err := conn.WaitBeforeSend(ctx); err != nil {
+				return err
+			}
+
 			input, err := h.state.core.GetAcceptEntriesRequest(ctx, term, toNode, fromPos, lastCommitted)
 			if err != nil {
 				return err
 			}
+
 			conn.SendRequest(input)
 
 			fromPos = input.NextPos
@@ -483,22 +521,17 @@ func (s *simulationTestCase) printAllWaiting() {
 	fmt.Println("--------------------------------------")
 	fmt.Printf("%s:%d\n", file, line)
 
-	for key := range s.waitMap {
-		isResp := "Request"
-		if key.isResponse {
-			isResp = "Response"
-		}
-
+	for _, key := range getSortWaitKeys(s.waitMap) {
 		fmt.Printf(
 			"\tWait On (%s): %s, %s -> %s\n",
-			isResp,
+			key.phase.String(),
 			key.actionType.String(),
 			key.fromNode.String()[:6],
 			key.toNode.String()[:6],
 		)
 	}
 
-	for key := range s.shutdownWaitMap {
+	for _, key := range getSortWaitKeys(s.shutdownWaitMap) {
 		fmt.Printf(
 			"\tWait Shutdown On: %s, %s -> %s\n",
 			key.actionType.String(),
@@ -516,13 +549,13 @@ func (s *simulationTestCase) printAllWaiting() {
 }
 
 func (s *simulationTestCase) runAction(
-	t *testing.T, actionType simulateActionType, isResp bool, fromNode, toNode NodeID,
+	t *testing.T, actionType simulateActionType, phase phaseType, fromNode, toNode NodeID,
 ) {
 	t.Helper()
 
 	key := simulateActionKey{
 		actionType: actionType,
-		isResponse: isResp,
+		phase:      phase,
 		fromNode:   fromNode,
 		toNode:     toNode,
 	}
@@ -541,6 +574,42 @@ func (s *simulationTestCase) runAction(
 	}
 
 	synctest.Wait()
+}
+
+func (s *simulationTestCase) runFullPhases(
+	t *testing.T, actionType simulateActionType, fromNode, toNode NodeID,
+) {
+	t.Helper()
+
+	for {
+		runOK := false
+
+		for _, phase := range getAllPhases() {
+			key := simulateActionKey{
+				actionType: actionType,
+				phase:      phase,
+				fromNode:   fromNode,
+				toNode:     toNode,
+			}
+
+			s.mut.Lock()
+			waitCh, ok := s.waitMap[key]
+			if ok {
+				delete(s.waitMap, key)
+			}
+			s.mut.Unlock()
+
+			if ok {
+				close(waitCh)
+				runOK = true
+			}
+			synctest.Wait()
+		}
+
+		if !runOK {
+			break
+		}
+	}
 }
 
 func (s *simulationTestCase) runShutdown(
@@ -624,6 +693,31 @@ func (s *simulationTestCase) newPosLogEntries(
 	return result
 }
 
+func getSortWaitKeys[V any](inputMap map[simulateActionKey]V) []simulateActionKey {
+	keys := make([]simulateActionKey, 0, len(inputMap))
+	for k := range inputMap {
+		keys = append(keys, k)
+	}
+
+	slices.SortFunc(keys, func(a, b simulateActionKey) int {
+		if a.actionType != b.actionType {
+			return cmp.Compare(a.actionType, b.actionType)
+		}
+
+		if a.phase != b.phase {
+			return cmp.Compare(a.phase, b.phase)
+		}
+
+		if a.fromNode != b.fromNode {
+			return slices.Compare(a.fromNode[:], b.fromNode[:])
+		}
+
+		return slices.Compare(a.toNode[:], b.toNode[:])
+	})
+
+	return keys
+}
+
 func TestPaxos__Single_Node(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
@@ -633,24 +727,19 @@ func TestPaxos__Single_Node(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		s.runAction(t, simulateActionFetchFollower, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionFetchFollower, true, nodeID1, nodeID1)
-
-		s.runAction(t, simulateActionStartElection, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionStartElection, true, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
 
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
-		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
 
 		assert.Equal(t, StateLeader, s.nodeMap[nodeID1].core.GetState())
 		assert.Equal(t, TermNum{Num: 21, NodeID: nodeID1}, s.nodeMap[nodeID1].persistent.GetLastTerm())
 
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
 
 		// check log entries
 		members := []MemberInfo{
@@ -668,8 +757,7 @@ func TestPaxos__Single_Node(t *testing.T) {
 			"new cmd 03",
 		)
 
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
 
 		// check log entries again
 		assert.Equal(t, s.newPosLogEntries(1,
@@ -692,27 +780,19 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		s.runAction(t, simulateActionFetchFollower, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionFetchFollower, true, nodeID1, nodeID1)
-
-		s.runAction(t, simulateActionFetchFollower, false, nodeID1, nodeID2)
-		s.runAction(t, simulateActionFetchFollower, true, nodeID1, nodeID2)
-
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID2)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
 
-		s.runAction(t, simulateActionStartElection, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionStartElection, true, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
 		// send accept to all
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID3)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
 
 		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
@@ -723,10 +803,8 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
 
 		// vote requests
-		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID1)
-		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID2)
-		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID2)
 
 		// shutdown voters
 		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
@@ -758,10 +836,9 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		assert.Equal(t, LogPos(1), s.nodeMap[nodeID1].core.GetLastCommitted())
 
 		// send accept to majority
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1) // because last committed is increased
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].core.GetLastCommitted())
 
 		// check logs of leader
@@ -771,16 +848,10 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			s.newInfLogEntry("cmd test 03"),
 		), s.nodeMap[nodeID1].stateMachineLog)
 
+		// check logs of node 2
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(InfiniteTerm{}, members),
 		), s.nodeMap[nodeID2].stateMachineLog)
-		assert.Equal(t, LogPos(1), s.nodeMap[nodeID2].log.GetFullyReplicated())
-
-		// send accept again
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
-		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID2].log.GetFullyReplicated())
 
 		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
@@ -791,6 +862,20 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			s.newInfLogEntry("cmd test 02"),
 			s.newInfLogEntry("cmd test 03"),
 		), s.nodeMap[nodeID2].stateMachineLog)
+
+		// restart state machine of node 3
+		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
+
+		// clear existing conn state
+		s.closeConn(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+
+		// check logs BEFORE fully replicated to node 3
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+		), s.nodeMap[nodeID3].stateMachineLog)
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID3].log.GetFullyReplicated())
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
 
 		s.printAllWaiting()
 	})
