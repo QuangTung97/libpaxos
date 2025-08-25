@@ -1215,6 +1215,8 @@ func (c *coreLogicImpl) CheckInvariant() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	// TODO check invariant after every calls
+
 	if c.state != StateFollower {
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {

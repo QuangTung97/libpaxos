@@ -324,6 +324,7 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 		cancel()
 	}
 
+	checkIsAssociated(&wg)
 	wg.Wait()
 }
 
@@ -369,6 +370,7 @@ func (h *simulationHandlers) stateMachineHandler(
 			})
 		}
 
+		checkIsAssociated(&wg)
 		wg.Wait()
 		return nil
 	}
@@ -1088,22 +1090,5 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		), s.nodeMap[nodeID3].stateMachineLog)
 
 		s.printAllWaiting()
-	})
-}
-
-func TestPaxos__Normal_Two_Nodes(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		s := newSimulationTestCase(
-			t,
-			[]NodeID{nodeID1, nodeID2, nodeID3},
-			[]NodeID{nodeID1, nodeID2, nodeID3},
-			defaultSimulationConfig(),
-		)
-		// s.printAllWaiting()
-
-		for _, state := range s.nodeMap {
-			state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil, 0)
-			state.runner.StartElectionRunner(0, false, NodeID{}, 0)
-		}
 	})
 }
