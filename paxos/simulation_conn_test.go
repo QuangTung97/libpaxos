@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"sync"
 
 	. "github.com/QuangTung97/libpaxos/paxos"
+	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
 type SimulationConn interface {
@@ -26,7 +26,7 @@ type simulateConn[Req, Resp any] struct {
 
 	sendChan chan Req
 	recvChan chan Resp
-	wg       sync.WaitGroup
+	wg       *waiting.WaitGroup
 }
 
 func newSimulateConn[Req, Resp any](
@@ -45,6 +45,8 @@ func newSimulateConn[Req, Resp any](
 
 		sendChan: make(chan Req, 100),
 		recvChan: make(chan Resp, 100),
+
+		wg: waiting.NewWaitGroup(),
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -136,7 +138,7 @@ func (c *simulateConn[Req, Resp]) SendRequest(req Req) {
 	c.sendChan <- req
 }
 
-func checkIsAssociated(wg *sync.WaitGroup) {
+func checkIsAssociated(_ *waiting.WaitGroup) {
 	return // TODO re-enable
 	//if !testutil.IsAssociated(wg) {
 	//	fmt.Println("NOT ASSOCIATED ERROR")
@@ -145,7 +147,7 @@ func checkIsAssociated(wg *sync.WaitGroup) {
 }
 
 func (c *simulateConn[Req, Resp]) Shutdown() {
-	checkIsAssociated(&c.wg)
+	checkIsAssociated(c.wg)
 	c.wg.Wait()
 
 	key := c.computeActionKey()

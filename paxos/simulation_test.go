@@ -16,6 +16,7 @@ import (
 
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
+	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
 type simulateActionType int
@@ -295,7 +296,7 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 ) {
 	newCtx, cancel := context.WithCancel(context.Background())
 
-	var wg sync.WaitGroup
+	wg := waiting.NewWaitGroup()
 	wg.Go(func() {
 		defer cancel()
 
@@ -324,7 +325,7 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 		cancel()
 	}
 
-	checkIsAssociated(&wg)
+	checkIsAssociated(wg)
 	wg.Wait()
 }
 
@@ -345,7 +346,7 @@ func (h *simulationHandlers) stateMachineHandler(
 			getter = h.state.core
 		}
 
-		var wg sync.WaitGroup
+		wg := waiting.NewWaitGroup()
 		wg.Go(func() {
 			defer cancel()
 
@@ -370,7 +371,7 @@ func (h *simulationHandlers) stateMachineHandler(
 			})
 		}
 
-		checkIsAssociated(&wg)
+		checkIsAssociated(wg)
 		wg.Wait()
 		return nil
 	}
