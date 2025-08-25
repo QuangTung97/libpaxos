@@ -2280,3 +2280,136 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 		},
 	}, input2)
 }
+
+func (c *coreLogicTest) doGetCommitted(from LogPos, limit int) GetCommittedEntriesOutput {
+	output, err := c.core.GetCommittedEntriesWithWait(c.ctx, c.currentTerm, from, limit)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	// get when is follower => error
+	_, err := c.core.GetCommittedEntriesWithWait(c.ctx, c.currentTerm, 1, 100)
+	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
+
+	c.startAsLeader()
+
+	// get
+	output := c.doGetCommitted(1, 100)
+	members := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+	}
+	assert.Equal(t, GetCommittedEntriesOutput{
+		Entries: []PosLogEntry{
+			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+		},
+		NextPos: 2,
+	}, output)
+
+	// insert and commit
+	c.doInsertCmd(
+		"cmd test 02",
+		"cmd test 03",
+		"cmd test 04",
+		"cmd test 05",
+	)
+	c.doHandleAccept(nodeID1, 2, 3, 4)
+	c.doHandleAccept(nodeID2, 2, 3, 4)
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	// get again
+	output = c.doGetCommitted(1, 100)
+	assert.Equal(t, GetCommittedEntriesOutput{
+		Entries: []PosLogEntry{
+			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+		},
+		NextPos: 5,
+	}, output)
+
+	// get again with limit
+	output = c.doGetCommitted(1, 3)
+	assert.Equal(t, GetCommittedEntriesOutput{
+		Entries: []PosLogEntry{
+			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+		},
+		NextPos: 4,
+	}, output)
+
+	// get again with limit, in mem only
+	output = c.doGetCommitted(2, 2)
+	assert.Equal(t, GetCommittedEntriesOutput{
+		Entries: []PosLogEntry{
+			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+		},
+		NextPos: 4,
+	}, output)
+
+	// inc fully replicated
+	c.log.UpsertEntries(
+		[]PosLogEntry{
+			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+		},
+		nil,
+	)
+	c.doUpdateFullyReplicated(nodeID1, 3)
+
+	// get full again
+	output = c.doGetCommitted(1, 100)
+	assert.Equal(t, GetCommittedEntriesOutput{
+		Entries: []PosLogEntry{
+			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+		},
+		NextPos: 5,
+	}, output)
+}
+
+func TestCoreLogic__Leader__GetEntriesWithWait__Waiting(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	synctest.Test(t, func(t *testing.T) {
+		// wait
+		resultFn, _ := testutil.RunAsync(t, func() GetCommittedEntriesOutput {
+			return c.doGetCommitted(2, 100)
+		})
+
+		c.doInsertCmd(
+			"cmd test 02",
+			"cmd test 03",
+			"cmd test 04",
+		)
+		c.doHandleAccept(nodeID2, 2, 3)
+		c.doHandleAccept(nodeID3, 2, 3)
+
+		assert.Equal(t, GetCommittedEntriesOutput{
+			Entries: []PosLogEntry{
+				{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
+				{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			},
+			NextPos: 4,
+		}, resultFn())
+	})
+}
+
+func TestCoreLogic__Leader__GetEntriesWithWait__Waiting__Context_Cancel(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	_, err := c.core.GetCommittedEntriesWithWait(c.cancelCtx, c.currentTerm, 2, 100)
+	assert.Equal(t, context.Canceled, err)
+}

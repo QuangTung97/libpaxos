@@ -1095,6 +1095,32 @@ func (c *coreLogicImpl) GetCommittedEntriesWithWait(
 	ctx context.Context, term TermNum,
 	fromPos LogPos, limit int,
 ) (GetCommittedEntriesOutput, error) {
+	var extra getCommittedEntriesExtra
+
+	output, err := c.getCommittedEntriesWithWaitFromMem(ctx, term, fromPos, limit, &extra)
+	if err != nil {
+		return GetCommittedEntriesOutput{}, err
+	}
+
+	if extra.diskMinPos <= extra.diskMaxPos {
+		diskLimit := extra.diskMaxPos - extra.diskMinPos + 1
+		diskEntries := c.log.GetEntries(extra.diskMinPos, int(diskLimit))
+		output.Entries = append(diskEntries, output.Entries...)
+	}
+
+	return output, nil
+}
+
+type getCommittedEntriesExtra struct {
+	diskMaxPos LogPos
+	diskMinPos LogPos
+}
+
+func (c *coreLogicImpl) getCommittedEntriesWithWaitFromMem(
+	ctx context.Context, term TermNum,
+	fromPos LogPos, limit int,
+	extra *getCommittedEntriesExtra,
+) (GetCommittedEntriesOutput, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -1110,7 +1136,30 @@ StartFunction:
 		goto StartFunction
 	}
 
-	return GetCommittedEntriesOutput{}, nil
+	maxPos := fromPos + LogPos(limit-1)
+	if maxPos > c.leader.lastCommitted {
+		maxPos = c.leader.lastCommitted
+	}
+
+	memMinPos := fromPos
+	if memMinPos < c.leader.logBuffer.GetFrontPos() {
+		memMinPos = c.leader.logBuffer.GetFrontPos()
+	}
+
+	posList := make([]LogPos, 0, maxPos-memMinPos+1)
+	for pos := memMinPos; pos <= maxPos; pos++ {
+		posList = append(posList, pos)
+	}
+
+	memEntries := c.leader.logBuffer.GetEntries(posList...)
+
+	extra.diskMinPos = fromPos
+	extra.diskMaxPos = memMinPos - 1
+
+	return GetCommittedEntriesOutput{
+		Entries: memEntries,
+		NextPos: maxPos + 1,
+	}, nil
 }
 
 // ---------------------------------------------------------------------------
