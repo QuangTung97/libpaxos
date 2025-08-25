@@ -133,6 +133,7 @@ func newSimulationTestCase(
 
 		synctest.Wait()
 
+		// shutdown all
 		s.mut.Lock()
 		for id, ch := range s.shutdownWaitMap {
 			delete(s.shutdownWaitMap, id)
@@ -231,7 +232,9 @@ func (s *simulationTestCase) waitOnKey(
 		return nil
 
 	case <-ctx.Done():
-		// TODO remove from waitMap
+		s.mut.Lock()
+		delete(s.waitMap, key)
+		s.mut.Unlock()
 		return ctx.Err()
 	}
 }
@@ -436,7 +439,10 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
 			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
-				output, err := h.root.nodeMap[toNode].acceptor.AcceptEntries(req)
+				toState := h.root.nodeMap[toNode]
+				toState.core.FollowerReceiveAcceptEntriesRequest(req.Term)
+
+				output, err := toState.acceptor.AcceptEntries(req)
 				if err != nil {
 					return nil, err
 				}
@@ -672,6 +678,119 @@ func TestPaxos__Single_Node(t *testing.T) {
 			s.newInfLogEntry("new cmd 03"),
 		), s.nodeMap[nodeID1].stateMachineLog)
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].stateLastPos)
+
+		s.printAllWaiting()
+	})
+}
+
+func TestPaxos__Normal_Three_Nodes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		s.runAction(t, simulateActionFetchFollower, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionFetchFollower, true, nodeID1, nodeID1)
+
+		s.runAction(t, simulateActionFetchFollower, false, nodeID1, nodeID2)
+		s.runAction(t, simulateActionFetchFollower, true, nodeID1, nodeID2)
+
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
+
+		s.runAction(t, simulateActionStartElection, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionStartElection, true, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+
+		// send accept to all
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID3)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID3)
+
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID3)
+
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
+
+		// vote requests
+		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID1)
+		s.runAction(t, simulateActionVoteRequest, false, nodeID1, nodeID2)
+		s.runAction(t, simulateActionVoteRequest, true, nodeID1, nodeID2)
+
+		// shutdown voters
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID2)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID3)
+
+		// rerun state machine
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+
+		// check logs
+		members := []MemberInfo{
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		}
+
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+		), s.nodeMap[nodeID1].stateMachineLog)
+
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+		), s.nodeMap[nodeID3].stateMachineLog)
+
+		// insert commands
+		s.insertNewCommand(t,
+			nodeID1,
+			"cmd test 02",
+			"cmd test 03",
+		)
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID1].core.GetLastCommitted())
+
+		// send accept to majority
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].core.GetLastCommitted())
+
+		// check logs of leader
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+			s.newInfLogEntry("cmd test 02"),
+			s.newInfLogEntry("cmd test 03"),
+		), s.nodeMap[nodeID1].stateMachineLog)
+
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+		), s.nodeMap[nodeID2].stateMachineLog)
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID2].log.GetFullyReplicated())
+
+		// send accept again
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID2)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID2)
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID2].log.GetFullyReplicated())
+
+		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+
+		// check logs after fully replicated to node 2
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+			s.newInfLogEntry("cmd test 02"),
+			s.newInfLogEntry("cmd test 03"),
+		), s.nodeMap[nodeID2].stateMachineLog)
 
 		s.printAllWaiting()
 	})

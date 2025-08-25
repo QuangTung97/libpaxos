@@ -617,6 +617,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
 
 	if c.state == StateFollower {
 		c.updateFollowerCheckOtherStatus(true)
+		c.updateStateMachineRunner() // TODO testing
 		return true
 	}
 
@@ -666,7 +667,10 @@ func (c *coreLogicImpl) updateAllRunners() {
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
 	c.updateFetchingFollowerInfoRunners()
+	c.updateStateMachineRunner()
+}
 
+func (c *coreLogicImpl) updateStateMachineRunner() {
 	term := c.getCurrentTerm()
 	if c.state == StateLeader {
 		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
@@ -674,16 +678,20 @@ func (c *coreLogicImpl) updateAllRunners() {
 			IsLeader:      true,
 			AcceptCommand: true,
 		})
-	} else if c.state == StateCandidate {
+		return
+	}
+
+	if c.state == StateCandidate {
 		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
 			Running:  true,
 			IsLeader: true,
 		})
-	} else {
-		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
-			Running: true,
-		})
+		return
 	}
+
+	c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+		Running: true,
+	})
 }
 
 func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
