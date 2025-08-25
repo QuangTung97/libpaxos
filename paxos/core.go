@@ -3,11 +3,14 @@ package paxos
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 )
 
 type CoreLogic interface {
+	StateMachineLogGetter
+
 	StartElection(maxTermValue TermValue) error
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
@@ -124,7 +127,7 @@ type leaderStateInfo struct {
 	memLog *MemLog
 
 	acceptorWakeUpAt map[NodeID]TimestampMilli
-	nodeCondVar      *NodeCond
+	sendAcceptCond   *NodeCond
 
 	acceptorFullyReplicated map[NodeID]LogPos
 
@@ -180,8 +183,10 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 	c.leader = &leaderStateInfo{
 		lastCommitted: commitInfo.FullyReplicated,
 
-		acceptorWakeUpAt: map[NodeID]TimestampMilli{},
-		nodeCondVar:      NewNodeCond(&c.mut),
+		acceptorWakeUpAt: map[NodeID]TimestampMilli{
+			c.persistent.GetNodeID(): math.MaxInt64, // current node never wake up
+		},
+		sendAcceptCond: NewNodeCond(&c.mut),
 
 		acceptorFullyReplicated: map[NodeID]LogPos{},
 	}
@@ -553,7 +558,7 @@ StartFunction:
 	}
 
 	if waitCond() {
-		if err := c.leader.nodeCondVar.Wait(ctx, toNode); err != nil {
+		if err := c.leader.sendAcceptCond.Wait(ctx, toNode); err != nil {
 			return AcceptEntriesInput{}, err
 		}
 		goto StartFunction
@@ -867,7 +872,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 	for nodeID, weakUpAt := range c.leader.acceptorWakeUpAt {
 		if c.isExpired(weakUpAt) {
 			delete(c.leader.acceptorWakeUpAt, nodeID)
-			c.leader.nodeCondVar.Signal(nodeID)
+			c.leader.sendAcceptCond.Signal(nodeID)
 		}
 	}
 }
@@ -895,7 +900,7 @@ func (c *coreLogicImpl) checkStateEqual(term TermNum, expectedState State) error
 }
 
 func (c *coreLogicImpl) broadcastAllAcceptors() {
-	c.leader.nodeCondVar.Broadcast()
+	c.leader.sendAcceptCond.Broadcast()
 }
 
 func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error {
@@ -1084,6 +1089,28 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	c.updateFetchingFollowerInfoRunners()
 	return nil
+}
+
+func (c *coreLogicImpl) GetCommittedEntriesWithWait(
+	ctx context.Context, term TermNum,
+	fromPos LogPos, limit int,
+) (GetCommittedEntriesOutput, error) {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+StartFunction:
+	if err := c.isCandidateOrLeader(term); err != nil {
+		return GetCommittedEntriesOutput{}, err
+	}
+
+	if c.leader.lastCommitted < fromPos {
+		if err := c.leader.sendAcceptCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
+			return GetCommittedEntriesOutput{}, err
+		}
+		goto StartFunction
+	}
+
+	return GetCommittedEntriesOutput{}, nil
 }
 
 // ---------------------------------------------------------------------------

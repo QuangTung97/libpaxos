@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -494,11 +493,11 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 
 	// check get accept req, first time not wait
 	acceptReq, err := c.core.GetAcceptEntriesRequest(
-		c.cancelCtx, c.currentTerm, nodeID1, 2, 1,
+		c.cancelCtx, c.currentTerm, nodeID2, 2, 1,
 	)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, AcceptEntriesInput{
-		ToNode:    nodeID1,
+		ToNode:    nodeID2,
 		Term:      c.currentTerm,
 		NextPos:   2,
 		Committed: 1,
@@ -506,15 +505,15 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 
 	// check get accept req, waiting
 	acceptReq, err = c.core.GetAcceptEntriesRequest(
-		c.cancelCtx, c.currentTerm, nodeID1, 2, 1,
+		c.cancelCtx, c.currentTerm, nodeID2, 2, 1,
 	)
 	assert.Equal(t, context.Canceled, err)
 	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
 }
 
-func (c *coreLogicTest) firstGetAcceptToSetTimeout() {
+func (c *coreLogicTest) firstGetAcceptToSetTimeout(id NodeID) {
 	// check get accept req, first time not wait
-	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, id, 2, 1)
 	if err != nil {
 		panic("Should be ok here, but got: " + err.Error())
 	}
@@ -529,35 +528,65 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 	c := newCoreLogicTest(t)
 
 	c.doStartElection()
+	c.firstGetAcceptToSetTimeout(nodeID2)
 
 	entry1 := c.newLogEntry("cmd data 01", 18)
 
-	c.firstGetAcceptToSetTimeout()
+	synctest.Test(t, func(t *testing.T) {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+			// check get accept req, waiting
+			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
+			assert.Equal(t, nil, err)
+			return acceptReq
+		})
 
-	testutil.RunInBackground(t, func() {
-		// check get accept req, waiting
-		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, nil, err)
+		// vote response full for entry1
+		c.doHandleVoteResp(nodeID1, 2, false, entry1)
+		c.doHandleVoteResp(nodeID2, 2, false, entry1)
 
 		acceptEntry1 := entry1
 		acceptEntry1.Term = c.currentTerm.ToInf()
 
 		assert.Equal(t, AcceptEntriesInput{
-			ToNode: nodeID1,
+			ToNode: nodeID2,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
 				{Pos: 2, Entry: acceptEntry1},
 			},
 			NextPos:   3,
 			Committed: 1,
-		}, acceptReq)
+		}, resultFn())
 	})
+}
 
-	time.Sleep(10 * time.Millisecond)
+func TestCoreLogic_GetAcceptEntries__Current_Node__Wait(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
 
-	// vote response full for entry1
-	c.doHandleVoteResp(nodeID1, 2, false, entry1)
-	c.doHandleVoteResp(nodeID2, 2, false, entry1)
+	synctest.Test(t, func(t *testing.T) {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+			// check get accept req, waiting
+			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+			assert.Equal(t, nil, err)
+			return acceptReq
+		})
+
+		c.doInsertCmd(
+			"cmd test 02",
+			"cmd test 03",
+		)
+
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID1,
+			Term:   c.currentTerm,
+			Entries: []PosLogEntry{
+				{Pos: 2, Entry: c.newAcceptLogEntry("cmd test 02")},
+				{Pos: 3, Entry: c.newAcceptLogEntry("cmd test 03")},
+			},
+			NextPos:   4,
+			Committed: 1,
+		}, resultFn())
+	})
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_Inf(t *testing.T) {
@@ -568,13 +597,21 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 	entry1 := c.newLogEntry("cmd data 01", 18)
 	entry2 := c.newLogEntry("cmd data 02", 19)
 
-	c.firstGetAcceptToSetTimeout()
+	c.firstGetAcceptToSetTimeout(nodeID2)
 
-	testutil.RunInBackground(t, func() {
-		// check get accept req, waiting
-		acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
-		assert.Equal(t, nil, err)
+	synctest.Test(t, func(t *testing.T) {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+			// check get accept req, waiting
+			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
+			assert.Equal(t, nil, err)
+			return acceptReq
+		})
 
+		// vote response full for entry1
+		c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
+		c.doHandleVoteResp(nodeID2, 2, true)
+
+		// check accept req
 		acceptEntry1 := entry1
 		acceptEntry1.Term = c.currentTerm.ToInf()
 
@@ -582,7 +619,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 		acceptEntry2.Term = c.currentTerm.ToInf()
 
 		assert.Equal(t, AcceptEntriesInput{
-			ToNode: nodeID1,
+			ToNode: nodeID2,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
 				{Pos: 2, Entry: acceptEntry1},
@@ -590,26 +627,20 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 			},
 			NextPos:   4,
 			Committed: 1,
-		}, acceptReq)
+		}, resultFn())
 	})
-
-	time.Sleep(10 * time.Millisecond)
-
-	// vote response full for entry1
-	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
-	c.doHandleVoteResp(nodeID2, 2, true)
 }
 
 func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	c.doStartElection()
-	c.firstGetAcceptToSetTimeout()
+	c.firstGetAcceptToSetTimeout(nodeID2)
 
 	synctest.Test(t, func(t *testing.T) {
 		fn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
 			// check get accept req, waiting
-			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
 			assert.Equal(t, nil, err)
 			return acceptReq
 		})
@@ -618,7 +649,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 		c.core.CheckTimeout()
 
 		assert.Equal(t, AcceptEntriesInput{
-			ToNode:    nodeID1,
+			ToNode:    nodeID2,
 			Term:      c.currentTerm,
 			Entries:   nil,
 			NextPos:   2,
