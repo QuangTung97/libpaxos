@@ -569,7 +569,9 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 					return err
 				}
 
-				acceptConn.SendRequest(acceptInput)
+				if len(acceptInput.Entries) > 0 {
+					acceptConn.SendRequest(acceptInput)
+				}
 				return nil
 			},
 		)
@@ -607,7 +609,8 @@ func (s *simulationTestCase) printAllWaiting() {
 		)
 	}
 
-	for _, conn := range s.activeConn {
+	for _, key := range getSortWaitKeys(s.activeConn) {
+		conn := s.activeConn[key]
 		conn.Print()
 	}
 
@@ -959,6 +962,113 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 
 		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID1, nodeID3)
 		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+
+		s.printAllWaiting()
+	})
+}
+
+func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1},
+			defaultSimulationConfig(),
+		)
+
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
+
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+
+		// change membership
+		leader := s.nodeMap[nodeID1]
+		err := leader.core.ChangeMembership(
+			leader.persistent.GetLastTerm(),
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+		)
+		assert.Equal(t, nil, err)
+		synctest.Wait()
+
+		// accept membership entry
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		assert.Equal(t, LogPos(1), leader.core.GetLastCommitted())
+
+		// accept membership entry
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		assert.Equal(t, LogPos(2), leader.core.GetLastCommitted())
+		assert.Equal(t, LogPos(2), s.nodeMap[nodeID1].log.GetFullyReplicated())
+
+		assert.Equal(t, LogPos(0), s.nodeMap[nodeID2].log.GetFullyReplicated())
+		assert.Equal(t, LogPos(2), s.nodeMap[nodeID2].acceptor.GetLastCommitted())
+
+		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+
+		// check logs of node 1
+		members1 := []MemberInfo{
+			{Nodes: []NodeID{nodeID1}, CreatedAt: 1},
+		}
+		members2 := []MemberInfo{
+			{Nodes: []NodeID{nodeID1}, CreatedAt: 1},
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 2},
+		}
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members1),
+			NewMembershipLogEntry(InfiniteTerm{}, members2),
+		), s.nodeMap[nodeID1].stateMachineLog)
+
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
+
+		// replicate finish membership change
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
+
+		// check logs of node 1
+		members3 := []MemberInfo{
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		}
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members1),
+			NewMembershipLogEntry(InfiniteTerm{}, members2),
+			NewMembershipLogEntry(InfiniteTerm{}, members3),
+		), s.nodeMap[nodeID1].stateMachineLog)
+
+		// check logs of node 2
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members1),
+			NewMembershipLogEntry(InfiniteTerm{}, members2),
+			NewMembershipLogEntry(InfiniteTerm{}, members3),
+		), s.nodeMap[nodeID2].stateMachineLog)
+
+		// check logs of node 3
+		assert.Equal(t, s.newPosLogEntries(1), s.nodeMap[nodeID3].stateMachineLog)
+
+		// replicate all to node 3
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID1, nodeID3)
+
+		// check logs of node 3 again
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members1),
+			NewMembershipLogEntry(InfiniteTerm{}, members2),
+			NewMembershipLogEntry(InfiniteTerm{}, members3),
+		), s.nodeMap[nodeID3].stateMachineLog)
 
 		s.printAllWaiting()
 	})

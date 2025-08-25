@@ -22,7 +22,7 @@ type AcceptEntriesInput struct {
 	ToNode    NodeID
 	Term      TermNum
 	Entries   []PosLogEntry
-	NextPos   LogPos // TODO generate
+	NextPos   LogPos
 	Committed LogPos
 }
 
