@@ -61,7 +61,7 @@ func NewNodeRunner(
 	loopWithSleep := func(ctx context.Context, callback func(ctx context.Context) error) {
 		for {
 			_ = callback(ctx)
-			sleepWithContext(ctx, 1000*time.Millisecond)
+			// sleepWithContext(ctx, 1000*time.Millisecond) TODO add back
 			if ctx.Err() != nil {
 				return
 			}

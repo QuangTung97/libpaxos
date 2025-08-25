@@ -337,6 +337,8 @@ func (h *simulationHandlers) stateMachineHandler(
 	ctx context.Context, term TermNum, info StateMachineRunnerInfo,
 ) error {
 	callback := func(ctx context.Context) error {
+		ctx, cancel := context.WithCancel(ctx)
+
 		var getter StateMachineLogGetter = h.state.acceptor
 		if info.IsLeader {
 			getter = h.state.core
@@ -344,11 +346,15 @@ func (h *simulationHandlers) stateMachineHandler(
 
 		var wg sync.WaitGroup
 		wg.Go(func() {
+			defer cancel()
+
 			h.stateMachineConsumeEntries(ctx, term, getter)
 		})
 
 		if info.AcceptCommand {
 			wg.Go(func() {
+				defer cancel()
+
 				for {
 					var newCmd string
 					select {
@@ -803,6 +809,9 @@ func TestPaxos__Single_Node(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
+		//s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID1)
+		//s.runAction(t, simulateActionVoteRequest, phaseHandleRequest, nodeID1, nodeID1)
+		//s.runAction(t, simulateActionVoteRequest, phaseHandleResponse, nodeID1, nodeID1)
 		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
 
@@ -860,7 +869,14 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
 		// send accept to all
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, phaseBeforeRequest, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, phaseBeforeRequest, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, phaseHandleRequest, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, phaseHandleResponse, nodeID1, nodeID1)
+
+		// s.printAllWaiting() TODO remove
+
+		// s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1) // TODO error
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
 
