@@ -43,8 +43,8 @@ func newSimulateConn[Req, Resp any](
 		fromNode:   handlerState.current,
 		toNode:     toNode,
 
-		sendChan: make(chan Req, 1),
-		recvChan: make(chan Resp, 1),
+		sendChan: make(chan Req, 100),
+		recvChan: make(chan Resp, 100),
 	}
 
 	ctx, cancel := context.WithCancel(ctx)

@@ -26,6 +26,8 @@ const (
 	simulateActionVoteRequest
 	simulateActionAcceptRequest
 	simulateActionStateMachine
+	simulateActionFullyReplicate
+	simulateActionReplicateAcceptRequest
 )
 
 func (at simulateActionType) String() string {
@@ -40,6 +42,10 @@ func (at simulateActionType) String() string {
 		return "accept_request"
 	case simulateActionStateMachine:
 		return "state_machine"
+	case simulateActionFullyReplicate:
+		return "fully_replicate"
+	case simulateActionReplicateAcceptRequest:
+		return "replicate_accept"
 	default:
 		return "unknown"
 	}
@@ -472,14 +478,7 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
 			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
-				toState := h.root.nodeMap[toNode]
-				toState.core.FollowerReceiveAcceptEntriesRequest(req.Term)
-
-				output, err := toState.acceptor.AcceptEntries(req)
-				if err != nil {
-					return nil, err
-				}
-				return iterSingle(output), nil
+				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
 				return h.state.core.HandleAcceptEntriesResponse(toNode, resp)
@@ -509,9 +508,77 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 	})
 }
 
+func (h *simulationHandlers) handleAcceptEntriesRequest(
+	req AcceptEntriesInput, toNode NodeID,
+) (iter.Seq[AcceptEntriesOutput], error) {
+	toState := h.root.nodeMap[toNode]
+	toState.core.FollowerReceiveAcceptEntriesRequest(req.Term)
+
+	output, err := toState.acceptor.AcceptEntries(req)
+	if err != nil {
+		return nil, err
+	}
+	return iterSingle(output), nil
+}
+
 func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	<-ctx.Done()
-	return ctx.Err()
+	callback := func(ctx context.Context) error {
+		acceptConn := newSimulateConn(
+			ctx, h, toNode,
+			simulateActionReplicateAcceptRequest,
+			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+				return h.handleAcceptEntriesRequest(req, toNode)
+			},
+			func(resp AcceptEntriesOutput) error {
+				// Do nothing
+				return nil
+			},
+		)
+		defer acceptConn.Shutdown()
+
+		handleReqFunc := func(req struct{}) (iter.Seq[NeedReplicatedInput], error) {
+			toState := h.root.nodeMap[toNode]
+
+			return func(yield func(NeedReplicatedInput) bool) {
+				var fromPos LogPos
+				var lastReplicated LogPos
+
+				for {
+					input, err := toState.acceptor.GetNeedReplicatedPos(ctx, term, fromPos, lastReplicated)
+					if err != nil {
+						return
+					}
+
+					if !yield(input) {
+						return
+					}
+
+					fromPos = input.NextPos
+					lastReplicated = input.FullyReplicated
+				}
+			}, nil
+		}
+
+		conn := newSimulateConn(
+			ctx, h, toNode,
+			simulateActionFullyReplicate,
+			handleReqFunc,
+			func(resp NeedReplicatedInput) error {
+				acceptInput, err := h.state.core.GetNeedReplicatedLogEntries(resp)
+				if err != nil {
+					return err
+				}
+
+				acceptConn.SendRequest(acceptInput)
+				return nil
+			},
+		)
+		defer conn.Shutdown()
+
+		conn.SendRequest(struct{}{})
+		return nil
+	}
+	return h.root.waitOnShutdown(ctx, simulateActionFullyReplicate, h.current, toNode, callback)
 }
 
 func (s *simulationTestCase) printAllWaiting() {
@@ -876,6 +943,22 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		), s.nodeMap[nodeID3].stateMachineLog)
 		assert.Equal(t, LogPos(1), s.nodeMap[nodeID3].log.GetFullyReplicated())
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
+
+		// fully replicate
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+
+		// check logs AFTER fully replicated to node 3
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+			s.newInfLogEntry("cmd test 02"),
+			s.newInfLogEntry("cmd test 03"),
+		), s.nodeMap[nodeID3].stateMachineLog)
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].log.GetFullyReplicated())
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
+
+		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
 
 		s.printAllWaiting()
 	})
