@@ -124,11 +124,7 @@ func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
 }
 
 func (c *coreLogicTest) newInfLogEntry(cmdStr string) LogEntry {
-	return LogEntry{
-		Type:    LogTypeCmd,
-		Term:    InfiniteTerm{},
-		CmdData: []byte(cmdStr),
-	}
+	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmdStr))
 }
 
 func (c *coreLogicTest) newAcceptLogEntry(cmdStr string) LogEntry {

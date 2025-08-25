@@ -23,6 +23,7 @@ const (
 	simulateActionStartElection
 	simulateActionVoteRequest
 	simulateActionAcceptRequest
+	simulateActionStateMachine
 )
 
 func (at simulateActionType) String() string {
@@ -35,6 +36,8 @@ func (at simulateActionType) String() string {
 		return "vote_request"
 	case simulateActionAcceptRequest:
 		return "accept_request"
+	case simulateActionStateMachine:
+		return "state_machine"
 	default:
 		return "unknown"
 	}
@@ -66,6 +69,12 @@ type simulateNodeState struct {
 	runnerFinish func()
 
 	core CoreLogic
+
+	cmdChan chan string
+
+	mut             sync.Mutex
+	stateMachineLog []PosLogEntry
+	stateLastPos    LogPos
 }
 
 type simulationTestConfig struct {
@@ -107,7 +116,9 @@ func newSimulationTestCase(
 
 	nodeMap := map[NodeID]*simulateNodeState{}
 	for _, id := range allNodes {
-		state := &simulateNodeState{}
+		state := &simulateNodeState{
+			cmdChan: make(chan string, 1000),
+		}
 		nodeMap[id] = state
 		s.initNodeState(state, id, initNodeSet, initMembersEntry, conf)
 	}
@@ -117,6 +128,7 @@ func newSimulationTestCase(
 	t.Cleanup(func() {
 		for _, state := range s.nodeMap {
 			state.runner.StartAcceptRequestRunners(TermNum{}, nil)
+			state.runner.StartStateMachine(TermNum{}, StateMachineRunnerInfo{})
 		}
 
 		synctest.Wait()
@@ -286,8 +298,63 @@ type simulationHandlers struct {
 func (h *simulationHandlers) stateMachineHandler(
 	ctx context.Context, term TermNum, info StateMachineRunnerInfo,
 ) error {
-	<-ctx.Done()
-	return ctx.Err()
+	callback := func(ctx context.Context) error {
+		var getter StateMachineLogGetter = h.state.acceptor
+		if info.IsLeader {
+			getter = h.state.core
+		}
+
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			h.stateMachineConsumeEntries(ctx, term, getter)
+		})
+
+		if info.AcceptCommand {
+			wg.Go(func() {
+				for {
+					var newCmd string
+					select {
+					case <-ctx.Done():
+						return
+					case newCmd = <-h.state.cmdChan:
+						if err := h.state.core.InsertCommand(ctx, term, []byte(newCmd)); err != nil {
+							return
+						}
+					}
+				}
+			})
+		}
+
+		wg.Wait()
+		return nil
+	}
+
+	return h.root.waitOnShutdown(
+		ctx, simulateActionStateMachine,
+		h.current, h.current, callback,
+	)
+}
+
+func (h *simulationHandlers) stateMachineConsumeEntries(
+	ctx context.Context, term TermNum, getter StateMachineLogGetter,
+) {
+	h.state.mut.Lock()
+	fromPos := h.state.stateLastPos + 1
+	h.state.mut.Unlock()
+
+	for {
+		output, err := getter.GetCommittedEntriesWithWait(ctx, term, fromPos, 100)
+		if err != nil {
+			return
+		}
+
+		fromPos = output.NextPos
+
+		h.state.mut.Lock()
+		h.state.stateMachineLog = append(h.state.stateMachineLog, output.Entries...)
+		h.state.stateLastPos = output.NextPos - 1
+		h.state.mut.Unlock()
+	}
 }
 
 func iterSingle[T any](value T) iter.Seq[T] {
@@ -524,6 +591,33 @@ func (s *simulationTestCase) closeConn(
 	synctest.Wait()
 }
 
+func (s *simulationTestCase) insertNewCommand(
+	_ *testing.T, id NodeID, cmdList ...string,
+) {
+	for _, cmd := range cmdList {
+		s.nodeMap[id].cmdChan <- cmd
+	}
+	synctest.Wait()
+}
+
+func (s *simulationTestCase) newInfLogEntry(cmdStr string) LogEntry {
+	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmdStr))
+}
+
+func (s *simulationTestCase) newPosLogEntries(
+	from LogPos, entries ...LogEntry,
+) []PosLogEntry {
+	var result []PosLogEntry
+	for _, entry := range entries {
+		result = append(result, PosLogEntry{
+			Pos:   from,
+			Entry: entry,
+		})
+		from++
+	}
+	return result
+}
+
 func TestPaxos__Single_Node(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
@@ -551,6 +645,33 @@ func TestPaxos__Single_Node(t *testing.T) {
 
 		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
 		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+
+		// check log entries
+		members := []MemberInfo{
+			{Nodes: []NodeID{nodeID1}, CreatedAt: 1},
+		}
+		assert.Equal(t, []PosLogEntry{
+			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+		}, s.nodeMap[nodeID1].stateMachineLog)
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID1].stateLastPos)
+
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+
+		s.insertNewCommand(t, nodeID1,
+			"new cmd 02",
+			"new cmd 03",
+		)
+
+		s.runAction(t, simulateActionAcceptRequest, false, nodeID1, nodeID1)
+		s.runAction(t, simulateActionAcceptRequest, true, nodeID1, nodeID1)
+
+		// check log entries again
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(InfiniteTerm{}, members),
+			s.newInfLogEntry("new cmd 02"),
+			s.newInfLogEntry("new cmd 03"),
+		), s.nodeMap[nodeID1].stateMachineLog)
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].stateLastPos)
 
 		s.printAllWaiting()
 	})
