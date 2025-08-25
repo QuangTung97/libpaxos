@@ -657,7 +657,9 @@ func (s *simulationTestCase) runFullPhases(
 ) {
 	t.Helper()
 
+	loopCount := 0
 	for {
+		loopCount++
 		runOK := false
 
 		for _, phase := range getAllPhases() {
@@ -683,6 +685,14 @@ func (s *simulationTestCase) runFullPhases(
 		}
 
 		if !runOK {
+			if loopCount <= 1 {
+				key := simulateActionKey{
+					actionType: actionType,
+					fromNode:   fromNode,
+					toNode:     toNode,
+				}
+				t.Fatalf("Missing wait key of form: %+v", key)
+			}
 			break
 		}
 	}
@@ -809,9 +819,6 @@ func TestPaxos__Single_Node(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
-		//s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID1)
-		//s.runAction(t, simulateActionVoteRequest, phaseHandleRequest, nodeID1, nodeID1)
-		//s.runAction(t, simulateActionVoteRequest, phaseHandleResponse, nodeID1, nodeID1)
 		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
 
@@ -868,15 +875,7 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
 
-		// send accept to all
-		s.runAction(t, simulateActionAcceptRequest, phaseBeforeRequest, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, phaseBeforeRequest, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, phaseHandleRequest, nodeID1, nodeID1)
-		s.runAction(t, simulateActionAcceptRequest, phaseHandleResponse, nodeID1, nodeID1)
-
-		// s.printAllWaiting() TODO remove
-
-		// s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1) // TODO error
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
 
@@ -977,7 +976,9 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
 
 		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID1, nodeID3)
-		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
 
 		s.printAllWaiting()
 	})
@@ -1087,5 +1088,22 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		), s.nodeMap[nodeID3].stateMachineLog)
 
 		s.printAllWaiting()
+	})
+}
+
+func TestPaxos__Normal_Two_Nodes(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+		// s.printAllWaiting()
+
+		for _, state := range s.nodeMap {
+			state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil, 0)
+			state.runner.StartElectionRunner(0, false, NodeID{}, 0)
+		}
 	})
 }

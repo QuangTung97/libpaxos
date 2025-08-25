@@ -2,38 +2,28 @@ package testutil
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestSyncTest_With_Chanel(t *testing.T) {
+	for range 100 {
+		doSyncTestWithChanel(t)
+	}
+}
+
+func doSyncTestWithChanel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		input := make(chan struct{}, 1)
-		output := make(chan struct{}, 1)
-		var finished atomic.Bool
+		ch := make(chan struct{})
 
-		go func() {
-			var wg sync.WaitGroup
-
+		var wg sync.WaitGroup
+		for range 100 {
 			wg.Go(func() {
-				<-output
-				finished.Store(true)
+				<-ch
 			})
-
-			wg.Go(func() {
-				<-input
-				close(output)
-			})
-
-			wg.Wait()
-		}()
-
-		close(input)
+		}
 
 		synctest.Wait()
-		assert.Equal(t, true, finished.Load())
+		close(ch)
 	})
 }
