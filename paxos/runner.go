@@ -8,13 +8,13 @@ import (
 )
 
 type NodeRunner interface {
-	StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{})
-	StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{})
-	StartStateMachine(term TermNum, info StateMachineRunnerInfo)
+	StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{}) bool
+	StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{}) bool
+	StartStateMachine(term TermNum, info StateMachineRunnerInfo) bool
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
-	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int)
-	StartElectionRunner(termValue TermValue, started bool, chosen NodeID, retryCount int)
+	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int) bool
+	StartElectionRunner(termValue TermValue, started bool, chosen NodeID, retryCount int) bool
 }
 
 type StateMachineRunnerInfo struct {
@@ -61,7 +61,7 @@ func NewNodeRunner(
 	loopWithSleep := func(ctx context.Context, callback func(ctx context.Context) error) {
 		for {
 			_ = callback(ctx)
-			// sleepWithContext(ctx, 1000*time.Millisecond) TODO add back
+			sleepWithContext(ctx, 1000*time.Millisecond)
 			if ctx.Err() != nil {
 				return
 			}
@@ -121,7 +121,7 @@ func sleepWithContext(ctx context.Context, duration time.Duration) {
 	}
 }
 
-func (r *nodeRunnerImpl) StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{}) {
+func (r *nodeRunnerImpl) StartVoteRequestRunners(term TermNum, nodes map[NodeID]struct{}) bool {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
@@ -129,10 +129,10 @@ func (r *nodeRunnerImpl) StartVoteRequestRunners(term TermNum, nodes map[NodeID]
 			term:   term,
 		})
 	}
-	r.voters.Upsert(infos)
+	return r.voters.Upsert(infos)
 }
 
-func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{}) {
+func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeID]struct{}) bool {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
@@ -140,11 +140,12 @@ func (r *nodeRunnerImpl) StartAcceptRequestRunners(term TermNum, nodes map[NodeI
 			term:   term,
 		})
 	}
-	r.acceptors.Upsert(infos)
+	updated := r.acceptors.Upsert(infos)
 	r.replicators.Upsert(infos)
+	return updated
 }
 
-func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunnerInfo) {
+func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunnerInfo) bool {
 	if info.Running {
 		infos := []nodeTermInfo{
 			{
@@ -153,15 +154,15 @@ func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunner
 				info:   info,
 			},
 		}
-		r.stateMachine.Upsert(infos)
-	} else {
-		r.stateMachine.Upsert(nil)
+		return r.stateMachine.Upsert(infos)
 	}
+
+	return r.stateMachine.Upsert(nil)
 }
 
 func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
 	term TermNum, nodes map[NodeID]struct{}, retryCount int,
-) {
+) bool {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
@@ -170,12 +171,12 @@ func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
 			retryCount: retryCount,
 		})
 	}
-	r.fetchFollower.Upsert(infos)
+	return r.fetchFollower.Upsert(infos)
 }
 
 func (r *nodeRunnerImpl) StartElectionRunner(
 	termValue TermValue, started bool, chosen NodeID, retryCount int,
-) {
+) bool {
 	if started {
 		infos := []nodeTermInfo{
 			{
@@ -186,8 +187,8 @@ func (r *nodeRunnerImpl) StartElectionRunner(
 				retryCount: retryCount,
 			},
 		}
-		r.startElection.Upsert(infos)
-	} else {
-		r.startElection.Upsert(nil)
+		return r.startElection.Upsert(infos)
 	}
+
+	return r.startElection.Upsert(nil)
 }
