@@ -26,8 +26,8 @@ type KeyRunner[K comparable, V comparable] struct {
 	handler func(ctx context.Context, val V)
 
 	mut        sync.Mutex
-	activeKeys map[K]struct{}
-	running    map[K]*runThread[V]
+	activeKeys map[K]struct{}      // expected set
+	running    map[K]*runThread[V] // running set
 
 	wg sync.WaitGroup
 }
@@ -36,18 +36,19 @@ type KeyRunner[K comparable, V comparable] struct {
 // Public Methods
 // ==================================
 
-func (r *KeyRunner[K, V]) Upsert(values []V) {
-	startList := r.upsertInternal(values)
+func (r *KeyRunner[K, V]) Upsert(values []V) bool {
+	startList, updated := r.upsertInternal(values)
 
 	for _, tmp := range startList {
 		entry := tmp
 		r.wg.Add(1)
-
 		go func() {
 			defer r.wg.Done()
 			r.doRunHandler(entry)
 		}()
 	}
+
+	return updated
 }
 
 func (r *KeyRunner[K, V]) Shutdown() {
@@ -83,14 +84,14 @@ type startEntry[V comparable] struct {
 	ctx context.Context
 }
 
-func (r *KeyRunner[K, V]) upsertInternal(values []V) []startEntry[V] {
+func (r *KeyRunner[K, V]) upsertInternal(values []V) ([]startEntry[V], bool) {
 	r.mut.Lock()
 	defer r.mut.Unlock()
 
+	var updated bool
 	var startList []startEntry[V]
 
 	newSet := map[K]struct{}{}
-
 	for _, val := range values {
 		key := r.getKey(val)
 		newSet[key] = struct{}{}
@@ -103,6 +104,7 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) []startEntry[V] {
 			continue
 		}
 
+		updated = true
 		deleteKeys = append(deleteKeys, key)
 		thread := r.running[key]
 		thread.cancel()
@@ -120,6 +122,7 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) []startEntry[V] {
 			// update on changed
 			thread := r.running[key]
 			if thread.val != val {
+				updated = true
 				thread.val = val
 				thread.cancel()
 			}
@@ -129,25 +132,26 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) []startEntry[V] {
 
 		thread, ok := r.running[key]
 		if ok {
+			updated = true
 			thread.val = val
 			continue
 		}
 
 		// do insert new
 		ctx, cancel := context.WithCancel(context.Background())
-
 		r.running[key] = &runThread[V]{
 			val:    val,
 			cancel: cancel,
 		}
 
+		updated = true
 		startList = append(startList, startEntry[V]{
 			val: val,
 			ctx: ctx,
 		})
 	}
 
-	return startList
+	return startList, updated
 }
 
 func (r *KeyRunner[K, V]) finishInternal(key K) (startEntry[V], bool) {

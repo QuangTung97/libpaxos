@@ -45,11 +45,12 @@ func getKeys[K orderedAndCmp, V any](m map[K]V) []K {
 func TestKeyRunner__Upsert_With_Remove(t *testing.T) {
 	r := New(objectValue.getKey, nil)
 
-	startList := r.upsertInternal([]objectValue{
+	startList, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 11},
 		{key: "key02", val: 12},
 		{key: "key03", val: 13},
 	})
+	assert.Equal(t, true, updated)
 
 	// check start list
 	assert.Equal(t, []startEntry[objectValue]{
@@ -63,10 +64,11 @@ func TestKeyRunner__Upsert_With_Remove(t *testing.T) {
 	assert.Equal(t, nil, startList[2].ctx.Err())
 
 	// remove key 01, key 02
-	startList2 := r.upsertInternal([]objectValue{
+	startList2, updated := r.upsertInternal([]objectValue{
 		{key: "key03", val: 13},
 	})
 	assert.Equal(t, 0, len(startList2))
+	assert.Equal(t, true, updated)
 
 	// check context canceled
 	assert.Equal(t, context.Canceled, startList[0].ctx.Err())
@@ -85,10 +87,11 @@ func TestKeyRunner__Upsert_With_Remove(t *testing.T) {
 func TestKeyRunner__Upsert__Then_Remove__Then_Finish(t *testing.T) {
 	r := New(objectValue.getKey, nil)
 
-	startList := r.upsertInternal([]objectValue{
+	startList, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 11},
 		{key: "key02", val: 12},
 	})
+	assert.Equal(t, true, updated)
 
 	// check start list
 	assert.Equal(t, []startEntry[objectValue]{
@@ -101,10 +104,11 @@ func TestKeyRunner__Upsert__Then_Remove__Then_Finish(t *testing.T) {
 	assert.Equal(t, nil, startList[1].ctx.Err())
 
 	// remove key01
-	startList2 := r.upsertInternal([]objectValue{
+	startList2, updated := r.upsertInternal([]objectValue{
 		{key: "key02", val: 12},
 	})
 	assert.Equal(t, 0, len(startList2))
+	assert.Equal(t, true, updated)
 
 	// check context
 	assert.Equal(t, context.Canceled, startList[0].ctx.Err())
@@ -127,10 +131,11 @@ func TestKeyRunner__Upsert__Then_Remove__Then_Finish(t *testing.T) {
 func TestKeyRunner__Update_Value__Then_Finish(t *testing.T) {
 	r := New(objectValue.getKey, nil)
 
-	startList := r.upsertInternal([]objectValue{
+	startList, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 11},
 		{key: "key02", val: 12},
 	})
+	assert.Equal(t, true, updated)
 
 	// check start list
 	assert.Equal(t, []startEntry[objectValue]{
@@ -139,11 +144,12 @@ func TestKeyRunner__Update_Value__Then_Finish(t *testing.T) {
 	}, clearContexts(startList))
 
 	// do update
-	startList2 := r.upsertInternal([]objectValue{
+	startList2, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 21},
 		{key: "key02", val: 22},
 	})
 	assert.Equal(t, 0, len(startList2))
+	assert.Equal(t, true, updated)
 
 	// check context canceled
 	assert.Equal(t, context.Canceled, startList[0].ctx.Err())
@@ -173,10 +179,11 @@ func TestKeyRunner__Update_Value__Then_Finish(t *testing.T) {
 func TestKeyRunner__Remove_Then_Add_Again__Before_Finish(t *testing.T) {
 	r := New(objectValue.getKey, nil)
 
-	startList := r.upsertInternal([]objectValue{
+	startList, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 11},
 		{key: "key02", val: 12},
 	})
+	assert.Equal(t, true, updated)
 
 	// check start list
 	assert.Equal(t, []startEntry[objectValue]{
@@ -185,17 +192,19 @@ func TestKeyRunner__Remove_Then_Add_Again__Before_Finish(t *testing.T) {
 	}, clearContexts(startList))
 
 	// remove key01
-	startList2 := r.upsertInternal([]objectValue{
+	startList2, updated := r.upsertInternal([]objectValue{
 		{key: "key02", val: 12},
 	})
 	assert.Equal(t, 0, len(startList2))
+	assert.Equal(t, true, updated)
 
 	// add again & updated
-	startList3 := r.upsertInternal([]objectValue{
+	startList3, updated := r.upsertInternal([]objectValue{
 		{key: "key01", val: 21},
 		{key: "key02", val: 12},
 	})
 	assert.Equal(t, 0, len(startList3))
+	assert.Equal(t, true, updated)
 
 	// check context canceled
 	assert.Equal(t, context.Canceled, startList[0].ctx.Err())
@@ -215,6 +224,52 @@ func TestKeyRunner__Remove_Then_Add_Again__Before_Finish(t *testing.T) {
 	assert.Equal(t, true, ok)
 	assert.Equal(t, nil, entry1.ctx.Err())
 	assert.Equal(t, objectValue{key: "key01", val: 21}, entry1.val)
+}
+
+func TestKeyRunner__Upsert_Same_Not_Updated(t *testing.T) {
+	r := New(objectValue.getKey, nil)
+
+	startList, updated := r.upsertInternal([]objectValue{
+		{key: "key01", val: 11},
+		{key: "key02", val: 12},
+	})
+	assert.Equal(t, true, updated)
+
+	// check start list
+	assert.Equal(t, []startEntry[objectValue]{
+		{val: objectValue{key: "key01", val: 11}},
+		{val: objectValue{key: "key02", val: 12}},
+	}, clearContexts(startList))
+
+	// update the same
+	startList, updated = r.upsertInternal([]objectValue{
+		{key: "key01", val: 11},
+		{key: "key02", val: 12},
+	})
+	assert.Equal(t, false, updated)
+	assert.Equal(t, 0, len(startList))
+
+	// remove key01
+	startList, updated = r.upsertInternal([]objectValue{
+		{key: "key02", val: 12},
+	})
+	assert.Equal(t, true, updated)
+	assert.Equal(t, 0, len(startList))
+
+	// keep the same
+	startList, updated = r.upsertInternal([]objectValue{
+		{key: "key02", val: 12},
+	})
+	assert.Equal(t, false, updated)
+	assert.Equal(t, 0, len(startList))
+
+	// add back key 01
+	startList, updated = r.upsertInternal([]objectValue{
+		{key: "key01", val: 11},
+		{key: "key02", val: 12},
+	})
+	assert.Equal(t, true, updated)
+	assert.Equal(t, 0, len(startList))
 }
 
 func TestKeyRunner_Public(t *testing.T) {
