@@ -40,15 +40,18 @@ func newAcceptorLogicTest(t *testing.T) *acceptorLogicTest {
 	return s
 }
 
-func (s *acceptorLogicTest) putMembers() {
-	memberEntry := NewMembershipLogEntry(
+func (*acceptorLogicTest) initMemberLogEntry() LogEntry {
+	return NewMembershipLogEntry(
 		InfiniteTerm{},
 		[]MemberInfo{
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 		},
 	)
+}
+
+func (s *acceptorLogicTest) putMembers() {
 	s.log.UpsertEntries([]PosLogEntry{
-		{Pos: 1, Entry: memberEntry},
+		{Pos: 1, Entry: s.initMemberLogEntry()},
 	}, nil)
 }
 
@@ -674,5 +677,81 @@ func TestAcceptorLogic__GetReplicated__Wait_On_New_Term(t *testing.T) {
 		s.doAcceptEntries(1)
 
 		assert.Equal(t, errors.New("input term is less than actual term"), getFn())
+	})
+}
+
+func (s *acceptorLogicTest) doGetCommitted(from LogPos, limit int) GetCommittedEntriesOutput {
+	output, err := s.logic.GetCommittedEntriesWithWait(s.ctx, s.log.GetTerm(), from, limit)
+	if err != nil {
+		panic(err)
+	}
+	return output
+}
+
+func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+			s.newCmd("cmd test 04"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// increase the fully replicated pos
+	resp = s.doAcceptEntries(3)
+	assert.Equal(t, true, resp.Success)
+
+	// get entries
+	output, err := s.logic.GetCommittedEntriesWithWait(s.ctx, s.log.GetTerm(), 1, 100)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []PosLogEntry{
+		{Pos: 1, Entry: s.initMemberLogEntry()},
+		{Pos: 2, Entry: s.newCmdInf("cmd test 02")},
+		{Pos: 3, Entry: s.newCmdInf("cmd test 03")},
+	}, output.Entries)
+	assert.Equal(t, LogPos(4), output.NextPos)
+
+	// get entries with limit
+	output, err = s.logic.GetCommittedEntriesWithWait(s.ctx, s.log.GetTerm(), 1, 2)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, []PosLogEntry{
+		{Pos: 1, Entry: s.initMemberLogEntry()},
+		{Pos: 2, Entry: s.newCmdInf("cmd test 02")},
+	}, output.Entries)
+	assert.Equal(t, LogPos(3), output.NextPos)
+
+	synctest.Test(t, func(t *testing.T) {
+		// get with wait
+		resultFn, _ := testutil.RunAsync(t, func() GetCommittedEntriesOutput {
+			return s.doGetCommitted(4, 100)
+		})
+
+		s.doAcceptEntries(
+			4,
+			newAcceptLogEntries(5,
+				s.newCmd("cmd test 05"),
+				s.newCmd("cmd test 06"),
+			)...,
+		)
+
+		output := resultFn()
+		assert.Equal(t, []PosLogEntry{
+			{Pos: 4, Entry: s.newCmdInf("cmd test 04")},
+		}, output.Entries)
+		assert.Equal(t, LogPos(5), output.NextPos)
+
+		s.doAcceptEntries(6)
+
+		// get again
+		output = s.doGetCommitted(5, 100)
+		assert.Equal(t, []PosLogEntry{
+			{Pos: 5, Entry: s.newCmdInf("cmd test 05")},
+			{Pos: 6, Entry: s.newCmdInf("cmd test 06")},
+		}, output.Entries)
+		assert.Equal(t, LogPos(7), output.NextPos)
 	})
 }

@@ -8,6 +8,8 @@ import (
 )
 
 type AcceptorLogic interface {
+	StateMachineLogGetter
+
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
 
@@ -275,6 +277,38 @@ StartLoop:
 		NextPos:  maxPos + 1,
 
 		FullyReplicated: s.log.GetFullyReplicated(),
+	}, nil
+}
+
+func (s *acceptorLogicImpl) GetCommittedEntriesWithWait(
+	ctx context.Context, term TermNum,
+	fromPos LogPos, limit int,
+) (GetCommittedEntriesOutput, error) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
+StartFunction:
+	if !s.updateTermNum(term) {
+		return GetCommittedEntriesOutput{}, fmt.Errorf("input term is less than actual term")
+	}
+
+	if fromPos > s.log.GetFullyReplicated() {
+		if err := s.waitCond.Wait(ctx, s.currentNode); err != nil {
+			return GetCommittedEntriesOutput{}, err
+		}
+		goto StartFunction
+	}
+
+	maxPos := fromPos + LogPos(limit-1)
+	if maxPos > s.log.GetFullyReplicated() {
+		maxPos = s.log.GetFullyReplicated()
+	}
+	newLimit := maxPos - fromPos + 1
+
+	entries := s.log.GetEntries(fromPos, int(newLimit))
+	return GetCommittedEntriesOutput{
+		Entries: entries,
+		NextPos: maxPos + 1,
 	}, nil
 }
 

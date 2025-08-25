@@ -16,7 +16,12 @@ type StateMachineLogGetter interface {
 	GetCommittedEntriesWithWait(
 		ctx context.Context, term TermNum,
 		fromPos LogPos, limit int,
-	) ([]PosLogEntry, error)
+	) (GetCommittedEntriesOutput, error)
+}
+
+type GetCommittedEntriesOutput struct {
+	Entries []PosLogEntry
+	NextPos LogPos
 }
 
 type LogStorage interface {
