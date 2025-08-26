@@ -1175,11 +1175,14 @@ func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
 	s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
 }
 
+func isTestRace() bool {
+	return os.Getenv("TEST_RACE") != ""
+}
+
 func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
-	if os.Getenv("TEST_RACE") != "" {
+	if isTestRace() {
 		return
 	}
-
 	for range 100 {
 		runTestThreeNodesInsertManyCommands(t)
 	}
@@ -1189,15 +1192,6 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
 		s.mut.Lock()
 
-		execAction := func() {
-			key, ok := getRandomActionKey(randObj, s.waitMap)
-			if ok {
-				waitCh := s.waitMap[key]
-				delete(s.waitMap, key)
-				close(waitCh)
-			}
-		}
-
 		cmdWeight := 1
 		if *nextCmd >= 20 {
 			cmdWeight = 0
@@ -1205,12 +1199,12 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 
 		runRandomAction(
 			randObj,
-			randomActionWeight(len(s.waitMap), execAction),
+			randomExecAction(randObj, s.waitMap),
 			randomActionWeight(
 				cmdWeight,
 				func() {
 					*nextCmd++
-					s.nodeMap[nodeID1].cmdChan <- fmt.Sprintf("new command: %d", nextCmd)
+					s.nodeMap[nodeID1].cmdChan <- fmt.Sprintf("new command: %d", *nextCmd)
 				},
 			),
 		)
@@ -1243,4 +1237,79 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 		assert.Equal(t, 20, nextCmd)
 		s.checkDiskLogMatch(t, 21)
 	})
+}
+
+func TestPaxos__Normal_Three_Nodes__Elect_A_Leader(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 20 {
+		runTestThreeNodesElectALeader(t)
+	}
+}
+
+func runTestThreeNodesElectALeader(t *testing.T) {
+	allNodes := []NodeID{nodeID1, nodeID2, nodeID3}
+	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
+		s.mut.Lock()
+
+		cmdWeight := 1
+		if *nextCmd >= 20 {
+			cmdWeight = 0
+		}
+
+		runRandomAction(
+			randObj,
+			randomExecAction(randObj, s.waitMap),
+			randomExecAction(randObj, s.shutdownWaitMap),
+			randomActionWeight(
+				cmdWeight,
+				func() {
+					for _, id := range allNodes {
+						core := s.nodeMap[id].core
+						if core.GetState() == StateLeader {
+							*nextCmd++
+							s.nodeMap[id].cmdChan <- fmt.Sprintf("new command: %d", *nextCmd)
+						}
+					}
+				},
+			),
+		)
+
+		s.mut.Unlock()
+
+		synctest.Wait()
+	}
+
+	randObj := newRandomObject()
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t, allNodes, allNodes,
+			defaultSimulationConfig(),
+		)
+
+		nextCmd := 0
+		for range 10000 {
+			executeRandomAction(s, randObj, &nextCmd)
+		}
+
+		replPos1 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
+		replPos2 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
+		replPos3 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
+		assert.Equal(t, replPos1, replPos2)
+		assert.Equal(t, replPos2, replPos3)
+
+		s.checkDiskLogMatch(t, -1)
+
+		s.stopRemainingRunners()
+	})
+}
+
+func (s *simulationTestCase) stopRemainingRunners() {
+	for _, state := range s.nodeMap {
+		state.runner.StartVoteRequestRunners(TermNum{}, nil)
+		state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil, 0)
+		state.runner.StartElectionRunner(0, false, NodeID{}, 0)
+	}
 }

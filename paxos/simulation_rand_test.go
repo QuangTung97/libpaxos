@@ -71,3 +71,17 @@ func runRandomAction(
 		}
 	}
 }
+
+func randomExecAction(
+	randObj *rand.Rand,
+	inputMap map[simulateActionKey]chan struct{},
+) actionWithWeightInfo {
+	return randomActionWeight(len(inputMap), func() {
+		key, ok := getRandomActionKey(randObj, inputMap)
+		if ok {
+			waitCh := inputMap[key]
+			delete(inputMap, key)
+			close(waitCh)
+		}
+	})
+}
