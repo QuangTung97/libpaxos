@@ -187,6 +187,19 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 	c.core.CheckInvariant()
 }
 
+func (c *coreLogicTest) insertToDiskLog(from LogPos, entries ...LogEntry) {
+	var posEntries []PosLogEntry
+	for _, entry := range entries {
+		entry.Term = InfiniteTerm{}
+		posEntries = append(posEntries, PosLogEntry{
+			Pos:   from,
+			Entry: entry,
+		})
+		from++
+	}
+	c.log.UpsertEntries(posEntries, nil)
+}
+
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	c := newCoreLogicTest(t)
 
@@ -1733,6 +1746,9 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		nodeID4, nodeID5, nodeID6,
 	}, c.runner.AcceptRunners)
 
+	// insert to node 1 disk log
+	c.insertToDiskLog(2, entry1)
+
 	// fully replicated
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	c.doUpdateFullyReplicated(nodeID2, 2)
@@ -1948,6 +1964,7 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting(t *testing.T) {
 		assertNotFinish()
 		assert.Equal(t, LogPos(2), c.core.GetMinBufferLogPos())
 
+		c.insertToDiskLog(2, entry1)
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, true, finishFn())
 		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
@@ -2018,6 +2035,7 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 		assertNotFinish()
 
+		c.insertToDiskLog(2, c.newAcceptLogEntry("cmd test 01"))
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, true, finishFn())
 
@@ -2436,6 +2454,7 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 		c.doHandleAccept(nodeID2, 2, 3)
 		assertNotFinish()
 
+		c.insertToDiskLog(2, c.newAcceptLogEntry("cmd test 02"))
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, nil, resultFn())
 

@@ -1283,6 +1283,9 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			AssertTrue(entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
 		}
+
+		// check fully replicated always greater than or equal min buffer pos
+		AssertTrue(c.log.GetCommittedInfo().FullyReplicated+1 >= c.leader.logBuffer.GetFrontPos())
 	}
 
 	// check disk log is not null & term is infinite before fully-replicated pos
