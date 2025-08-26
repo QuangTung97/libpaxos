@@ -74,7 +74,7 @@ func NewCoreLogic(
 		runner:     runner,
 	}
 
-	c.updateFollowerCheckOtherStatus(false)
+	c.updateFollowerCheckOtherStatus(false, false)
 	c.updateAllRunners()
 
 	return c
@@ -101,8 +101,9 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt    TimestampMilli
-	checkStatus followerCheckOtherStatus
+	wakeUpAt         TimestampMilli
+	checkStatus      followerCheckOtherStatus
+	fastSwitchLeader bool
 
 	members     []MemberInfo
 	lastTermVal TermValue
@@ -516,7 +517,7 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 		return nil
 	}
 
-	c.stepDownToFollower(false)
+	c.stepDownToFollower(false, true)
 	return fmt.Errorf("current leader has just stepped down")
 }
 
@@ -646,17 +647,20 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
 	c.persistent.UpdateLastTerm(term)
 
 	if c.state == StateFollower {
-		c.updateFollowerCheckOtherStatus(true)
+		c.updateFollowerCheckOtherStatus(true, false)
 		c.updateStateMachineRunner()
 		return true
 	}
 
 	// when state = candidate / leader
-	c.stepDownToFollower(true)
+	c.stepDownToFollower(true, false)
 	return true
 }
 
-func (c *coreLogicImpl) updateFollowerCheckOtherStatus(causedByAnotherLeader bool) {
+func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
+	causedByAnotherLeader bool,
+	fastSwitchLeader bool,
+) {
 	c.follower = &followerStateInfo{
 		wakeUpAt: c.computeNextWakeUp(),
 	}
@@ -668,6 +672,7 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(causedByAnotherLeader boo
 	}
 
 	c.follower.checkStatus = followerCheckOtherStatusRunning
+	c.follower.fastSwitchLeader = fastSwitchLeader
 	c.followerRetryCount++
 
 	commitInfo := c.log.GetCommittedInfo()
@@ -678,7 +683,7 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(causedByAnotherLeader boo
 	c.updateFetchingFollowerInfoRunners()
 }
 
-func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
+func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool, fastSwitchLeader bool) {
 	c.state = StateFollower
 	c.candidate = nil
 
@@ -686,7 +691,7 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.leader.bufferMaxCond.Broadcast()
 	c.leader = nil
 
-	c.updateFollowerCheckOtherStatus(causedByAnotherLeader)
+	c.updateFollowerCheckOtherStatus(causedByAnotherLeader, fastSwitchLeader)
 	c.updateAllRunners()
 }
 
@@ -935,7 +940,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 
 	if c.state == StateFollower {
 		if c.isExpired(c.follower.wakeUpAt) {
-			c.updateFollowerCheckOtherStatus(false)
+			c.updateFollowerCheckOtherStatus(false, false)
 		}
 		c.checkInvariantIfEnabled()
 		return
@@ -1013,6 +1018,11 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) error {
+	oldPos := c.leader.acceptorFullyReplicated[nodeID]
+	if pos <= oldPos {
+		return nil
+	}
+
 	c.leader.acceptorFullyReplicated[nodeID] = pos
 	c.removeFromLogBuffer(nodeID, pos)
 
@@ -1183,8 +1193,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	c.follower.lastNodePos[fromNode] = info.FullyReplicated
 
-	if info.NoActiveLeader {
-		// TODO fast leader move
+	if info.NoActiveLeader || c.follower.fastSwitchLeader {
 		c.follower.noActiveLeaderSet[fromNode] = struct{}{}
 	}
 

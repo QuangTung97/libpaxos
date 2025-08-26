@@ -2711,3 +2711,82 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 }
+
+func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Switch(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doChangeMembers([]NodeID{nodeID4, nodeID5, nodeID6})
+	accReq := c.doGetAcceptReq(nodeID1, 2, 0)
+	logEntry := accReq.Entries[0]
+	logEntry.Entry.Term = InfiniteTerm{}
+
+	c.doHandleAccept(nodeID1, 2)
+	c.doHandleAccept(nodeID2, 2)
+	c.doHandleAccept(nodeID4, 2)
+	c.doHandleAccept(nodeID5, 2)
+
+	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+	// put to log storage
+	c.log.UpsertEntries([]PosLogEntry{logEntry}, nil)
+
+	c.doUpdateFullyReplicated(nodeID1, 2)
+	c.doUpdateFullyReplicated(nodeID2, 2)
+	c.doUpdateFullyReplicated(nodeID4, 2)
+	c.doUpdateFullyReplicated(nodeID5, 2)
+
+	accReq = c.doGetAcceptReq(nodeID4, 3, 0)
+	finishEntry := accReq.Entries[0]
+	finishEntry.Entry.Term = InfiniteTerm{}
+
+	c.doHandleAccept(nodeID4, 3)
+	c.doHandleAccept(nodeID5, 3)
+	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
+
+	// put to log storage
+	// c.log.UpsertEntries([]PosLogEntry{finishEntry}, nil)
+
+	c.doUpdateFullyReplicated(nodeID4, 3)
+	err := c.doUpdateFullyReplicatedWithErr(nodeID5, 3)
+	assert.Equal(t, errors.New("current leader has just stepped down"), err)
+
+	// -------------------------------------
+	// Fast Leader Switch
+	// -------------------------------------
+	info := c.core.GetChoosingLeaderInfo()
+	assert.Equal(t, ChooseLeaderInfo{
+		NoActiveLeader:  true,
+		Members:         logEntry.Entry.Members,
+		FullyReplicated: 2,
+		LastTermVal:     21,
+	}, info)
+
+	info2 := ChooseLeaderInfo{
+		NoActiveLeader:  false,
+		Members:         finishEntry.Entry.Members,
+		FullyReplicated: 3,
+		LastTermVal:     21,
+	}
+	c.doHandleLeaderInfo(nodeID4, info2)
+	c.doHandleLeaderInfo(nodeID5, info2)
+
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, TermValue(21), c.runner.ElectionTerm)
+	assert.Equal(t, nodeID4, c.runner.ElectionChosen)
+	assert.Equal(t, 2, c.runner.ElectionRetryCount)
+}
+
+func TestCoreLogic__Follower__Handle_Info_With_Active_Leader(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := ChooseLeaderInfo{
+		NoActiveLeader:  false,
+		Members:         c.log.GetCommittedInfo().Members,
+		FullyReplicated: 3,
+		LastTermVal:     23,
+	}
+	c.doHandleLeaderInfo(nodeID1, info)
+	c.doHandleLeaderInfo(nodeID2, info)
+
+	assert.Equal(t, false, c.runner.ElectionStarted)
+}
