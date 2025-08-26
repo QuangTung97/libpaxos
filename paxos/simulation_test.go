@@ -1012,6 +1012,7 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		// change membership
 		leader := s.nodeMap[nodeID1]
 		err := leader.core.ChangeMembership(
+			context.Background(),
 			leader.persistent.GetLastTerm(),
 			[]NodeID{nodeID1, nodeID2, nodeID3},
 		)

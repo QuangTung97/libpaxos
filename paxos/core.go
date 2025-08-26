@@ -29,7 +29,7 @@ type CoreLogic interface {
 
 	CheckTimeout()
 
-	ChangeMembership(term TermNum, newNodes []NodeID) error
+	ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
@@ -948,12 +948,11 @@ func (c *coreLogicImpl) broadcastAllAcceptors() {
 	c.leader.sendAcceptCond.Broadcast()
 }
 
-func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error {
+func (c *coreLogicImpl) ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	// TODO wait
-
+StartFunction:
 	if err := c.isValidLeader(term); err != nil {
 		return err
 	}
@@ -964,13 +963,21 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 		CreatedAt: pos,
 	})
 
-	entry := NewMembershipLogEntry(
-		c.getCurrentTerm().ToInf(),
-		newMembers,
-	)
-	c.appendNewEntry(pos, entry)
+	status, err := c.waitForFreeSpace(ctx, c.persistent.GetNodeID(), pos, func() {
+		entry := NewMembershipLogEntry(
+			c.getCurrentTerm().ToInf(),
+			newMembers,
+		)
+		c.appendNewEntry(pos, entry)
+	})
+	if err != nil {
+		return err
+	}
+	if status == handleStatusNeedReCheck {
+		goto StartFunction
+	}
 
-	err := c.updateLeaderMembers(newMembers, pos)
+	err = c.updateLeaderMembers(newMembers, pos)
 	c.checkInvariantIfEnabled()
 	return err
 }
@@ -1269,12 +1276,22 @@ func (c *coreLogicImpl) DisableAlwaysCheckInv() {
 
 func (c *coreLogicImpl) internalCheckInvariant() {
 	if c.state != StateFollower {
+		// check mem log is not null & term is finite
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
 			entry := memLog.Get(pos)
 			AssertTrue(entry.Term.IsFinite)
-			AssertTrue(entry.Type != LogTypeNull)
+			AssertTrue(!entry.IsNull())
 		}
+	}
+
+	// check disk log is not null & term is infinite before fully-replicated pos
+	fullyReplicated := c.log.GetCommittedInfo().FullyReplicated
+	for pos := LogPos(1); pos <= fullyReplicated; pos++ {
+		entry := c.log.GetEntriesWithPos(pos)[0]
+		AssertTrue(pos == entry.Pos)
+		AssertTrue(!entry.Entry.Term.IsFinite)
+		AssertTrue(!entry.Entry.IsNull())
 	}
 
 	switch c.state {

@@ -885,7 +885,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	)
 
 	// do change
-	err := c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID6})
+	err := c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID6})
 	assert.Equal(t, nil, err)
 
 	// check active runners
@@ -1100,7 +1100,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 }
 
 func (c *coreLogicTest) doChangeMembers(newNodes []NodeID) {
-	if err := c.core.ChangeMembership(c.currentTerm, newNodes); err != nil {
+	if err := c.core.ChangeMembership(c.ctx, c.currentTerm, newNodes); err != nil {
 		panic("Change members should be OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1348,7 +1348,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 
 	c.doInsertCmd("cmd 01", "cmd 02")
 
-	err := c.core.ChangeMembership(c.currentTerm, []NodeID{
+	err := c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{
 		nodeID3, nodeID4, nodeID5,
 	})
 	assert.Equal(t, nil, err)
@@ -1411,7 +1411,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 
 	c.doInsertCmd("cmd 01", "cmd 02")
 
-	err := c.core.ChangeMembership(c.currentTerm, []NodeID{
+	err := c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{
 		nodeID3, nodeID4, nodeID5,
 	})
 	assert.Equal(t, nil, err)
@@ -1563,7 +1563,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	assert.Equal(t, errors.New("current leader is stopping"), err)
 
 	// try to change membership again
-	err = c.core.ChangeMembership(c.currentTerm, []NodeID{nodeID5, nodeID6})
+	err = c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{nodeID5, nodeID6})
 	assert.Equal(t, errors.New("current leader is stopping"), err)
 
 	// no log entries in mem log => switch to follower
@@ -2408,5 +2408,70 @@ func TestCoreLogic__Leader__GetEntriesWithWait__Waiting__Context_Cancel(t *testi
 	c.startAsLeader()
 
 	_, err := c.core.GetCommittedEntriesWithWait(c.cancelCtx, c.currentTerm, 2, 100)
+	assert.Equal(t, context.Canceled, err)
+}
+
+func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd test 02",
+		"cmd test 03",
+		"cmd test 04",
+	)
+
+	synctest.Test(t, func(t *testing.T) {
+		resultFn, assertNotFinish := testutil.RunAsync(t, func() error {
+			c.doChangeMembers([]NodeID{
+				nodeID4, nodeID5, nodeID6,
+			})
+			return nil
+		})
+
+		c.doHandleAccept(nodeID1, 2, 3)
+		c.doHandleAccept(nodeID2, 2, 3)
+		assertNotFinish()
+
+		c.doUpdateFullyReplicated(nodeID1, 2)
+		assert.Equal(t, nil, resultFn())
+
+		accReq := c.doGetAcceptReq(nodeID3, 2, 0)
+		members := []MemberInfo{
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 5},
+		}
+		assert.Equal(t, AcceptEntriesInput{
+			ToNode: nodeID3,
+			Term:   c.currentTerm,
+			Entries: []PosLogEntry{
+				{Pos: 4, Entry: c.newAcceptLogEntry("cmd test 04")},
+				{Pos: 5, Entry: NewMembershipLogEntry(c.currentTerm.ToInf(), members)},
+			},
+			NextPos:   6,
+			Committed: 3,
+		}, accReq)
+	})
+}
+
+func TestCoreLogic__Leader__Change_Membership_Waiting__Context_Cancel(t *testing.T) {
+	conf := newCoreTestConfig()
+	conf.maxBufferLen = 3
+	c := newCoreLogicTestWithConfig(t, conf)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd test 02",
+		"cmd test 03",
+		"cmd test 04",
+	)
+
+	err := c.core.ChangeMembership(c.cancelCtx, c.currentTerm, []NodeID{
+		nodeID4, nodeID5, nodeID6,
+	})
 	assert.Equal(t, context.Canceled, err)
 }
