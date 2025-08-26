@@ -2,17 +2,19 @@ package testutil
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
 func NewConcurrentTest(t *testing.T) *ConcurrentTest {
 	c := &ConcurrentTest{}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.wg = waiting.NewWaitGroup()
 
 	t.Cleanup(func() {
 		c.cancel()
@@ -25,7 +27,7 @@ func NewConcurrentTest(t *testing.T) *ConcurrentTest {
 type ConcurrentTest struct {
 	ctx    context.Context
 	cancel func()
-	wg     sync.WaitGroup
+	wg     *waiting.WaitGroup
 
 	shortWaited bool
 }

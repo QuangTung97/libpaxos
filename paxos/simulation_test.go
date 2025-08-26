@@ -1139,15 +1139,15 @@ func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
 
 func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
+		s.mut.Lock()
+
 		execAction := func() {
-			s.mut.Lock()
 			key, ok := getRandomActionKey(randObj, s.waitMap)
 			if ok {
 				waitCh := s.waitMap[key]
 				delete(s.waitMap, key)
 				close(waitCh)
 			}
-			s.mut.Unlock()
 		}
 
 		cmdWeight := 1
@@ -1166,6 +1166,8 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 				},
 			),
 		)
+
+		s.mut.Unlock()
 
 		synctest.Wait()
 	}

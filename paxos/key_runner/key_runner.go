@@ -3,6 +3,8 @@ package key_runner
 import (
 	"context"
 	"sync"
+
+	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
 // New creates an object that manages a set of runners based on keys and values.
@@ -18,6 +20,8 @@ func New[K comparable, V comparable](
 
 		activeKeys: map[K]struct{}{},
 		running:    map[K]*runThread[V]{},
+
+		wg: waiting.NewWaitGroup(),
 	}
 }
 
@@ -29,7 +33,7 @@ type KeyRunner[K comparable, V comparable] struct {
 	activeKeys map[K]struct{}      // expected set
 	running    map[K]*runThread[V] // running set
 
-	wg sync.WaitGroup
+	wg *waiting.WaitGroup
 }
 
 // ==================================
@@ -41,11 +45,9 @@ func (r *KeyRunner[K, V]) Upsert(values []V) bool {
 
 	for _, tmp := range startList {
 		entry := tmp
-		r.wg.Add(1)
-		go func() {
-			defer r.wg.Done()
+		r.wg.Go(func() {
 			r.doRunHandler(entry)
-		}()
+		})
 	}
 
 	return updated
