@@ -105,6 +105,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 			return TimestampMilli(c.now.Load())
 		},
 		config.maxBufferLen,
+		true,
 	)
 
 	t.Cleanup(c.core.CheckInvariant)

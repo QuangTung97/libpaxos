@@ -165,6 +165,7 @@ func newSimulationTestCase(
 
 	t.Cleanup(func() {
 		for _, state := range s.nodeMap {
+			state.core.DisableAlwaysCheckInv()
 			state.runner.StartAcceptRequestRunners(TermNum{}, nil)
 			state.runner.StartStateMachine(TermNum{}, StateMachineRunnerInfo{})
 		}
@@ -227,6 +228,7 @@ func (s *simulationTestCase) initNodeState(
 			return TimestampMilli(s.now.Load())
 		},
 		LogPos(conf.maxBufferLen),
+		true,
 	)
 }
 

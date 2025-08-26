@@ -33,16 +33,17 @@ func (r *NodeRunnerFake) StartVoteRequestRunners(
 ) bool {
 	var updated bool
 
-	if r.VoteTerm != term {
-		updated = true
-		r.VoteTerm = term
-	}
-
 	newNodes := nodeSetToSlice(nodes)
 	if !slices.Equal(r.VoteRunners, newNodes) {
 		updated = true
-		r.VoteRunners = newNodes
 	}
+
+	if len(newNodes) > 0 && r.VoteTerm != term {
+		updated = true
+	}
+
+	r.VoteTerm = term
+	r.VoteRunners = newNodes
 
 	return updated
 }
@@ -52,32 +53,32 @@ func (r *NodeRunnerFake) StartAcceptRequestRunners(
 ) bool {
 	var updated bool
 
-	if r.AcceptTerm != term {
-		updated = true
-		r.AcceptTerm = term
-	}
-
 	newNodes := nodeSetToSlice(nodes)
 	if !slices.Equal(r.AcceptRunners, newNodes) {
 		updated = true
-		r.AcceptRunners = newNodes
 	}
+
+	if len(newNodes) > 0 && r.AcceptTerm != term {
+		updated = true
+	}
+
+	r.AcceptTerm = term
+	r.AcceptRunners = newNodes
 
 	return updated
 }
 
 func (r *NodeRunnerFake) StartStateMachine(term paxos.TermNum, info paxos.StateMachineRunnerInfo) bool {
 	var updated bool
-
-	if r.StateMachineTerm != term {
-		updated = true
-		r.StateMachineTerm = term
-	}
-
 	if r.StateMachineInfo != info {
 		updated = true
-		r.StateMachineInfo = info
 	}
+	if info.Running && r.StateMachineTerm != term {
+		updated = true
+	}
+
+	r.StateMachineTerm = term
+	r.StateMachineInfo = info
 
 	return updated
 }
@@ -87,21 +88,24 @@ func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
 ) bool {
 	var updated bool
 
-	if r.FetchFollowerTerm != term {
-		updated = true
-		r.FetchFollowerTerm = term
-	}
-
 	newNodes := nodeSetToSlice(nodes)
 	if !slices.Equal(r.FetchFollowers, newNodes) {
 		updated = true
-		r.FetchFollowers = newNodes
 	}
 
-	if r.FetchRetryCount != retryCount {
-		updated = true
-		r.FetchRetryCount = retryCount
+	if len(newNodes) > 0 {
+		if r.FetchFollowerTerm != term {
+			updated = true
+		}
+
+		if r.FetchRetryCount != retryCount {
+			updated = true
+		}
 	}
+
+	r.FetchFollowerTerm = term
+	r.FetchFollowers = newNodes
+	r.FetchRetryCount = retryCount
 
 	return updated
 }
@@ -110,26 +114,28 @@ func (r *NodeRunnerFake) StartElectionRunner(
 	termValue paxos.TermValue, started bool, chosen paxos.NodeID, retryCount int,
 ) bool {
 	var updated bool
-
-	if r.ElectionTerm != termValue {
-		updated = true
-		r.ElectionTerm = termValue
-	}
-
 	if r.ElectionStarted != started {
 		updated = true
-		r.ElectionStarted = started
 	}
 
-	if r.ElectionChosen != chosen {
-		updated = true
-		r.ElectionChosen = chosen
+	if started {
+		if r.ElectionTerm != termValue {
+			updated = true
+		}
+
+		if r.ElectionChosen != chosen {
+			updated = true
+		}
+
+		if r.ElectionRetryCount != retryCount {
+			updated = true
+		}
 	}
 
-	if r.ElectionRetryCount != retryCount {
-		updated = true
-		r.ElectionRetryCount = retryCount
-	}
+	r.ElectionTerm = termValue
+	r.ElectionStarted = started
+	r.ElectionChosen = chosen
+	r.ElectionRetryCount = retryCount
 
 	return updated
 }

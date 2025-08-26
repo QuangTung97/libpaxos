@@ -48,6 +48,8 @@ type CoreLogic interface {
 
 	// CheckInvariant for testing only
 	CheckInvariant()
+
+	DisableAlwaysCheckInv()
 }
 
 func NewCoreLogic(
@@ -56,12 +58,15 @@ func NewCoreLogic(
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
 	maxBufferLen LogPos,
+	withCheckInv bool,
 ) CoreLogic {
 	c := &coreLogicImpl{
 		nowFunc:      nowFunc,
 		maxBufferLen: maxBufferLen,
 
 		state: StateFollower,
+
+		alwaysCheckInv: withCheckInv,
 
 		persistent: persistent,
 		log:        log,
@@ -80,6 +85,8 @@ type coreLogicImpl struct {
 
 	mut   sync.Mutex
 	state State
+
+	alwaysCheckInv bool
 
 	follower  *followerStateInfo
 	candidate *candidateStateInfo
@@ -161,6 +168,12 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 	return c.stepDownWhenNotInMemberList()
 }
 
+func (c *coreLogicImpl) checkInvariantIfEnabled() {
+	if c.alwaysCheckInv {
+		c.internalCheckInvariant()
+	}
+}
+
 func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -210,13 +223,13 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 	}
 
 	c.updateAllRunners()
+	c.checkInvariantIfEnabled()
 	return nil
 }
 
-func (c *coreLogicImpl) updateVoteRunners() {
+func (c *coreLogicImpl) updateVoteRunners() bool {
 	if c.state == StateFollower || c.state == StateLeader {
-		c.runner.StartVoteRequestRunners(c.getCurrentTerm(), nil)
-		return
+		return c.runner.StartVoteRequestRunners(c.getCurrentTerm(), nil)
 	}
 
 	allMembers := GetAllMembers(c.leader.members)
@@ -237,17 +250,17 @@ func (c *coreLogicImpl) updateVoteRunners() {
 			delete(allMembers, nodeID)
 		}
 	}
-	c.runner.StartVoteRequestRunners(c.getCurrentTerm(), allMembers)
+
+	return c.runner.StartVoteRequestRunners(c.getCurrentTerm(), allMembers)
 }
 
-func (c *coreLogicImpl) updateAcceptRunners() {
+func (c *coreLogicImpl) updateAcceptRunners() bool {
 	if c.state == StateFollower {
-		c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), nil)
-		return
+		return c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), nil)
 	}
 
 	allMembers := GetAllMembers(c.leader.members)
-	c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), allMembers)
+	return c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), allMembers)
 }
 
 func (c *coreLogicImpl) getMaxValidLogPos() LogPos {
@@ -283,6 +296,7 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 		return RequestVoteInput{}, err
 	}
 
+	c.checkInvariantIfEnabled()
 	return RequestVoteInput{
 		ToNode:  toNode,
 		Term:    c.getCurrentTerm(),
@@ -298,6 +312,7 @@ func (c *coreLogicImpl) HandleVoteResponse(
 
 	if !output.Success {
 		c.stepDownWhenEncounterHigherTerm(output.Term)
+		c.checkInvariantIfEnabled()
 		return nil
 	}
 
@@ -324,6 +339,7 @@ StartFunction:
 		return err
 	}
 
+	c.checkInvariantIfEnabled()
 	return c.switchFromCandidateToLeader()
 }
 
@@ -574,6 +590,7 @@ StartFunction:
 
 	c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp()
 
+	c.checkInvariantIfEnabled()
 	return AcceptEntriesInput{
 		ToNode:    toNode,
 		Term:      c.getCurrentTerm(),
@@ -604,7 +621,9 @@ func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	return c.followDoCheckAcceptEntriesRequest(term)
+	ok := c.followDoCheckAcceptEntriesRequest(term)
+	c.checkInvariantIfEnabled()
+	return ok
 }
 
 func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
@@ -617,7 +636,7 @@ func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
 
 	if c.state == StateFollower {
 		c.updateFollowerCheckOtherStatus(true)
-		c.updateStateMachineRunner() // TODO testing
+		c.updateStateMachineRunner()
 		return true
 	}
 
@@ -663,44 +682,57 @@ func (c *coreLogicImpl) stepDownToFollower(causedByAnotherLeader bool) {
 	c.updateAllRunners()
 }
 
-func (c *coreLogicImpl) updateAllRunners() {
-	c.updateVoteRunners()
-	c.updateAcceptRunners()
-	c.updateFetchingFollowerInfoRunners()
-	c.updateStateMachineRunner()
+func (c *coreLogicImpl) updateAllRunners() (bool, string) {
+	updated := false
+	inputLabel := ""
+	setUpdated := func(result bool, label string) {
+		if result {
+			updated = true
+			inputLabel = label
+		}
+	}
+
+	setUpdated(c.updateVoteRunners(), "vote")
+	setUpdated(c.updateAcceptRunners(), "accept")
+	setUpdated(c.updateFetchingFollowerInfoRunners(), "fetch")
+	setUpdated(c.updateStateMachineRunner(), "state")
+	return updated, inputLabel
 }
 
-func (c *coreLogicImpl) updateStateMachineRunner() {
+func (c *coreLogicImpl) updateStateMachineRunner() bool {
 	term := c.getCurrentTerm()
 	if c.state == StateLeader {
-		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+		return c.runner.StartStateMachine(term, StateMachineRunnerInfo{
 			Running:       true,
 			IsLeader:      true,
 			AcceptCommand: true,
 		})
-		return
 	}
 
 	if c.state == StateCandidate {
-		c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+		return c.runner.StartStateMachine(term, StateMachineRunnerInfo{
 			Running:  true,
 			IsLeader: true,
 		})
-		return
 	}
 
-	c.runner.StartStateMachine(term, StateMachineRunnerInfo{
+	return c.runner.StartStateMachine(term, StateMachineRunnerInfo{
 		Running: true,
 	})
 }
 
-func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
+func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
 	term := c.getCurrentTerm()
 
 	if c.state != StateFollower {
-		c.runner.StartFetchingFollowerInfoRunners(term, nil, 0)
-		c.runner.StartElectionRunner(0, false, NodeID{}, 0)
-		return
+		updated := false
+		if c.runner.StartFetchingFollowerInfoRunners(term, nil, 0) {
+			updated = true
+		}
+		if c.runner.StartElectionRunner(0, false, NodeID{}, 0) {
+			updated = true
+		}
+		return updated
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusRunning {
@@ -717,11 +749,11 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() {
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
-		c.runner.StartElectionRunner(
+		return c.runner.StartElectionRunner(
 			c.follower.lastTermVal, true, c.follower.lastNodeID, c.followerRetryCount,
 		)
 	} else {
-		c.runner.StartElectionRunner(0, false, NodeID{}, 0)
+		return c.runner.StartElectionRunner(0, false, NodeID{}, 0)
 	}
 }
 
@@ -745,6 +777,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	}
 
 	_ = c.increaseLastCommitted()
+	c.checkInvariantIfEnabled()
 	return nil
 }
 
@@ -841,6 +874,7 @@ StartFunction:
 		cmdList = cmdList[1:]
 	}
 
+	c.checkInvariantIfEnabled()
 	return nil
 }
 
@@ -873,6 +907,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 		if c.isExpired(c.follower.wakeUpAt) {
 			c.updateFollowerCheckOtherStatus(false)
 		}
+		c.checkInvariantIfEnabled()
 		return
 	}
 
@@ -883,6 +918,8 @@ func (c *coreLogicImpl) CheckTimeout() {
 			c.leader.sendAcceptCond.Signal(nodeID)
 		}
 	}
+
+	c.checkInvariantIfEnabled()
 }
 
 func ErrMismatchTerm(inputTerm TermNum, actual TermNum) error {
@@ -915,6 +952,8 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	// TODO wait
+
 	if err := c.isValidLeader(term); err != nil {
 		return err
 	}
@@ -931,7 +970,9 @@ func (c *coreLogicImpl) ChangeMembership(term TermNum, newNodes []NodeID) error 
 	)
 	c.appendNewEntry(pos, entry)
 
-	return c.updateLeaderMembers(newMembers, pos)
+	err := c.updateLeaderMembers(newMembers, pos)
+	c.checkInvariantIfEnabled()
+	return err
 }
 
 func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) error {
@@ -1033,6 +1074,7 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 		}
 	}
 
+	c.checkInvariantIfEnabled()
 	return AcceptEntriesInput{
 		ToNode:  input.FromNode,
 		Term:    c.getCurrentTerm(),
@@ -1096,6 +1138,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 	}
 
 	c.updateFetchingFollowerInfoRunners()
+	c.checkInvariantIfEnabled()
 	return nil
 }
 
@@ -1215,8 +1258,16 @@ func (c *coreLogicImpl) CheckInvariant() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	// TODO check invariant after every calls
+	c.internalCheckInvariant()
+}
 
+func (c *coreLogicImpl) DisableAlwaysCheckInv() {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	c.alwaysCheckInv = false
+}
+
+func (c *coreLogicImpl) internalCheckInvariant() {
 	if c.state != StateFollower {
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
@@ -1243,6 +1294,10 @@ func (c *coreLogicImpl) CheckInvariant() {
 		AssertTrue(c.candidate == nil)
 		AssertTrue(c.leader == nil)
 		AssertTrue(c.state == StateFollower)
+	}
+
+	if updated, label := c.updateAllRunners(); updated {
+		panic("Invariant failed on label: " + label)
 	}
 }
 

@@ -128,11 +128,12 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) ([]startEntry[V], bool) {
 			}
 			continue
 		}
+
 		r.activeKeys[key] = struct{}{}
+		updated = true
 
 		thread, ok := r.running[key]
 		if ok {
-			updated = true
 			thread.val = val
 			continue
 		}
@@ -144,7 +145,6 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) ([]startEntry[V], bool) {
 			cancel: cancel,
 		}
 
-		updated = true
 		startList = append(startList, startEntry[V]{
 			val: val,
 			ctx: ctx,
