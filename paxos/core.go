@@ -1136,6 +1136,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	c.follower.checkedSet[fromNode] = struct{}{}
 	if info.NoActiveLeader {
+		// TODO fast leader move
 		c.follower.noActiveLeaderSet[fromNode] = struct{}{}
 	}
 

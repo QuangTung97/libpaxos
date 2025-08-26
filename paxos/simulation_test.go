@@ -831,7 +831,9 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 		return cmp.Compare(len(a), len(b))
 	})
 
-	assert.Equal(t, minLength, len(allLog[0]))
+	if minLength >= 0 {
+		assert.Equal(t, minLength, len(allLog[0]))
+	}
 
 	for i := 0; i < len(allLog)-1; i++ {
 		a := allLog[i]
