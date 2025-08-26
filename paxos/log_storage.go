@@ -2,6 +2,7 @@ package paxos
 
 import "context"
 
+// LeaderLogGetter must be a thread safe object
 type LeaderLogGetter interface {
 	GetCommittedInfo() CommittedInfo
 
@@ -27,14 +28,17 @@ type GetCommittedEntriesOutput struct {
 type LogStorage interface {
 	LeaderLogGetter
 
-	// -----------------------------------------------------
-	// Follower functions are not required to be thread safe
-	// -----------------------------------------------------
+	// ----------------------------------------------------------------------
+	// Follower functions are only required to not race with LeaderLogGetter
+	// ----------------------------------------------------------------------
 
 	UpsertEntries(entries []PosLogEntry, markCommitted []LogPos)
-
 	SetTerm(term TermNum)
+
+	// GetTerm is not required to be thread safe
 	GetTerm() TermNum
+
+	// GetFullyReplicated is not required to be thread safe
 	GetFullyReplicated() LogPos
 }
 

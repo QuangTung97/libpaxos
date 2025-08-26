@@ -18,7 +18,10 @@ type AcceptorLogic interface {
 		lastFullyReplicated LogPos,
 	) (NeedReplicatedInput, error)
 
+	// CheckInvariant for testing only
 	CheckInvariant()
+
+	// GetLastCommitted for testing only
 	GetLastCommitted() LogPos
 }
 

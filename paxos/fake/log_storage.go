@@ -1,8 +1,13 @@
 package fake
 
-import "github.com/QuangTung97/libpaxos/paxos"
+import (
+	"sync"
+
+	"github.com/QuangTung97/libpaxos/paxos"
+)
 
 type LogStorageFake struct {
+	mut                sync.Mutex
 	logEntries         []paxos.LogEntry
 	lastMembers        []paxos.MemberInfo
 	fullyReplicatedPos paxos.LogPos
@@ -20,6 +25,9 @@ type UpsertInput struct {
 var _ paxos.LogStorage = &LogStorageFake{}
 
 func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry, markCommitted []paxos.LogPos) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	var putList []paxos.LogPos
 	for _, e := range entries {
 		putList = append(putList, e.Pos)
@@ -87,6 +95,9 @@ func (s *LogStorageFake) doMarkCommitted(posList []paxos.LogPos) {
 }
 
 func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	return paxos.CommittedInfo{
 		Members:         s.lastMembers,
 		FullyReplicated: s.fullyReplicatedPos,
@@ -94,6 +105,9 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 }
 
 func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLogEntry {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	maxPos := paxos.LogPos(len(s.logEntries))
 
 	num := maxPos - from + 1
@@ -116,6 +130,9 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLog
 }
 
 func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosLogEntry {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	maxPos := paxos.LogPos(len(s.logEntries))
 
 	result := make([]paxos.PosLogEntry, 0)
@@ -135,6 +152,9 @@ func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosL
 }
 
 func (s *LogStorageFake) SetTerm(term paxos.TermNum) {
+	s.mut.Lock()
+	defer s.mut.Unlock()
+
 	s.Term = term
 }
 
