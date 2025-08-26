@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"math/rand"
+	"os"
 	"runtime"
 	"slices"
 	"sync"
@@ -814,6 +815,35 @@ func compareActionKey(a, b simulateActionKey) int {
 	return slices.Compare(a.toNode[:], b.toNode[:])
 }
 
+func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
+	t.Helper()
+	var allLog [][]PosLogEntry
+
+	for _, state := range s.nodeMap {
+		maxPos := state.log.GetFullyReplicated()
+		logEntries := state.log.GetEntries(1, int(maxPos))
+
+		allLog = append(allLog, logEntries)
+		allLog = append(allLog, state.stateMachineLog)
+	}
+
+	slices.SortFunc(allLog, func(a, b []PosLogEntry) int {
+		return cmp.Compare(len(a), len(b))
+	})
+
+	assert.Equal(t, minLength, len(allLog[0]))
+
+	for i := 0; i < len(allLog)-1; i++ {
+		a := allLog[i]
+		b := allLog[i+1]
+
+		isEqual := slices.EqualFunc(a, b[:len(a)], PosLogEntryEqual)
+		if !isEqual {
+			t.Error("Should be equal here")
+		}
+	}
+}
+
 func TestPaxos__Single_Node(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
@@ -1138,6 +1168,16 @@ func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
 }
 
 func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
+	if os.Getenv("TEST_RACE") != "" {
+		return
+	}
+
+	for range 100 {
+		runTestThreeNodesInsertManyCommands(t)
+	}
+}
+
+func runTestThreeNodesInsertManyCommands(t *testing.T) {
 	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
 		s.mut.Lock()
 
@@ -1172,6 +1212,8 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 		synctest.Wait()
 	}
 
+	randObj := newRandomObject()
+
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
 			t,
@@ -1182,9 +1224,7 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 
 		s.setupLeaderForThreeNodes(t)
 
-		randObj := newRandomObject()
 		nextCmd := 0
-
 		for range 1000 {
 			executeRandomAction(s, randObj, &nextCmd)
 		}
@@ -1193,9 +1233,6 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, 20, nextCmd)
-
-		s.printAllWaiting()
+		s.checkDiskLogMatch(t, 21)
 	})
 }
-
-func ref(any) {}

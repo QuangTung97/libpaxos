@@ -42,3 +42,10 @@ type PosLogEntry struct {
 	Pos   LogPos
 	Entry LogEntry
 }
+
+func PosLogEntryEqual(a, b PosLogEntry) bool {
+	if a.Pos != b.Pos {
+		return false
+	}
+	return LogEntryEqual(a.Entry, b.Entry)
+}

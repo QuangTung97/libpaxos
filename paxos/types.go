@@ -112,6 +112,25 @@ func (e LogEntry) IsNull() bool {
 	return e.Type == LogTypeNull
 }
 
+func LogEntryEqual(a, b LogEntry) bool {
+	if a.Type != b.Type {
+		return false
+	}
+	if a.Term != b.Term {
+		return false
+	}
+
+	if !slices.Equal(a.CmdData, b.CmdData) {
+		return false
+	}
+
+	if !slices.EqualFunc(a.Members, b.Members, MemberInfoEqual) {
+		return false
+	}
+
+	return true
+}
+
 type LogType int
 
 const (
@@ -155,6 +174,16 @@ func NewMembershipLogEntry(
 type MemberInfo struct {
 	Nodes     []NodeID
 	CreatedAt LogPos
+}
+
+func MemberInfoEqual(a, b MemberInfo) bool {
+	if !slices.Equal(a.Nodes, b.Nodes) {
+		return false
+	}
+	if a.CreatedAt != b.CreatedAt {
+		return false
+	}
+	return true
 }
 
 func isQuorumOf(universe []NodeID, checkSet map[NodeID]struct{}) bool {

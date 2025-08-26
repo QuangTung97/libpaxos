@@ -82,3 +82,110 @@ func TestCompareInfiniteTerm(t *testing.T) {
 		assert.Equal(t, 0, CompareInfiniteTerm(InfiniteTerm{}, InfiniteTerm{}))
 	})
 }
+
+func TestLogEntryEqual(t *testing.T) {
+	t.Run("membership", func(t *testing.T) {
+		a := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			Members: []MemberInfo{
+				{Nodes: []NodeID{nodeID1, nodeID2}, CreatedAt: 2},
+			},
+		}
+
+		b := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			Members: []MemberInfo{
+				{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 2},
+			},
+		}
+
+		assert.Equal(t, true, LogEntryEqual(a, a))
+		assert.Equal(t, false, LogEntryEqual(a, b))
+		assert.Equal(t, false, LogEntryEqual(b, a))
+		assert.Equal(t, true, LogEntryEqual(b, b))
+
+		c := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			Members: []MemberInfo{
+				{Nodes: []NodeID{nodeID1, nodeID2}, CreatedAt: 5},
+			},
+		}
+		assert.Equal(t, false, LogEntryEqual(a, c))
+	})
+
+	t.Run("cmd", func(t *testing.T) {
+		a := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 01"),
+		}
+		b := LogEntry{
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 02"),
+		}
+
+		assert.Equal(t, true, LogEntryEqual(a, a))
+		assert.Equal(t, false, LogEntryEqual(a, b))
+		assert.Equal(t, false, LogEntryEqual(b, a))
+		assert.Equal(t, true, LogEntryEqual(b, b))
+	})
+
+	t.Run("term not equal", func(t *testing.T) {
+		a := LogEntry{
+			Type: LogTypeCmd,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 01"),
+		}
+		b := LogEntry{
+			Type: LogTypeCmd,
+			Term: TermNum{
+				Num:    22,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 01"),
+		}
+
+		assert.Equal(t, true, LogEntryEqual(a, a))
+		assert.Equal(t, false, LogEntryEqual(a, b))
+		assert.Equal(t, false, LogEntryEqual(b, a))
+		assert.Equal(t, true, LogEntryEqual(b, b))
+	})
+
+	t.Run("type not equal", func(t *testing.T) {
+		a := LogEntry{
+			Type:    LogTypeCmd,
+			CmdData: []byte("cmd test 01"),
+		}
+		b := LogEntry{
+			Type:    LogTypeMembership,
+			CmdData: []byte("cmd test 01"),
+		}
+
+		assert.Equal(t, true, LogEntryEqual(a, a))
+		assert.Equal(t, false, LogEntryEqual(a, b))
+		assert.Equal(t, false, LogEntryEqual(b, a))
+		assert.Equal(t, true, LogEntryEqual(b, b))
+	})
+}
