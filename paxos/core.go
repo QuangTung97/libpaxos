@@ -505,6 +505,8 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 		return nil
 	}
 
+	// TODO wait for new majority of nodes fully replicated pos to be >= stepDownAt.Pos
+
 	c.stepDownToFollower(false)
 	return fmt.Errorf("current leader has just stepped down")
 }
@@ -1050,8 +1052,10 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 		return AcceptEntriesInput{}, err
 	}
 
-	diskEntries := c.log.GetEntriesWithPos(diskPosList...)
-	acceptInput.Entries = append(diskEntries, acceptInput.Entries...)
+	if len(diskPosList) > 0 {
+		diskEntries := c.log.GetEntriesWithPos(diskPosList...)
+		acceptInput.Entries = append(diskEntries, acceptInput.Entries...)
+	}
 
 	return acceptInput, nil
 }
@@ -1068,6 +1072,14 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 
 	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
 		return AcceptEntriesInput{}, nil, err
+	}
+
+	if len(input.PosList) == 0 {
+		c.checkInvariantIfEnabled()
+		return AcceptEntriesInput{
+			ToNode: input.FromNode,
+			Term:   c.getCurrentTerm(),
+		}, nil, nil
 	}
 
 	minPos := c.leader.logBuffer.GetFrontPos()
@@ -1129,9 +1141,11 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 	c.follower.lastTermVal = max(c.follower.lastTermVal, info.LastTermVal)
 
 	if c.follower.lastPos < info.FullyReplicated {
+		c.follower.members = info.Members
+
+		// TODO use a map instead of single value
 		c.follower.lastNodeID = fromNode
 		c.follower.lastPos = info.FullyReplicated
-		c.follower.members = info.Members
 	}
 
 	c.follower.checkedSet[fromNode] = struct{}{}
