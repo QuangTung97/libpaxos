@@ -2,41 +2,40 @@ package testutil
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"testing/synctest"
+
+	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
-func TestSyncTest_With_Chanel(t *testing.T) {
-	for range 10 {
-		doSyncTestWithChanel(t)
+func TestSyncTest_Wait_Group(t *testing.T) {
+	for range 100 {
+		doSyncTestWithWaitGroup(t)
 	}
 }
 
-func doSyncTestWithChanel(t *testing.T) {
+func doSyncTestWithWaitGroup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		ch := make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		go func() {
-			var wg sync.WaitGroup
-
-			for range 100 {
-				wg.Go(func() {
-					for {
-						select {
-						case <-ch:
-						case <-ctx.Done():
-							return
-						}
-					}
-				})
-			}
-
-			wg.Wait()
-		}()
+		for range 100 {
+			go func() {
+				simpleWait(ctx)
+			}()
+		}
 
 		synctest.Wait()
+		cancel()
 	})
+}
+
+func simpleWait(ctx context.Context) {
+	// var wg sync.WaitGroup
+	wg := waiting.NewWaitGroup()
+	for range 3 {
+		wg.Go(func() {
+			<-ctx.Done()
+		})
+	}
+	wg.Wait()
 }
