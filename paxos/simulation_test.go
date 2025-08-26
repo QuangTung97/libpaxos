@@ -842,6 +842,12 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 			t.Error("Should be equal here")
 		}
 	}
+
+	for _, entry := range allLog[len(allLog)-1] {
+		if entry.Entry.Term.IsFinite {
+			t.Fatal("Must not contain finite term log entry here")
+		}
+	}
 }
 
 func TestPaxos__Single_Node(t *testing.T) {
