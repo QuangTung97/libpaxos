@@ -505,7 +505,16 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 		return nil
 	}
 
-	// TODO wait for new majority of nodes fully replicated pos to be >= stepDownAt.Pos
+	fullyReplicatedSet := map[NodeID]struct{}{}
+	for nodeID, replicatedPos := range c.leader.acceptorFullyReplicated {
+		if stepDownAt.Pos <= replicatedPos {
+			fullyReplicatedSet[nodeID] = struct{}{}
+		}
+	}
+
+	if !IsQuorum(c.leader.members, fullyReplicatedSet) {
+		return nil
+	}
 
 	c.stepDownToFollower(false)
 	return fmt.Errorf("current leader has just stepped down")
@@ -987,7 +996,11 @@ StartFunction:
 func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPos) error {
 	c.leader.acceptorFullyReplicated[nodeID] = pos
 	c.removeFromLogBuffer(nodeID, pos)
-	return c.finishMembershipChange()
+
+	if err := c.finishMembershipChange(); err != nil {
+		return err
+	}
+	return c.stepDownWhenNotInMemberList()
 }
 
 func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {

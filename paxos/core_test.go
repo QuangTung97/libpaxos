@@ -1355,6 +1355,17 @@ func (c *coreLogicTest) doUpdateFullyReplicated(nodeID NodeID, pos LogPos) {
 	c.core.CheckInvariant()
 }
 
+func (c *coreLogicTest) doUpdateFullyReplicatedWithErr(nodeID NodeID, pos LogPos) error {
+	input := NeedReplicatedInput{
+		Term:     c.currentTerm,
+		FromNode: nodeID,
+
+		FullyReplicated: pos,
+	}
+	_, err := c.core.GetNeedReplicatedLogEntries(input)
+	return err
+}
+
 func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_Membership_Change(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.startAsLeader()
@@ -1530,7 +1541,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 		}.ToInf(),
 		Members: newMembers2,
 	}
-	entry3 := c.newLogEntry("cmd data 03", 18)
+	entry3 := c.newLogEntry("cmd data 03", 18) // pos = 4
 
 	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 	c.doHandleVoteResp(nodeID3, 2, true)
@@ -1579,8 +1590,13 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	err = c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{nodeID5, nodeID6})
 	assert.Equal(t, errors.New("current leader is stopping"), err)
 
-	// no log entries in mem log => switch to follower
+	// no log entries in mem log
 	c.doHandleAccept(nodeID4, 2, 3, 4)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// fully replicated => switch to follower
+	err = c.doUpdateFullyReplicatedWithErr(nodeID4, 4)
+	assert.Equal(t, errors.New("current leader has just stepped down"), err)
 
 	assert.Equal(t, StateFollower, c.core.GetState())
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
@@ -2493,4 +2509,154 @@ func TestCoreLogic__Leader__Change_Membership_Waiting__Context_Cancel(t *testing
 		nodeID4, nodeID5, nodeID6,
 	})
 	assert.Equal(t, context.Canceled, err)
+}
+
+func TestCoreLogic__Candidate__Change_Membership_3_Nodes__Current_Leader_Not_In_MemberList(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newMembers1 := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 2},
+	}
+	newMembers2 := []MemberInfo{
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
+	}
+
+	entry1 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers1,
+	}
+	entry2 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers2,
+	}
+
+	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
+	c.doHandleVoteResp(nodeID3, 2, true)
+
+	// state is still candidate
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	assert.Equal(t, []NodeID{nodeID1, nodeID4, nodeID5, nodeID6}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
+
+	// handle for node 4 & 5
+	c.doHandleVoteResp(nodeID4, 3, true, entry2)
+	c.doHandleVoteResp(nodeID5, 3, true)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{nodeID4, nodeID5, nodeID6}, c.runner.AcceptRunners)
+
+	// try to insert command
+	err := c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))
+	assert.Equal(t, errors.New("current leader is stopping"), err)
+
+	// try to change membership again
+	err = c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{nodeID5, nodeID6})
+	assert.Equal(t, errors.New("current leader is stopping"), err)
+
+	// no log entries in mem log
+	c.doHandleAccept(nodeID4, 2, 3)
+	c.doHandleAccept(nodeID5, 2, 3)
+	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// fully replicated => switch to follower
+	err = c.doUpdateFullyReplicatedWithErr(nodeID4, 3)
+	assert.Equal(t, nil, err)
+	err = c.doUpdateFullyReplicatedWithErr(nodeID5, 3)
+	assert.Equal(t, errors.New("current leader has just stepped down"), err)
+
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+
+	assert.Equal(t, c.currentTerm, c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running: true,
+	}, c.runner.StateMachineInfo)
+
+	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+}
+
+func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Replicated_First(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	newMembers1 := []MemberInfo{
+		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 2},
+	}
+	newMembers2 := []MemberInfo{
+		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
+	}
+
+	entry1 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers1,
+	}
+	entry2 := LogEntry{
+		Type: LogTypeMembership,
+		Term: TermNum{
+			Num:    19,
+			NodeID: nodeID3,
+		}.ToInf(),
+		Members: newMembers2,
+	}
+
+	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
+	c.doHandleVoteResp(nodeID3, 2, true)
+
+	// state is still candidate
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	assert.Equal(t, []NodeID{nodeID1, nodeID4, nodeID5, nodeID6}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.AcceptRunners)
+
+	// handle for node 4 & 5
+	c.doHandleVoteResp(nodeID4, 3, true, entry2)
+	c.doHandleVoteResp(nodeID5, 3, true)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// fully replicated
+	c.doUpdateFullyReplicated(nodeID4, 3)
+	c.doUpdateFullyReplicated(nodeID5, 3)
+
+	// no log entries in mem log => switch to follower
+	c.doHandleAccept(nodeID4, 2, 3)
+	c.doHandleAccept(nodeID5, 2, 3)
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
+	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
+
+	assert.Equal(t, c.currentTerm, c.runner.StateMachineTerm)
+	assert.Equal(t, StateMachineRunnerInfo{
+		Running: true,
+	}, c.runner.StateMachineInfo)
+
+	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 }
