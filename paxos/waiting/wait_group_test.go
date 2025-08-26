@@ -20,3 +20,10 @@ func TestWaitGroup(t *testing.T) {
 	wg.Wait()
 	assert.Equal(t, int64(10), counter.Load())
 }
+
+func TestWaitGroup_Not_Init(t *testing.T) {
+	var wg WaitGroup
+	assert.PanicsWithValue(t, "WaitGroup is not initialized", func() {
+		wg.Go(func() {})
+	})
+}

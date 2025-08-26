@@ -88,6 +88,8 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		Members:         members,
 		FullyReplicated: 2,
 	}, s.GetCommittedInfo())
+
+	assert.Equal(t, paxos.LogPos(2), s.GetFullyReplicated())
 }
 
 func newCmdLog(term paxos.TermNum, cmd string) paxos.LogEntry {
