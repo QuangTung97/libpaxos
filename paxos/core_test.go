@@ -1279,7 +1279,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 			Num:    22,
 			NodeID: nodeID2,
 		}
-		c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+		c.core.FollowerReceiveTermNum(newTerm)
 		assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 
 		assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), acceptResult())
@@ -1313,7 +1313,7 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 		NodeID: nodeID2,
 	}
 
-	c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+	c.core.FollowerReceiveTermNum(newTerm)
 	// check follower runner
 	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
@@ -1328,14 +1328,14 @@ func TestCoreLogic__Candidate__Recv_Lower_Term(t *testing.T) {
 		Num:    17,
 		NodeID: nodeID2,
 	}
-	affected := c.core.FollowerReceiveAcceptEntriesRequest(newTerm)
+	affected := c.core.FollowerReceiveTermNum(newTerm)
 	assert.Equal(t, false, affected)
 
 	// no change in state
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// same term
-	affected = c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
+	affected = c.core.FollowerReceiveTermNum(c.currentTerm)
 	assert.Equal(t, false, affected)
 
 	// no change in state
@@ -2159,7 +2159,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
 	assert.Equal(t, nodeID2, c.runner.ElectionChosen)
 
-	c.core.FollowerReceiveAcceptEntriesRequest(c.currentTerm)
+	c.core.FollowerReceiveTermNum(c.currentTerm)
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)

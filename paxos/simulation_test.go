@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"math/rand"
 	"runtime"
 	"slices"
 	"sync"
@@ -462,7 +463,11 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionVoteRequest,
-			h.root.nodeMap[toNode].acceptor.HandleRequestVote,
+			func(req RequestVoteInput) (iter.Seq[RequestVoteOutput], error) {
+				toState := h.root.nodeMap[toNode]
+				toState.core.FollowerReceiveTermNum(req.Term)
+				return toState.acceptor.HandleRequestVote(req)
+			},
 			func(resp RequestVoteOutput) error {
 				return h.state.core.HandleVoteResponse(ctx, toNode, resp)
 			},
@@ -523,7 +528,7 @@ func (h *simulationHandlers) handleAcceptEntriesRequest(
 	req AcceptEntriesInput, toNode NodeID,
 ) (iter.Seq[AcceptEntriesOutput], error) {
 	toState := h.root.nodeMap[toNode]
-	toState.core.FollowerReceiveAcceptEntriesRequest(req.Term)
+	toState.core.FollowerReceiveTermNum(req.Term)
 
 	output, err := toState.acceptor.AcceptEntries(req)
 	if err != nil {
@@ -789,24 +794,24 @@ func getSortWaitKeys[V any](inputMap map[simulateActionKey]V) []simulateActionKe
 	for k := range inputMap {
 		keys = append(keys, k)
 	}
-
-	slices.SortFunc(keys, func(a, b simulateActionKey) int {
-		if a.actionType != b.actionType {
-			return cmp.Compare(a.actionType, b.actionType)
-		}
-
-		if a.phase != b.phase {
-			return cmp.Compare(a.phase, b.phase)
-		}
-
-		if a.fromNode != b.fromNode {
-			return slices.Compare(a.fromNode[:], b.fromNode[:])
-		}
-
-		return slices.Compare(a.toNode[:], b.toNode[:])
-	})
-
+	slices.SortFunc(keys, compareActionKey)
 	return keys
+}
+
+func compareActionKey(a, b simulateActionKey) int {
+	if a.actionType != b.actionType {
+		return cmp.Compare(a.actionType, b.actionType)
+	}
+
+	if a.phase != b.phase {
+		return cmp.Compare(a.phase, b.phase)
+	}
+
+	if a.fromNode != b.fromNode {
+		return slices.Compare(a.fromNode[:], b.fromNode[:])
+	}
+
+	return slices.Compare(a.toNode[:], b.toNode[:])
 }
 
 func TestPaxos__Single_Node(t *testing.T) {
@@ -1096,3 +1101,101 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		s.printAllWaiting()
 	})
 }
+
+func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
+	s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+	s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID2)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
+
+	s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
+	s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID1)
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID2)
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID3)
+
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID2)
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID3)
+
+	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID2)
+	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID3)
+
+	s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID3)
+
+	s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID1)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID2)
+	s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
+
+	s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+	s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+	s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
+}
+
+func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
+	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
+		s.mut.Lock()
+
+		execAction := func() {
+			key, ok := getRandomActionKey(randObj, s.waitMap)
+			if !ok {
+				return
+			}
+			waitCh := s.waitMap[key]
+			delete(s.waitMap, key)
+			close(waitCh)
+		}
+
+		cmdWeight := 1
+		if *nextCmd >= 20 {
+			cmdWeight = 0
+		}
+
+		runRandomAction(
+			randObj,
+			randomActionWeight(len(s.waitMap), execAction),
+			randomActionWeight(
+				cmdWeight,
+				func() {
+					*nextCmd++
+					s.nodeMap[nodeID1].cmdChan <- fmt.Sprintf("new command: %d", nextCmd)
+				},
+			),
+		)
+		s.mut.Unlock()
+
+		synctest.Wait()
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		s.setupLeaderForThreeNodes(t)
+
+		randObj := newRandomObject()
+		nextCmd := 0
+
+		for range 1000 {
+			executeRandomAction(s, randObj, &nextCmd)
+		}
+
+		s.printAllWaiting()
+
+		fmt.Println(s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
+		fmt.Println(s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
+		fmt.Println(s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
+		fmt.Println(nextCmd)
+	})
+}
+
+func ref(any) {}

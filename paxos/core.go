@@ -21,7 +21,7 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
-	FollowerReceiveAcceptEntriesRequest(term TermNum) bool
+	FollowerReceiveTermNum(term TermNum) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
@@ -617,7 +617,7 @@ func (c *coreLogicImpl) doCheckStateIsCandidateOrLeader() bool {
 	return false
 }
 
-func (c *coreLogicImpl) FollowerReceiveAcceptEntriesRequest(term TermNum) bool {
+func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
