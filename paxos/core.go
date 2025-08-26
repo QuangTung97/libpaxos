@@ -3,6 +3,7 @@ package paxos
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sync"
@@ -104,11 +105,10 @@ type followerStateInfo struct {
 	checkStatus followerCheckOtherStatus
 
 	members     []MemberInfo
-	lastPos     LogPos
-	lastNodeID  NodeID
 	lastTermVal TermValue
+	lastMaxPos  LogPos
 
-	checkedSet        map[NodeID]struct{}
+	lastNodePos       map[NodeID]LogPos
 	noActiveLeaderSet map[NodeID]struct{}
 }
 
@@ -672,10 +672,7 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(causedByAnotherLeader boo
 
 	commitInfo := c.log.GetCommittedInfo()
 	c.follower.members = commitInfo.Members
-	c.follower.lastPos = commitInfo.FullyReplicated
-	c.follower.lastNodeID = c.persistent.GetNodeID()
-
-	c.follower.checkedSet = map[NodeID]struct{}{}
+	c.follower.lastNodePos = map[NodeID]LogPos{}
 	c.follower.noActiveLeaderSet = map[NodeID]struct{}{}
 
 	c.updateFetchingFollowerInfoRunners()
@@ -749,7 +746,7 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
 	if c.follower.checkStatus == followerCheckOtherStatusRunning {
 		allMembers := GetAllMembers(c.follower.members)
 		for id := range allMembers {
-			_, ok := c.follower.checkedSet[id]
+			_, ok := c.follower.lastNodePos[id]
 			if ok {
 				delete(allMembers, id)
 			}
@@ -760,8 +757,30 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
+		allCheckedNodes := slices.Collect(maps.Keys(c.follower.lastNodePos))
+		slices.SortFunc(allCheckedNodes, func(a, b NodeID) int {
+			return slices.Compare(a[:], b[:])
+		})
+
+		allMembers := GetAllMembers(c.follower.members)
+
+		var lastPos LogPos
+		var lastNode NodeID
+		for _, id := range allCheckedNodes {
+			_, ok := allMembers[id]
+			if !ok {
+				continue
+			}
+
+			replicatedPos := c.follower.lastNodePos[id]
+			if replicatedPos > lastPos {
+				lastPos = replicatedPos
+				lastNode = id
+			}
+		}
+
 		return c.runner.StartElectionRunner(
-			c.follower.lastTermVal, true, c.follower.lastNodeID, c.followerRetryCount,
+			c.follower.lastTermVal, true, lastNode, c.followerRetryCount,
 		)
 	} else {
 		return c.runner.StartElectionRunner(0, false, NodeID{}, 0)
@@ -1083,6 +1102,10 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 		return AcceptEntriesInput{}, nil, err
 	}
 
+	if err := c.validateInMemberList(input.FromNode); err != nil {
+		return AcceptEntriesInput{}, nil, err
+	}
+
 	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
 		return AcceptEntriesInput{}, nil, err
 	}
@@ -1153,15 +1176,13 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	c.follower.lastTermVal = max(c.follower.lastTermVal, info.LastTermVal)
 
-	if c.follower.lastPos < info.FullyReplicated {
+	if c.follower.lastMaxPos < info.FullyReplicated {
 		c.follower.members = info.Members
-
-		// TODO use a map instead of single value
-		c.follower.lastNodeID = fromNode
-		c.follower.lastPos = info.FullyReplicated
+		c.follower.lastMaxPos = info.FullyReplicated
 	}
 
-	c.follower.checkedSet[fromNode] = struct{}{}
+	c.follower.lastNodePos[fromNode] = info.FullyReplicated
+
 	if info.NoActiveLeader {
 		// TODO fast leader move
 		c.follower.noActiveLeaderSet[fromNode] = struct{}{}

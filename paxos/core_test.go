@@ -1713,6 +1713,19 @@ func TestCoreLogic__Follower__Update_Fully_Replicated(t *testing.T) {
 	assert.Equal(t, errors.New("expected state is 'Candidate' or 'Leader', got: 'Follower'"), err)
 }
 
+func TestCoreLogic__Leader__Get_Need_Replicated__Not_In_Member(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	input := NeedReplicatedInput{
+		Term:            c.currentTerm,
+		FromNode:        nodeID4,
+		FullyReplicated: 1,
+	}
+	_, err := c.core.GetNeedReplicatedLogEntries(input)
+	assert.Equal(t, errors.New("node id '64040000000000000000000000000000' is not in current member list"), err)
+}
+
 func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *testing.T) {
 	c := newCoreLogicTest(t)
 
@@ -2197,6 +2210,44 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	c.core.CheckTimeout()
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.runner.ElectionStarted)
+}
+
+func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_Membership(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info1 := c.core.GetChoosingLeaderInfo()
+	c.doHandleLeaderInfo(nodeID1, info1)
+
+	// second handle leader info
+	info2 := ChooseLeaderInfo{
+		NoActiveLeader: true,
+		Members: []MemberInfo{
+			{
+				Nodes:     []NodeID{nodeID4, nodeID5, nodeID6},
+				CreatedAt: 4,
+			},
+		},
+		FullyReplicated: 5,
+		LastTermVal:     23,
+	}
+	c.doHandleLeaderInfo(nodeID2, info2)
+
+	// check runners
+	assert.Equal(t, []NodeID{
+		nodeID4, nodeID5, nodeID6,
+	}, c.runner.FetchFollowers)
+	assert.Equal(t, false, c.runner.ElectionStarted)
+
+	info3 := info2
+	info3.FullyReplicated = 4
+	c.doHandleLeaderInfo(nodeID4, info3)
+	c.doHandleLeaderInfo(nodeID5, info3)
+
+	// check runners
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, true, c.runner.ElectionStarted)
+	assert.Equal(t, 1, c.runner.ElectionRetryCount)
+	assert.Equal(t, nodeID4, c.runner.ElectionChosen)
 }
 
 func TestCoreLogic__Retry__Handle_Leader_Info(t *testing.T) {
