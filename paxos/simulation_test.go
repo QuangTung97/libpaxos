@@ -1139,16 +1139,15 @@ func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
 
 func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
-		s.mut.Lock()
-
 		execAction := func() {
+			s.mut.Lock()
 			key, ok := getRandomActionKey(randObj, s.waitMap)
-			if !ok {
-				return
+			if ok {
+				waitCh := s.waitMap[key]
+				delete(s.waitMap, key)
+				close(waitCh)
 			}
-			waitCh := s.waitMap[key]
-			delete(s.waitMap, key)
-			close(waitCh)
+			s.mut.Unlock()
 		}
 
 		cmdWeight := 1
@@ -1167,7 +1166,6 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 				},
 			),
 		)
-		s.mut.Unlock()
 
 		synctest.Wait()
 	}
@@ -1189,12 +1187,12 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 			executeRandomAction(s, randObj, &nextCmd)
 		}
 
-		s.printAllWaiting()
+		assert.Equal(t, LogPos(21), s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, LogPos(21), s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, LogPos(21), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, 20, nextCmd)
 
-		fmt.Println(s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
-		fmt.Println(s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
-		fmt.Println(s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
-		fmt.Println(nextCmd)
+		s.printAllWaiting()
 	})
 }
 

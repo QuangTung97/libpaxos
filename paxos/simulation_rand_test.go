@@ -52,10 +52,18 @@ func runRandomAction(
 		totalWeight += action.weight
 	}
 
+	if totalWeight <= 0 {
+		return
+	}
+
 	chosenWeight := randObj.Intn(totalWeight)
 
 	checkWeight := 0
 	for _, action := range possibleActions {
+		if action.weight <= 0 {
+			continue
+		}
+
 		checkWeight += action.weight
 		if checkWeight > chosenWeight {
 			action.fn()
