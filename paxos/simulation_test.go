@@ -544,8 +544,9 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 			},
 		)
 
-		handleReqFunc := func(ctx context.Context, req struct{}) (iter.Seq[NeedReplicatedInput], error) {
+		handleReqFunc := func(ctx context.Context, reqTerm TermNum) (iter.Seq[NeedReplicatedInput], error) {
 			toState := h.root.nodeMap[toNode]
+			toState.core.FollowerReceiveTermNum(reqTerm)
 
 			return func(yield func(NeedReplicatedInput) bool) {
 				var fromPos LogPos
@@ -584,7 +585,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 			},
 		)
 
-		conn.SendRequest(struct{}{})
+		conn.SendRequest(term)
 
 		wg := waiting.NewWaitGroup()
 		wg.Go(func() {
