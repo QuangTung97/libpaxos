@@ -302,12 +302,7 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 	wg := waiting.NewWaitGroup()
 	wg.Go(func() {
 		defer cancel()
-
-		select {
-		case <-ctx.Done():
-		case <-newCtx.Done():
-			return
-		}
+		<-ctx.Done()
 
 		key := simulateActionKey{
 			actionType: actionType,
@@ -324,8 +319,8 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 		<-ch
 	})
 
-	if err := fn(newCtx); err != nil {
-		cancel()
+	for ctx.Err() == nil {
+		_ = fn(newCtx)
 	}
 
 	wg.Wait()
@@ -416,7 +411,7 @@ func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode No
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionFetchFollower,
-			func(req struct{}) (iter.Seq[ChooseLeaderInfo], error) {
+			func(_ context.Context, req struct{}) (iter.Seq[ChooseLeaderInfo], error) {
 				info := h.root.nodeMap[toNode].core.GetChoosingLeaderInfo()
 				return iterSingle(info), nil
 			},
@@ -438,7 +433,7 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionStartElection,
-			func(req struct{}) (iter.Seq[struct{}], error) {
+			func(_ context.Context, req struct{}) (iter.Seq[struct{}], error) {
 				err := h.root.nodeMap[toNode].core.StartElection(termVal)
 				if err != nil {
 					return nil, err
@@ -461,7 +456,7 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionVoteRequest,
-			func(req RequestVoteInput) (iter.Seq[RequestVoteOutput], error) {
+			func(_ context.Context, req RequestVoteInput) (iter.Seq[RequestVoteOutput], error) {
 				toState := h.root.nodeMap[toNode]
 				toState.core.FollowerReceiveTermNum(req.Term)
 				return toState.acceptor.HandleRequestVote(req)
@@ -491,7 +486,7 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
-			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
@@ -506,7 +501,6 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 		var lastCommitted LogPos
 		for {
 			if err := conn.WaitBeforeSend(ctx); err != nil {
-				fmt.Println("WAIT ERROR", err)
 				return err
 			}
 
@@ -541,7 +535,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 		acceptConn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionReplicateAcceptRequest,
-			func(req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
@@ -550,7 +544,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 			},
 		)
 
-		handleReqFunc := func(req struct{}) (iter.Seq[NeedReplicatedInput], error) {
+		handleReqFunc := func(ctx context.Context, req struct{}) (iter.Seq[NeedReplicatedInput], error) {
 			toState := h.root.nodeMap[toNode]
 
 			return func(yield func(NeedReplicatedInput) bool) {
@@ -595,15 +589,11 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 		wg := waiting.NewWaitGroup()
 		wg.Go(func() {
 			conn.Shutdown()
-			fmt.Println("REPLICATE CONN SHUTDOWN", toNode.String()[:6])
 			acceptConn.CloseConn()
-			fmt.Println("REPLICATE FINISH CONN SHUTDOWN", toNode.String()[:6])
 		})
 		wg.Go(func() {
 			acceptConn.Shutdown()
-			fmt.Println("ACCEPT CONN SHUTDOWN", toNode.String()[:6])
 			conn.CloseConn()
-			fmt.Println("ACCEPT CONN FINISH SHUTDOWN", toNode.String()[:6])
 		})
 		wg.Wait()
 
@@ -1195,7 +1185,7 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 	if isTestRace() {
 		return
 	}
-	for range 1 {
+	for range 100 {
 		runTestThreeNodesInsertManyCommands(t)
 	}
 }
@@ -1211,7 +1201,7 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 		runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
-			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 1),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 3),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
 
@@ -1239,7 +1229,6 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, 20, nextCmd)
 		s.checkDiskLogMatch(t, 21)
-		s.printAllWaiting()
 	})
 }
 

@@ -34,7 +34,7 @@ func newSimulateConn[Req, Resp any](
 	handlerState *simulationHandlers,
 	toNode NodeID,
 	actionType simulateActionType,
-	requestHandler func(req Req) (iter.Seq[Resp], error),
+	requestHandler func(ctx context.Context, req Req) (iter.Seq[Resp], error),
 	responseHandler func(resp Resp) error,
 ) *simulateConn[Req, Resp] {
 	c := &simulateConn[Req, Resp]{
@@ -94,14 +94,14 @@ func newSimulateConn[Req, Resp any](
 func (c *simulateConn[Req, Resp]) doHandleRequest(
 	ctx context.Context,
 	handlerState *simulationHandlers,
-	requestHandler func(req Req) (iter.Seq[Resp], error),
+	requestHandler func(ctx context.Context, req Req) (iter.Seq[Resp], error),
 	req Req,
 ) error {
 	if err := c.root.waitOnKey(ctx, c.actionType, phaseHandleRequest, handlerState.current, c.toNode); err != nil {
 		return err
 	}
 
-	respIter, err := requestHandler(req)
+	respIter, err := requestHandler(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -109,7 +109,6 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	for resp := range respIter {
 		select {
 		case c.recvChan <- resp:
-
 		case <-ctx.Done():
 			return ctx.Err()
 		}

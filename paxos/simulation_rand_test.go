@@ -106,7 +106,6 @@ func randomNetworkDisconnect(
 		if ok {
 			conn := activeConn[key]
 			delete(activeConn, key)
-			fmt.Println("DISCONNECT", key.actionType, key.fromNode.String()[:6], key.toNode.String()[:6])
 			conn.CloseConn()
 		}
 	})
