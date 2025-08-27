@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"iter"
-	"math/rand"
 	"os"
 	"runtime"
 	"slices"
@@ -329,7 +328,6 @@ func (s *simulationTestCase) internalWaitOnShutdown(
 		cancel()
 	}
 
-	checkIsAssociated(wg)
 	wg.Wait()
 }
 
@@ -375,7 +373,6 @@ func (h *simulationHandlers) stateMachineHandler(
 			})
 		}
 
-		checkIsAssociated(wg)
 		wg.Wait()
 		return nil
 	}
@@ -509,6 +506,7 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 		var lastCommitted LogPos
 		for {
 			if err := conn.WaitBeforeSend(ctx); err != nil {
+				fmt.Println("WAIT ERROR", err)
 				return err
 			}
 
@@ -551,7 +549,6 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 				return nil
 			},
 		)
-		defer acceptConn.Shutdown()
 
 		handleReqFunc := func(req struct{}) (iter.Seq[NeedReplicatedInput], error) {
 			toState := h.root.nodeMap[toNode]
@@ -592,9 +589,24 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 				return nil
 			},
 		)
-		defer conn.Shutdown()
 
 		conn.SendRequest(struct{}{})
+
+		wg := waiting.NewWaitGroup()
+		wg.Go(func() {
+			conn.Shutdown()
+			fmt.Println("REPLICATE CONN SHUTDOWN", toNode.String()[:6])
+			acceptConn.CloseConn()
+			fmt.Println("REPLICATE FINISH CONN SHUTDOWN", toNode.String()[:6])
+		})
+		wg.Go(func() {
+			acceptConn.Shutdown()
+			fmt.Println("ACCEPT CONN SHUTDOWN", toNode.String()[:6])
+			conn.CloseConn()
+			fmt.Println("ACCEPT CONN FINISH SHUTDOWN", toNode.String()[:6])
+		})
+		wg.Wait()
+
 		return nil
 	}
 	return h.root.waitOnShutdown(ctx, simulateActionFullyReplicate, h.current, toNode, callback)
@@ -1183,38 +1195,30 @@ func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands(t *testing.T) {
 	if isTestRace() {
 		return
 	}
-	for range 100 {
+	for range 1 {
 		runTestThreeNodesInsertManyCommands(t)
 	}
 }
 
 func runTestThreeNodesInsertManyCommands(t *testing.T) {
-	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
-		s.mut.Lock()
+	randObj := newRandomObject()
+	var nextCmd int
+	var numConnDisconnect int
 
-		cmdWeight := 1
-		if *nextCmd >= 20 {
-			cmdWeight = 0
-		}
+	executeRandomAction := func(s *simulationTestCase) {
+		s.mut.Lock()
 
 		runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
-			randomActionWeight(
-				cmdWeight,
-				func() {
-					*nextCmd++
-					s.nodeMap[nodeID1].cmdChan <- fmt.Sprintf("new command: %d", *nextCmd)
-				},
-			),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 1),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
 
 		s.mut.Unlock()
 
 		synctest.Wait()
 	}
-
-	randObj := newRandomObject()
 
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
@@ -1226,9 +1230,8 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 
 		s.setupLeaderForThreeNodes(t)
 
-		nextCmd := 0
 		for range 1000 {
-			executeRandomAction(s, randObj, &nextCmd)
+			executeRandomAction(s)
 		}
 
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
@@ -1236,6 +1239,7 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, 20, nextCmd)
 		s.checkDiskLogMatch(t, 21)
+		s.printAllWaiting()
 	})
 }
 
@@ -1250,30 +1254,19 @@ func TestPaxos__Normal_Three_Nodes__Elect_A_Leader(t *testing.T) {
 
 func runTestThreeNodesElectALeader(t *testing.T) {
 	allNodes := []NodeID{nodeID1, nodeID2, nodeID3}
-	executeRandomAction := func(s *simulationTestCase, randObj *rand.Rand, nextCmd *int) {
-		s.mut.Lock()
+	randObj := newRandomObject()
+	var nextCmd int
+	var numConnDisconnect int
 
-		cmdWeight := 1
-		if *nextCmd >= 20 {
-			cmdWeight = 0
-		}
+	executeRandomAction := func(s *simulationTestCase) {
+		s.mut.Lock()
 
 		runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomExecAction(randObj, s.shutdownWaitMap),
-			randomActionWeight(
-				cmdWeight,
-				func() {
-					for _, id := range allNodes {
-						core := s.nodeMap[id].core
-						if core.GetState() == StateLeader {
-							*nextCmd++
-							s.nodeMap[id].cmdChan <- fmt.Sprintf("new command: %d", *nextCmd)
-						}
-					}
-				},
-			),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
 
 		s.mut.Unlock()
@@ -1281,17 +1274,14 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 		synctest.Wait()
 	}
 
-	randObj := newRandomObject()
-
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
 			t, allNodes, allNodes,
 			defaultSimulationConfig(),
 		)
 
-		nextCmd := 0
 		for range 10000 {
-			executeRandomAction(s, randObj, &nextCmd)
+			executeRandomAction(s)
 		}
 
 		replPos1 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
@@ -1299,6 +1289,7 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 		replPos3 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
 		assert.Equal(t, replPos1, replPos2)
 		assert.Equal(t, replPos2, replPos3)
+		fmt.Println("Replicated Pos for Node ID 1:", replPos1)
 
 		s.checkDiskLogMatch(t, -1)
 

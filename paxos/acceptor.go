@@ -164,6 +164,7 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		})
 	}
 
+	// TODO mark committed in batch
 	markCommitted := s.getNeedUpdateTermToInf(input.Committed)
 
 	for i := range putEntries {

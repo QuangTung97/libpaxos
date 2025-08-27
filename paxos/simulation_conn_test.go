@@ -138,16 +138,7 @@ func (c *simulateConn[Req, Resp]) SendRequest(req Req) {
 	c.sendChan <- req
 }
 
-func checkIsAssociated(_ *waiting.WaitGroup) {
-	return // TODO re-enable
-	//if !testutil.IsAssociated(wg) {
-	//	fmt.Println("NOT ASSOCIATED ERROR")
-	//	panic("Not Associated")
-	//}
-}
-
 func (c *simulateConn[Req, Resp]) Shutdown() {
-	checkIsAssociated(c.wg)
 	c.wg.Wait()
 
 	key := c.computeActionKey()

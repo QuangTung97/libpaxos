@@ -5,6 +5,8 @@ import (
 	"math/rand"
 	"slices"
 	"time"
+
+	. "github.com/QuangTung97/libpaxos/paxos"
 )
 
 func getRandomActionKey[V any](
@@ -84,4 +86,53 @@ func randomExecAction(
 			close(waitCh)
 		}
 	})
+}
+
+func randomNetworkDisconnect(
+	randObj *rand.Rand,
+	activeConn map[simulateActionKey]SimulationConn,
+	numTimes *int,
+	maxNumTimes int,
+) actionWithWeightInfo {
+
+	weight := len(activeConn)
+	if *numTimes >= maxNumTimes {
+		weight = 0
+	}
+
+	return randomActionWeight(weight, func() {
+		*numTimes++
+		key, ok := getRandomActionKey(randObj, activeConn)
+		if ok {
+			conn := activeConn[key]
+			delete(activeConn, key)
+			fmt.Println("DISCONNECT", key.actionType, key.fromNode.String()[:6], key.toNode.String()[:6])
+			conn.CloseConn()
+		}
+	})
+}
+
+func randomSendCmdToLeader(
+	nodeMap map[NodeID]*simulateNodeState,
+	nextCmd *int,
+	maxCmdNum int,
+) actionWithWeightInfo {
+	cmdWeight := 1
+	if *nextCmd >= maxCmdNum {
+		cmdWeight = 0
+	}
+
+	return randomActionWeight(
+		cmdWeight,
+		func() {
+			for _, st := range nodeMap {
+				core := st.core
+				if core.GetState() != StateLeader {
+					continue
+				}
+				*nextCmd++
+				st.cmdChan <- fmt.Sprintf("new command: %d", nextCmd)
+			}
+		},
+	)
 }
