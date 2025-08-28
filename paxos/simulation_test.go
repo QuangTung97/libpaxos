@@ -1347,3 +1347,63 @@ func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
 		s.checkDiskLogMatch(t, 1)
 	})
 }
+
+func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 10 {
+		runTestThreeNodesMembershipChangeThreeTimes(t)
+	}
+}
+
+func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
+	randObj := newRandomObject()
+	var nextCmd int
+	var numConnDisconnect int
+	var numChangeMember int
+	var lastMemberNodes []NodeID
+
+	executeRandomAction := func(s *simulationTestCase) {
+		s.mut.Lock()
+
+		runRandomAction(
+			randObj,
+			randomExecAction(randObj, s.waitMap),
+			randomExecAction(randObj, s.shutdownWaitMap),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
+			randomChangLeader(randObj, s.nodeMap, &numChangeMember, 2, &lastMemberNodes),
+		)
+
+		s.mut.Unlock()
+
+		synctest.Wait()
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3, nodeID4, nodeID5, nodeID6},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		for range 1000 {
+			executeRandomAction(s)
+		}
+		s.printAllWaiting()
+
+		s.checkDiskLogMatch(t, -1)
+
+		// check all logs
+		id1 := lastMemberNodes[0]
+		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
+		for _, id := range lastMemberNodes[1:] {
+			fmt.Println(id, lastMemberNodes)
+			assert.Equal(t, committedPos, s.nodeMap[id].log.GetFullyReplicated())
+		}
+
+		s.stopRemainingRunners()
+	})
+}

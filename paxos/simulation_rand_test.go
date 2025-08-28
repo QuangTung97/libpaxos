@@ -1,6 +1,7 @@
 package paxos_test
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"math/rand"
@@ -154,6 +155,50 @@ func randomSendCmdToLeader(
 				}
 				*nextCmd++
 				st.cmdChan <- fmt.Sprintf("new command: %d", nextCmd)
+			}
+		},
+	)
+}
+
+func randomChangLeader(
+	randObj *rand.Rand,
+	nodeMap map[NodeID]*simulateNodeState,
+	currentNumChange *int,
+	maxNumChange int,
+	lastNodes *[]NodeID,
+) actionWithWeightInfo {
+	cmdWeight := 1
+	if *currentNumChange >= maxNumChange {
+		cmdWeight = 0
+	}
+
+	nodes := []NodeID{
+		nodeID1, nodeID2, nodeID3,
+		nodeID4, nodeID5, nodeID6,
+	}
+	randObj.Shuffle(len(nodes), func(i, j int) {
+		nodes[i], nodes[j] = nodes[j], nodes[i]
+	})
+
+	numNodes := randObj.Intn(3) + 1
+	randomNodes := nodes[:numNodes]
+	*lastNodes = slices.Clone(randomNodes)
+
+	return randomActionWeight(
+		cmdWeight,
+		func() {
+			for _, st := range nodeMap {
+				core := st.core
+				if core.GetState() != StateLeader {
+					continue
+				}
+
+				err := core.ChangeMembership(context.Background(), st.persistent.GetLastTerm(), randomNodes)
+				if err != nil {
+					continue
+				}
+				fmt.Println("CHANGE:", randomNodes)
+				*currentNumChange++
 			}
 		},
 	)
