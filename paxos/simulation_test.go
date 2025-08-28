@@ -1391,7 +1391,6 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 		for range 1000 {
 			executeRandomAction(s)
 		}
-		s.printAllWaiting()
 
 		s.checkDiskLogMatch(t, -1)
 

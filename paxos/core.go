@@ -324,6 +324,9 @@ func (c *coreLogicImpl) HandleVoteResponse(
 		return nil
 	}
 
+	// TODO check if node id still in member list
+	// TODO check shrink from 3 node to 1 node
+
 StartFunction:
 	if err := c.checkStateEqual(output.Term, StateCandidate); err != nil {
 		return err
