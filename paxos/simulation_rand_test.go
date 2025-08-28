@@ -165,7 +165,6 @@ func randomChangLeader(
 	nodeMap map[NodeID]*simulateNodeState,
 	currentNumChange *int,
 	maxNumChange int,
-	lastNodes *[]NodeID,
 ) actionWithWeightInfo {
 	cmdWeight := 1
 	if *currentNumChange >= maxNumChange {
@@ -182,7 +181,6 @@ func randomChangLeader(
 
 	numNodes := randObj.Intn(3) + 1
 	randomNodes := nodes[:numNodes]
-	*lastNodes = slices.Clone(randomNodes)
 
 	return randomActionWeight(
 		cmdWeight,
@@ -195,6 +193,7 @@ func randomChangLeader(
 
 				err := core.ChangeMembership(context.Background(), st.persistent.GetLastTerm(), randomNodes)
 				if err != nil {
+					fmt.Println("CHANGE ERROR:", err)
 					continue
 				}
 				fmt.Println("CHANGE:", randomNodes)

@@ -1362,7 +1362,6 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 	var nextCmd int
 	var numConnDisconnect int
 	var numChangeMember int
-	var lastMemberNodes []NodeID
 
 	executeRandomAction := func(s *simulationTestCase) {
 		s.mut.Lock()
@@ -1373,7 +1372,7 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			randomExecAction(randObj, s.shutdownWaitMap),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
-			randomChangLeader(randObj, s.nodeMap, &numChangeMember, 2, &lastMemberNodes),
+			randomChangLeader(randObj, s.nodeMap, &numChangeMember, 2),
 		)
 
 		s.mut.Unlock()
@@ -1396,7 +1395,23 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 
 		s.checkDiskLogMatch(t, -1)
 
+		maxPos := LogPos(0)
+		var finalMembers []MemberInfo
+		for _, st := range s.nodeMap {
+			info := st.log.GetCommittedInfo()
+			if info.FullyReplicated > maxPos {
+				maxPos = info.FullyReplicated
+				finalMembers = info.Members
+			}
+		}
+
+		assert.Equal(t, 1, len(finalMembers))
+		assert.Equal(t, LogPos(1), finalMembers[0].CreatedAt)
+
 		// check all logs
+		lastMemberNodes := finalMembers[0].Nodes
+		fmt.Println("FINAL NODES:", lastMemberNodes)
+
 		id1 := lastMemberNodes[0]
 		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
 		for _, id := range lastMemberNodes[1:] {
@@ -1405,5 +1420,6 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 		}
 
 		s.stopRemainingRunners()
+		fmt.Println("=========================================")
 	})
 }
