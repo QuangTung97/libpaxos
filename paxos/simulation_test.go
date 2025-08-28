@@ -1296,3 +1296,54 @@ func (s *simulationTestCase) stopRemainingRunners() {
 		state.runner.StartElectionRunner(0, false, NodeID{}, 0)
 	}
 }
+
+func TestPaxos__Normal_Three_Nodes__Insert_Many_Commands__One_Node_Is_Shutdown(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 100 {
+		runTestThreeNodesInsertManyCommandsOneNodeShutdown(t)
+	}
+}
+
+func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
+	randObj := newRandomObject()
+	var nextCmd int
+	var numConnDisconnect int
+
+	executeRandomAction := func(s *simulationTestCase) {
+		s.mut.Lock()
+
+		runRandomAction(
+			randObj,
+			randomExecActionIgnoreNode(randObj, s.waitMap, nodeID3),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 3),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
+		)
+
+		s.mut.Unlock()
+
+		synctest.Wait()
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		s.setupLeaderForThreeNodes(t)
+
+		for range 1000 {
+			executeRandomAction(s)
+		}
+
+		assert.Equal(t, LogPos(21), s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, LogPos(21), s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
+		assert.Equal(t, 20, nextCmd)
+		s.checkDiskLogMatch(t, 1)
+	})
+}

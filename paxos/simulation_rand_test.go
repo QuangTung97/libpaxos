@@ -2,6 +2,7 @@ package paxos_test
 
 import (
 	"fmt"
+	"maps"
 	"math/rand"
 	"slices"
 	"time"
@@ -80,6 +81,28 @@ func randomExecAction(
 ) actionWithWeightInfo {
 	return randomActionWeight(len(inputMap), func() {
 		key, ok := getRandomActionKey(randObj, inputMap)
+		if ok {
+			waitCh := inputMap[key]
+			delete(inputMap, key)
+			close(waitCh)
+		}
+	})
+}
+
+func randomExecActionIgnoreNode(
+	randObj *rand.Rand,
+	inputMap map[simulateActionKey]chan struct{},
+	ignoredNode NodeID,
+) actionWithWeightInfo {
+	checkMap := maps.Clone(inputMap)
+	for key := range checkMap {
+		if key.toNode == ignoredNode {
+			delete(checkMap, key)
+		}
+	}
+
+	return randomActionWeight(len(checkMap), func() {
+		key, ok := getRandomActionKey(randObj, checkMap)
 		if ok {
 			waitCh := inputMap[key]
 			delete(inputMap, key)
