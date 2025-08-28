@@ -183,14 +183,13 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 		return fmt.Errorf("expected state '%s', got: '%s'", StateFollower.String(), c.state.String())
 	}
 
-	c.state = StateCandidate
 	commitInfo := c.log.GetCommittedInfo()
-
 	if !IsNodeInMembers(commitInfo.Members, c.persistent.GetNodeID()) {
 		// TODO testing
 		return fmt.Errorf("current node is not in its membership config")
 	}
 
+	c.state = StateCandidate
 	c.generateNextProposeTerm(maxTermValue)
 
 	// init leader state

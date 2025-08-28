@@ -1663,6 +1663,28 @@ func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
 	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
 }
 
+func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	// setup init members
+	initEntry := LogEntry{
+		Type: LogTypeMembership,
+		Term: InfiniteTerm{},
+		Members: []MemberInfo{
+			{Nodes: []NodeID{nodeID2, nodeID3}, CreatedAt: 1},
+		},
+	}
+	c.log.UpsertEntries([]PosLogEntry{
+		{
+			Pos:   2,
+			Entry: initEntry,
+		},
+	}, nil)
+
+	err := c.core.StartElection(0)
+	assert.Equal(t, errors.New("current node is not in its membership config"), err)
+}
+
 func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
 	c := newCoreLogicTest(t)
 
