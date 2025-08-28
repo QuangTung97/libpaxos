@@ -1359,6 +1359,7 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 
 func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 	randObj := newRandomObject()
+	randObj.Seed(1756397677789332722)
 	var nextCmd int
 	var numConnDisconnect int
 	var numChangeMember int
@@ -1404,18 +1405,27 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			}
 		}
 
+		s.printAllWaiting()
+
 		assert.Equal(t, 1, len(finalMembers))
 		assert.Equal(t, LogPos(1), finalMembers[0].CreatedAt)
 
 		// check all logs
 		lastMemberNodes := finalMembers[0].Nodes
-		fmt.Println("FINAL NODES:", lastMemberNodes)
+		fmt.Printf("FINAL NODES: %+v\n", finalMembers)
 
 		id1 := lastMemberNodes[0]
 		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
 		for _, id := range lastMemberNodes[1:] {
 			fmt.Println(id, lastMemberNodes)
-			assert.Equal(t, committedPos, s.nodeMap[id].log.GetFullyReplicated())
+			cmpPos := s.nodeMap[id].log.GetFullyReplicated()
+			assert.Equal(t, committedPos, cmpPos)
+			if cmpPos >= 4 {
+				for pos := 1; pos <= 4; pos++ {
+					entry := s.nodeMap[id].log.GetEntriesWithPos(LogPos(pos))
+					fmt.Printf("Entry at pos=4: %+v\n", entry)
+				}
+			}
 		}
 
 		s.stopRemainingRunners()

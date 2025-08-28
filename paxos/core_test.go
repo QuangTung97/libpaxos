@@ -2814,3 +2814,29 @@ func TestCoreLogic__Follower__Handle_Info_With_Active_Leader(t *testing.T) {
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
 }
+
+func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	entry1 := c.newLogEntry("cmd test 01", 18)
+	c.doHandleVoteResp(nodeID1, 2, true, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID2, 2, true)
+
+	req := c.doGetAcceptReq(nodeID1, 0, 0)
+
+	noopEntry := NewNoOpLogEntry()
+	noopEntry.Term = c.currentTerm.ToInf()
+	entry1.Term = c.currentTerm.ToInf()
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: []PosLogEntry{
+			{Pos: 2, Entry: noopEntry},
+			{Pos: 3, Entry: entry1},
+		},
+		NextPos:   4,
+		Committed: 1,
+	}, req)
+}

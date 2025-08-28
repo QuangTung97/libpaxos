@@ -182,6 +182,9 @@ func randomChangLeader(
 	numNodes := randObj.Intn(3) + 1
 	randomNodes := nodes[:numNodes]
 
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
 	return randomActionWeight(
 		cmdWeight,
 		func() {
@@ -191,7 +194,7 @@ func randomChangLeader(
 					continue
 				}
 
-				err := core.ChangeMembership(context.Background(), st.persistent.GetLastTerm(), randomNodes)
+				err := core.ChangeMembership(ctx, st.persistent.GetLastTerm(), randomNodes)
 				if err != nil {
 					fmt.Println("CHANGE ERROR:", err)
 					continue

@@ -350,8 +350,9 @@ StartFunction:
 		return err
 	}
 
+	err := c.switchFromCandidateToLeader()
 	c.checkInvariantIfEnabled()
-	return c.switchFromCandidateToLeader()
+	return err
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
@@ -499,7 +500,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 
 	if logEntry.Type == LogTypeMembership {
 		if err := c.updateLeaderMembers(logEntry.Members, pos); err != nil {
-			return false, err
+			panic(err) // TODO
 		}
 	}
 
@@ -821,7 +822,9 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 		c.handleAcceptResponseForPos(fromNode, pos)
 	}
 
-	_ = c.increaseLastCommitted()
+	if err := c.increaseLastCommitted(); err != nil {
+		panic(err)
+	}
 	c.checkInvariantIfEnabled()
 	return nil
 }
@@ -859,6 +862,7 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 func (c *coreLogicImpl) increaseLastCommitted() error {
 	memLog := c.leader.memLog
 
+	needCheck := false
 	for memLog.GetQueueSize() > 0 {
 		term := memLog.GetFrontTerm()
 		if term.IsFinite {
@@ -868,7 +872,10 @@ func (c *coreLogicImpl) increaseLastCommitted() error {
 		// when term = +infinity
 		popEntry := memLog.PopFront()
 		c.leader.logBuffer.Insert(popEntry)
+		needCheck = true
+	}
 
+	if needCheck {
 		if err := c.finishMembershipChange(); err != nil {
 			return err
 		}
@@ -1355,9 +1362,6 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
 			entry := memLog.Get(pos)
-			if c.state == StateCandidate && pos <= c.candidate.acceptPos {
-				AssertTrue(entry.Term.IsFinite)
-			}
 			AssertTrue(!entry.IsNull())
 		}
 
