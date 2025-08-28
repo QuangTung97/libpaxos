@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/rand"
 	"slices"
 	"sync"
 )
@@ -60,6 +61,8 @@ func NewCoreLogic(
 	nowFunc func() TimestampMilli,
 	maxBufferLen LogPos,
 	withCheckInv bool,
+	timeoutTickDuration TimestampMilli,
+	tickRandomJitter TimestampMilli,
 ) CoreLogic {
 	c := &coreLogicImpl{
 		nowFunc:      nowFunc,
@@ -72,6 +75,9 @@ func NewCoreLogic(
 		persistent: persistent,
 		log:        log,
 		runner:     runner,
+
+		timeoutTickDuration: timeoutTickDuration,
+		tickRandomJitter:    tickRandomJitter,
 	}
 
 	c.updateFollowerCheckOtherStatus(false, false)
@@ -98,6 +104,9 @@ type coreLogicImpl struct {
 	persistent PersistentState
 	log        LeaderLogGetter
 	runner     NodeRunner
+
+	timeoutTickDuration TimestampMilli
+	tickRandomJitter    TimestampMilli
 }
 
 type followerStateInfo struct {
@@ -185,7 +194,6 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 
 	commitInfo := c.log.GetCommittedInfo()
 	if !IsNodeInMembers(commitInfo.Members, c.persistent.GetNodeID()) {
-		// TODO testing
 		return fmt.Errorf("current node is not in its membership config")
 	}
 
@@ -599,7 +607,7 @@ StartFunction:
 		})
 	}
 
-	c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp()
+	c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp(1)
 
 	c.checkInvariantIfEnabled()
 	return AcceptEntriesInput{
@@ -661,7 +669,7 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
 	fastSwitchLeader bool,
 ) {
 	c.follower = &followerStateInfo{
-		wakeUpAt: c.computeNextWakeUp(),
+		wakeUpAt: c.computeNextWakeUp(2),
 	}
 
 	if causedByAnotherLeader {
@@ -1198,7 +1206,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	if IsQuorum(c.follower.members, c.follower.noActiveLeaderSet) {
 		c.follower.checkStatus = followerCheckOtherStatusStartingNewElection
-		c.follower.wakeUpAt = c.computeNextWakeUp()
+		c.follower.wakeUpAt = c.computeNextWakeUp(2)
 	}
 
 	c.updateFetchingFollowerInfoRunners()
@@ -1305,9 +1313,16 @@ func (c *coreLogicImpl) GetFollowerWakeUpAt() TimestampMilli {
 	return c.follower.wakeUpAt
 }
 
-func (c *coreLogicImpl) computeNextWakeUp() TimestampMilli {
-	// TODO add jitter
-	return c.nowFunc() + 5_000 // TODO configurable
+func (c *coreLogicImpl) computeNextWakeUp(numTicks int) TimestampMilli {
+	return c.nowFunc() + (c.timeoutTickDuration+c.getRandomJitter())*TimestampMilli(numTicks)
+}
+
+func (c *coreLogicImpl) getRandomJitter() TimestampMilli {
+	if c.tickRandomJitter <= 0 {
+		return 0
+	}
+	randVal := rand.Intn(int(c.tickRandomJitter))
+	return TimestampMilli(randVal)
 }
 
 func (c *coreLogicImpl) getCurrentTerm() TermNum {

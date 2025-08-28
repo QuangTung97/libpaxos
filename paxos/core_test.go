@@ -106,6 +106,8 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 		},
 		config.maxBufferLen,
 		true,
+		5000, // 5 seconds
+		0,    // 0 second
 	)
 
 	t.Cleanup(c.core.CheckInvariant)
@@ -2138,7 +2140,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	assert.Equal(t, false, c.runner.ElectionStarted)
 	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 
-	assert.Equal(t, TimestampMilli(15_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
 
 	info := c.core.GetChoosingLeaderInfo()
 
@@ -2153,7 +2155,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	// first handle leader info
 	c.doHandleLeaderInfo(nodeID1, info)
-	assert.Equal(t, TimestampMilli(15_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
 
 	// check runners
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
@@ -2163,7 +2165,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	// second handle leader info
 	c.doHandleLeaderInfo(nodeID2, info)
-	assert.Equal(t, TimestampMilli(15_050), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(20_050), c.core.GetFollowerWakeUpAt())
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
@@ -2222,13 +2224,13 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, 0, c.runner.ElectionRetryCount)
 	assert.Equal(t, NodeID{}, c.runner.ElectionChosen)
 
-	// after 4000 ms
-	c.now.Add(4000)
+	// after 8000 ms
+	c.now.Add(8000)
 	c.core.CheckTimeout()
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 
-	// after 6000 ms timeout
-	c.now.Add(2000)
+	// after 11,000 ms timeout
+	c.now.Add(3000)
 	c.core.CheckTimeout()
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.runner.ElectionStarted)
@@ -2279,7 +2281,7 @@ func TestCoreLogic__Retry__Handle_Leader_Info(t *testing.T) {
 	c.doHandleLeaderInfo(nodeID1, info)
 
 	// then timeout
-	c.now.Add(5100)
+	c.now.Add(10_100)
 	c.core.CheckTimeout()
 
 	c.doHandleLeaderInfo(nodeID2, info)

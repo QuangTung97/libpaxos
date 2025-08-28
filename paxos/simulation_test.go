@@ -230,6 +230,8 @@ func (s *simulationTestCase) initNodeState(
 		},
 		LogPos(conf.maxBufferLen),
 		true,
+		5000, // 5 seconds
+		0,    // 0 second
 	)
 }
 
