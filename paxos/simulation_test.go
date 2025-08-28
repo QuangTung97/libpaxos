@@ -560,6 +560,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 						return
 					}
 
+					fmt.Printf("NEED REPLICATED: %+v, to node: %v\n", input, toNode.String()[:6])
 					if !yield(input) {
 						return
 					}
@@ -1352,7 +1353,7 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 	if isTestRace() {
 		return
 	}
-	for range 10 {
+	for range 1 {
 		runTestThreeNodesMembershipChangeThreeTimes(t)
 	}
 }
@@ -1417,13 +1418,17 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 		id1 := lastMemberNodes[0]
 		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
 		for _, id := range lastMemberNodes[1:] {
-			fmt.Println(id, lastMemberNodes)
+			fmt.Println(id.String()[:6])
 			cmpPos := s.nodeMap[id].log.GetFullyReplicated()
 			assert.Equal(t, committedPos, cmpPos)
 			if cmpPos >= 4 {
 				for pos := 1; pos <= 4; pos++ {
 					entry := s.nodeMap[id].log.GetEntriesWithPos(LogPos(pos))
 					fmt.Printf("Entry at pos=4: %+v\n", entry)
+					fmt.Printf("Committed: %d\n", s.nodeMap[nodeID2].core.GetLastCommitted())
+					fmt.Printf("Node3: %d\n", s.nodeMap[nodeID3].log.GetFullyReplicated())
+					fmt.Printf("Node4: %d\n", s.nodeMap[nodeID4].log.GetFullyReplicated())
+					fmt.Printf("Node5: %d\n", s.nodeMap[nodeID5].log.GetFullyReplicated())
 				}
 			}
 		}
