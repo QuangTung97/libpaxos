@@ -128,6 +128,7 @@ func randomNetworkDisconnect(
 		*numTimes++
 		key, ok := getRandomActionKey(randObj, activeConn)
 		if ok {
+			fmt.Printf("DISCONNECT: %+v\n", key)
 			conn := activeConn[key]
 			delete(activeConn, key)
 			conn.CloseConn()

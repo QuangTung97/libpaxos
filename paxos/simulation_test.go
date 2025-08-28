@@ -1426,9 +1426,16 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 					entry := s.nodeMap[id].log.GetEntriesWithPos(LogPos(pos))
 					fmt.Printf("Entry at pos=4: %+v\n", entry)
 					fmt.Printf("Committed: %d\n", s.nodeMap[nodeID2].core.GetLastCommitted())
+					fmt.Printf("Node1: %d\n", s.nodeMap[nodeID1].log.GetFullyReplicated())
+					fmt.Printf("Node2: %d\n", s.nodeMap[nodeID2].log.GetFullyReplicated())
 					fmt.Printf("Node3: %d\n", s.nodeMap[nodeID3].log.GetFullyReplicated())
 					fmt.Printf("Node4: %d\n", s.nodeMap[nodeID4].log.GetFullyReplicated())
 					fmt.Printf("Node5: %d\n", s.nodeMap[nodeID5].log.GetFullyReplicated())
+
+					fmt.Println("Node2 state:", s.nodeMap[nodeID2].core.GetState())
+					fmt.Println("Node3 state:", s.nodeMap[nodeID3].core.GetState())
+					fmt.Println("Node4 state:", s.nodeMap[nodeID4].core.GetState())
+					fmt.Println("Node5 state:", s.nodeMap[nodeID5].core.GetState())
 				}
 			}
 		}
