@@ -29,8 +29,11 @@ func getRandomActionKey[V any](
 	return keys[index], true
 }
 
-func newRandomObject() *rand.Rand {
+func newRandomObject(initSeed int64) *rand.Rand {
 	seed := time.Now().UnixNano()
+	if initSeed > 0 {
+		seed = initSeed
+	}
 	fmt.Println("SEED:", seed)
 	return rand.New(rand.NewSource(seed))
 }
@@ -128,7 +131,6 @@ func randomNetworkDisconnect(
 		*numTimes++
 		key, ok := getRandomActionKey(randObj, activeConn)
 		if ok {
-			fmt.Printf("DISCONNECT: %+v\n", key)
 			conn := activeConn[key]
 			delete(activeConn, key)
 			conn.CloseConn()

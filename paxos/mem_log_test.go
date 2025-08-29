@@ -178,8 +178,11 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(23))
 
 		// get front
-		term := m.GetFrontTerm()
-		assert.Equal(t, InfiniteTerm{}, term)
+		term := m.GetFrontVoted()
+		assert.Equal(t, map[NodeID]struct{}{
+			node1: {},
+			node2: {},
+		}, term)
 	})
 
 	t.Run("wrap around, check voted", func(t *testing.T) {

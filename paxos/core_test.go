@@ -839,6 +839,16 @@ func (c *coreLogicTest) doHandleAccept(nodeID NodeID, posList ...LogPos) {
 	c.core.CheckInvariant()
 }
 
+func (c *coreLogicTest) doHandleAcceptWithErr(nodeID NodeID, posList ...LogPos) error {
+	err := c.core.HandleAcceptEntriesResponse(nodeID, AcceptEntriesOutput{
+		Success: true,
+		Term:    c.currentTerm,
+		PosList: posList,
+	})
+	c.core.CheckInvariant()
+	return err
+}
+
 func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *testing.T) {
 	t.Run("normal", func(t *testing.T) {
 		c := newCoreLogicTest(t)
@@ -2722,7 +2732,8 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 
 	// no log entries in mem log => switch to follower
 	c.doHandleAccept(nodeID4, 2, 3)
-	c.doHandleAccept(nodeID5, 2, 3)
+	err := c.doHandleAcceptWithErr(nodeID5, 2, 3)
+	assert.Equal(t, errors.New("current leader has just stepped down"), err)
 	assert.Equal(t, StateFollower, c.core.GetState())
 	assert.Equal(t, []NodeID{}, c.runner.VoteRunners)
 	assert.Equal(t, []NodeID{}, c.runner.AcceptRunners)
@@ -2839,4 +2850,35 @@ func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
 		NextPos:   4,
 		Committed: 1,
 	}, req)
+}
+
+func TestCoreLogic__Leader__Finish_Membership__Increase_Last_Committed(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	c.doChangeMembers([]NodeID{nodeID4})
+
+	c.doInsertCmd(
+		"cmd test 03",
+		"cmd test 04",
+	)
+
+	accReq := c.doGetAcceptReq(nodeID4, 1, 0)
+	memberEntry := accReq.Entries[0]
+	memberEntry.Entry.Term = InfiniteTerm{}
+
+	c.doHandleAccept(nodeID1, 2)
+	c.doHandleAccept(nodeID2, 2)
+	c.doHandleAccept(nodeID4, 2, 3, 4)
+	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
+
+	c.log.UpsertEntries([]PosLogEntry{memberEntry}, nil)
+
+	c.doUpdateFullyReplicated(nodeID1, 2)
+	assert.Equal(t, LogPos(2), c.core.GetReplicatedPosTest(nodeID1))
+
+	c.doUpdateFullyReplicated(nodeID2, 2)
+	c.doUpdateFullyReplicated(nodeID4, 2)
+	assert.Equal(t, LogPos(5), c.core.GetMaxLogPos())
+	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
 }

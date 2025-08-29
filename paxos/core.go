@@ -45,6 +45,7 @@ type CoreLogic interface {
 
 	GetState() State
 	GetLastCommitted() LogPos
+	GetReplicatedPosTest(id NodeID) LogPos
 	GetMinBufferLogPos() LogPos
 	GetCurrentMembers() []MemberInfo
 	GetMaxLogPos() LogPos
@@ -168,6 +169,10 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 	c.leader.members = newMembers
 	c.updateVoteRunners()
 	c.updateAcceptRunners()
+
+	if err := c.increaseLastCommitted(); err != nil {
+		return err
+	}
 
 	if c.isInMemberList(c.persistent.GetNodeID()) {
 		return nil
@@ -503,7 +508,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 
 	if logEntry.Type == LogTypeMembership {
 		if err := c.updateLeaderMembers(logEntry.Members, pos); err != nil {
-			panic(err) // TODO
+			return false, err
 		}
 	}
 
@@ -826,7 +831,7 @@ func (c *coreLogicImpl) HandleAcceptEntriesResponse(
 	}
 
 	if err := c.increaseLastCommitted(); err != nil {
-		panic(err)
+		return err
 	}
 	c.checkInvariantIfEnabled()
 	return nil
@@ -867,8 +872,8 @@ func (c *coreLogicImpl) increaseLastCommitted() error {
 
 	needCheck := false
 	for memLog.GetQueueSize() > 0 {
-		term := memLog.GetFrontTerm()
-		if term.IsFinite {
+		votedSet := memLog.GetFrontVoted()
+		if !IsQuorum(c.leader.members, votedSet) {
 			break
 		}
 
@@ -1006,6 +1011,12 @@ func (c *coreLogicImpl) broadcastAllAcceptors() {
 func (c *coreLogicImpl) ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
+
+	if len(newNodes) <= 0 {
+		return fmt.Errorf("could not change membership to empty")
+	}
+
+	// TODO check duplicated
 
 StartFunction:
 	if err := c.isValidLeader(term); err != nil {
@@ -1312,6 +1323,12 @@ func (c *coreLogicImpl) GetLastCommitted() LogPos {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	return c.leader.lastCommitted
+}
+
+func (c *coreLogicImpl) GetReplicatedPosTest(id NodeID) LogPos {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.leader.acceptorFullyReplicated[id]
 }
 
 func (c *coreLogicImpl) GetMinBufferLogPos() LogPos {
