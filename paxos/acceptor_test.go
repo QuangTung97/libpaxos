@@ -525,6 +525,50 @@ func TestAcceptorLogic__Increase_Committed_Pos_Only__Then_Get_Need_Replicated(t 
 	}, input)
 }
 
+func TestAcceptorLogic_AcceptEntries__Mark_Committed__Multiple_Batches(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+	s.initLogic(3)
+
+	s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+			s.newCmd("cmd test 04"),
+		)...,
+	)
+
+	// still at committed = 1
+	s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(6,
+			s.newCmd("cmd test 06"),
+			s.newCmd("cmd test 07"),
+			s.newCmd("cmd test 08"),
+		)...,
+	)
+
+	assert.Equal(t, []fake.UpsertInput{
+		{PutList: []LogPos{1}},
+		{PutList: []LogPos{2, 3, 4}},
+		{PutList: []LogPos{6, 7, 8}},
+	}, s.log.UpsertList)
+	s.log.UpsertList = nil
+
+	// increase commit
+	s.doAcceptEntries(8,
+		newAcceptLogEntries(9,
+			s.newCmd("cmd test 09"),
+		)...,
+	)
+
+	assert.Equal(t, []fake.UpsertInput{
+		{MarkList: []LogPos{2, 3, 4}},
+		{MarkList: []LogPos{6, 7}},
+		{PutList: []LogPos{9}, MarkList: []LogPos{8}},
+	}, s.log.UpsertList)
+}
+
 func (s *acceptorLogicTest) doGetNeedReplicated(from LogPos, lastFullyReplicated LogPos) NeedReplicatedInput {
 	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, from, lastFullyReplicated)
 	if err != nil {
@@ -636,6 +680,39 @@ func TestAcceptorLogic__Get_Need_Replicated__Wait_For_New_Fully_Replicated(t *te
 			FullyReplicated: 3,
 		}, getFn())
 	})
+}
+
+func TestAcceptorLogic__Get_Need_Replicated__For_Finite_Term_Entries(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd("cmd test 02"),
+			s.newCmd("cmd test 03"),
+			s.newCmd("cmd test 04"),
+		)...,
+	)
+
+	s.currentTerm.Num++
+	s.doAcceptEntries(
+		5,
+		newAcceptLogEntries(6,
+			s.newCmd("cmd test 06"),
+			s.newCmd("cmd test 07"),
+		)...,
+	)
+	assert.Equal(t, LogPos(1), s.log.GetFullyReplicated())
+	assert.Equal(t, LogPos(5), s.logic.GetLastCommitted())
+
+	req := s.doGetNeedReplicated(0, 0)
+	assert.Equal(t, NeedReplicatedInput{
+		Term:            s.currentTerm,
+		FromNode:        nodeID2,
+		PosList:         []LogPos{2, 3, 4, 5},
+		NextPos:         6,
+		FullyReplicated: 1,
+	}, req)
 }
 
 func TestAcceptorLogic__Accept_Entries__Increase_Last_Committed__Then_Reset(t *testing.T) {

@@ -164,9 +164,9 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		})
 	}
 
-	// TODO mark committed in batch
 	markCommitted := s.getNeedUpdateTermToInf(input.Committed)
 
+	// set term of entries to = +infinity
 	for i := range putEntries {
 		s.updateTermToInf(&putEntries[i])
 	}
@@ -197,27 +197,38 @@ func (s *acceptorLogicImpl) updateTermToInf(entry *PosLogEntry) {
 }
 
 func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []LogPos {
-	if newLastCommitted <= s.lastCommitted {
-		return nil
+	for s.lastCommitted < newLastCommitted {
+		getLimit := int(newLastCommitted - s.lastCommitted)
+		overLimit := false
+
+		if getLimit > s.limit {
+			getLimit = s.limit
+			overLimit = true
+		}
+
+		entries := s.log.GetEntries(s.lastCommitted+1, getLimit)
+		var markCommitted []LogPos
+
+		for _, entry := range entries {
+			if entry.Entry.Type == LogTypeNull {
+				continue
+			}
+			if s.isSameTerm(entry.Entry.Term) {
+				markCommitted = append(markCommitted, entry.Pos)
+			}
+		}
+
+		s.lastCommitted += LogPos(getLimit)
+		s.waitCond.Broadcast()
+
+		if overLimit {
+			s.log.UpsertEntries(nil, markCommitted)
+		} else {
+			return markCommitted
+		}
 	}
 
-	getLimit := int(newLastCommitted - s.lastCommitted)
-	entries := s.log.GetEntries(s.lastCommitted+1, getLimit)
-	var markCommitted []LogPos
-
-	for _, entry := range entries {
-		if entry.Entry.Type == LogTypeNull {
-			continue
-		}
-		if s.isSameTerm(entry.Entry.Term) {
-			markCommitted = append(markCommitted, entry.Pos)
-		}
-	}
-
-	s.lastCommitted = newLastCommitted
-	s.waitCond.Broadcast()
-
-	return markCommitted
+	return nil
 }
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(
@@ -269,7 +280,6 @@ StartLoop:
 		if entry.Entry.Type == LogTypeNull {
 			posList = append(posList, entry.Pos)
 		} else if entry.Entry.Term.IsFinite {
-			// TODO testing
 			posList = append(posList, entry.Pos)
 		}
 	}
