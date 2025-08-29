@@ -335,6 +335,10 @@ StartFunction:
 		return err
 	}
 
+	if err := c.validateInMemberList(id); err != nil {
+		return err
+	}
+
 	for len(output.Entries) > 0 {
 		entry := output.Entries[0]
 

@@ -2895,3 +2895,23 @@ func TestCoreLogic__Leader__Change_Membership__Duplicated(t *testing.T) {
 	err = c.core.ChangeMembership(c.ctx, c.currentTerm, nil)
 	assert.Equal(t, errors.New("can not change membership to empty"), err)
 }
+
+func TestCoreLogic__Candidate__Handle_Vote__Not_In_MemberList(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.doStartElection()
+
+	voteOutput := RequestVoteOutput{
+		Success: true,
+		Term:    c.currentTerm,
+		Entries: []VoteLogEntry{
+			{
+				Pos:     2,
+				IsFinal: true,
+			},
+		},
+	}
+
+	// handle vote response
+	err := c.core.HandleVoteResponse(c.ctx, nodeID4, voteOutput)
+	assert.Equal(t, errors.New("node id '64040000000000000000000000000000' is not in current member list"), err)
+}
