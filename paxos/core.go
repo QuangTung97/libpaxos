@@ -1004,10 +1004,17 @@ func (c *coreLogicImpl) ChangeMembership(ctx context.Context, term TermNum, newN
 	defer c.mut.Unlock()
 
 	if len(newNodes) <= 0 {
-		return fmt.Errorf("could not change membership to empty")
+		return fmt.Errorf("can not change membership to empty")
 	}
 
-	// TODO check duplicated
+	inputSet := map[NodeID]struct{}{}
+	for _, id := range newNodes {
+		_, existed := inputSet[id]
+		if existed {
+			return fmt.Errorf("duplicated node id: %s", id.String())
+		}
+		inputSet[id] = struct{}{}
+	}
 
 StartFunction:
 	if err := c.isValidLeader(term); err != nil {

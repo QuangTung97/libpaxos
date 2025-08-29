@@ -2882,3 +2882,16 @@ func TestCoreLogic__Leader__Finish_Membership__Increase_Last_Committed(t *testin
 	assert.Equal(t, LogPos(5), c.core.GetMaxLogPos())
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
 }
+
+func TestCoreLogic__Leader__Change_Membership__Duplicated(t *testing.T) {
+	c := newCoreLogicTest(t)
+	c.startAsLeader()
+
+	// do change
+	err := c.core.ChangeMembership(c.ctx, c.currentTerm, []NodeID{nodeID4, nodeID5, nodeID5})
+	assert.Equal(t, errors.New("duplicated node id: 64050000000000000000000000000000"), err)
+
+	// do change empty
+	err = c.core.ChangeMembership(c.ctx, c.currentTerm, nil)
+	assert.Equal(t, errors.New("can not change membership to empty"), err)
+}
