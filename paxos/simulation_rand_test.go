@@ -199,10 +199,8 @@ func randomChangLeader(
 
 				err := core.ChangeMembership(ctx, st.persistent.GetLastTerm(), randomNodes)
 				if err != nil {
-					fmt.Println("CHANGE ERROR:", err)
 					continue
 				}
-				fmt.Println("CHANGE:", randomNodes)
 				*currentNumChange++
 			}
 		},

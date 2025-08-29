@@ -332,9 +332,6 @@ func (c *coreLogicImpl) HandleVoteResponse(
 		return nil
 	}
 
-	// TODO check if node id still in member list
-	// TODO check shrink from 3 node to 1 node
-
 StartFunction:
 	if err := c.checkStateEqual(output.Term, StateCandidate); err != nil {
 		return err
@@ -856,14 +853,6 @@ func (c *coreLogicImpl) handleAcceptResponseForPos(id NodeID, pos LogPos) bool {
 	}
 
 	voted[id] = struct{}{}
-
-	if IsQuorum(c.leader.members, voted) {
-		// set log entry term as +infinity
-		entry := memLog.Get(pos)
-		entry.Term = InfiniteTerm{}
-		memLog.Put(pos, entry)
-	}
-
 	return true
 }
 
@@ -877,10 +866,12 @@ func (c *coreLogicImpl) increaseLastCommitted() error {
 			break
 		}
 
-		// when term = +infinity
-		popEntry := memLog.PopFront()
-		c.leader.logBuffer.Insert(popEntry)
+		// when voted set is a quorum
 		needCheck = true
+
+		popEntry := memLog.PopFront()
+		popEntry.Term = InfiniteTerm{}
+		c.leader.logBuffer.Insert(popEntry)
 	}
 
 	if needCheck {
@@ -1403,6 +1394,15 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 
 		// check fully replicated always greater than or equal min buffer pos
 		AssertTrue(c.log.GetCommittedInfo().FullyReplicated+1 >= c.leader.logBuffer.GetFrontPos())
+
+		// check log buffer fully replicated
+		for pos := c.leader.logBuffer.GetFrontPos(); pos <= c.leader.lastCommitted; pos++ {
+			entries := c.leader.logBuffer.GetEntries(pos)
+			entry := entries[0]
+			AssertTrue(pos == entry.Pos)
+			AssertTrue(!entry.Entry.Term.IsFinite)
+			AssertTrue(!entry.Entry.IsNull())
+		}
 	}
 
 	// check disk log is not null & term is infinite before fully-replicated pos

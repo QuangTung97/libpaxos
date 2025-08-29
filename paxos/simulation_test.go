@@ -861,17 +861,6 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 		isEqual := slices.EqualFunc(a.log, b.log[:len(a.log)], PosLogEntryEqual)
 		if !isEqual {
 			t.Error("Replicated log entry should be equal")
-
-			fmt.Printf("ORIGIN: %+v & %+v, %+v & %+v\n",
-				a.origin.String()[:6], a.isState,
-				b.origin.String()[:6], b.isState,
-			)
-
-			for index := range a.log {
-				x := a.log[index]
-				y := b.log[index]
-				fmt.Printf("Entry: %v, '%s',  %+v | %+v\n", PosLogEntryEqual(x, y), string(x.Entry.CmdData), x, y)
-			}
 		}
 	}
 
@@ -1377,7 +1366,7 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 	if isTestRace() {
 		return
 	}
-	for range 1 { // TODO change num
+	for range 100 {
 		runTestThreeNodesMembershipChangeThreeTimes(t)
 	}
 }
@@ -1429,25 +1418,20 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			}
 		}
 
-		fmt.Println("Max Pos Replicated:", maxPos)
-		s.printAllWaiting()
-
 		assert.Equal(t, 1, len(finalMembers))
 		assert.Equal(t, LogPos(1), finalMembers[0].CreatedAt)
 
 		// check all logs
 		lastMemberNodes := finalMembers[0].Nodes
-		fmt.Printf("FINAL NODES: %+v\n", finalMembers)
 
 		id1 := lastMemberNodes[0]
 		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
 		for _, id := range lastMemberNodes[1:] {
-			fmt.Println(id.String()[:6])
 			cmpPos := s.nodeMap[id].log.GetFullyReplicated()
 			assert.Equal(t, committedPos, cmpPos)
+			assert.Equal(t, maxPos, cmpPos)
 		}
 
 		s.stopRemainingRunners()
-		fmt.Println("=========================================")
 	})
 }
