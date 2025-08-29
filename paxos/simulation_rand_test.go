@@ -157,7 +157,7 @@ func randomSendCmdToLeader(
 					continue
 				}
 				*nextCmd++
-				st.cmdChan <- fmt.Sprintf("new command: %d", nextCmd)
+				st.cmdChan <- fmt.Sprintf("new command: %d", *nextCmd)
 			}
 		},
 	)

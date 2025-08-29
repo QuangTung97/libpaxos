@@ -245,3 +245,42 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 		s.GetEntriesWithPos(6)
 	})
 }
+
+func TestLogStorageFake__UpsertEntries__Already_Fully_Replicated(t *testing.T) {
+	s := &LogStorageFake{}
+
+	entry1 := paxos.LogEntry{
+		Type:    paxos.LogTypeCmd,
+		Term:    paxos.InfiniteTerm{},
+		CmdData: []byte("hello01"),
+	}
+	entry2 := paxos.LogEntry{
+		Type:    paxos.LogTypeCmd,
+		Term:    paxos.InfiniteTerm{},
+		CmdData: []byte("hello02"),
+	}
+
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 1, Entry: entry1},
+		{Pos: 2, Entry: entry2},
+	}, nil)
+
+	assert.Equal(t, paxos.CommittedInfo{
+		FullyReplicated: 2,
+	}, s.GetCommittedInfo())
+
+	// update to fully replicated pos
+	entry1.Term = paxos.TermNum{
+		Num: 21,
+	}.ToInf()
+	s.UpsertEntries([]paxos.PosLogEntry{
+		{Pos: 1, Entry: entry1},
+	}, nil)
+
+	entries := s.GetEntries(1, 100)
+	entry1.Term = paxos.InfiniteTerm{}
+	assert.Equal(t, []paxos.PosLogEntry{
+		{Pos: 1, Entry: entry1},
+		{Pos: 2, Entry: entry2},
+	}, entries)
+}

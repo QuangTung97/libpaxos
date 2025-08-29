@@ -822,35 +822,60 @@ func compareActionKey(a, b simulateActionKey) int {
 
 func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 	t.Helper()
-	var allLog [][]PosLogEntry
 
-	for _, state := range s.nodeMap {
+	type logWithOrigin struct {
+		log     []PosLogEntry
+		origin  NodeID
+		isState bool
+	}
+
+	var allLog []logWithOrigin
+
+	for id, state := range s.nodeMap {
 		maxPos := state.log.GetFullyReplicated()
 		logEntries := state.log.GetEntries(1, int(maxPos))
 
-		allLog = append(allLog, logEntries)
-		allLog = append(allLog, state.stateMachineLog)
+		allLog = append(allLog, logWithOrigin{
+			log:    logEntries,
+			origin: id,
+		})
+		allLog = append(allLog, logWithOrigin{
+			log:     state.stateMachineLog,
+			origin:  id,
+			isState: true,
+		})
 	}
 
-	slices.SortFunc(allLog, func(a, b []PosLogEntry) int {
-		return cmp.Compare(len(a), len(b))
+	slices.SortFunc(allLog, func(a, b logWithOrigin) int {
+		return cmp.Compare(len(a.log), len(b.log))
 	})
 
 	if minLength >= 0 {
-		assert.Equal(t, minLength, len(allLog[0]))
+		assert.Equal(t, minLength, len(allLog[0].log))
 	}
 
 	for i := 0; i < len(allLog)-1; i++ {
 		a := allLog[i]
 		b := allLog[i+1]
 
-		isEqual := slices.EqualFunc(a, b[:len(a)], PosLogEntryEqual)
+		isEqual := slices.EqualFunc(a.log, b.log[:len(a.log)], PosLogEntryEqual)
 		if !isEqual {
-			t.Error("Should be equal here")
+			t.Error("Replicated log entry should be equal")
+
+			fmt.Printf("ORIGIN: %+v & %+v, %+v & %+v\n",
+				a.origin.String()[:6], a.isState,
+				b.origin.String()[:6], b.isState,
+			)
+
+			for index := range a.log {
+				x := a.log[index]
+				y := b.log[index]
+				fmt.Printf("Entry: %v, '%s',  %+v | %+v\n", PosLogEntryEqual(x, y), string(x.Entry.CmdData), x, y)
+			}
 		}
 	}
 
-	for _, entry := range allLog[len(allLog)-1] {
+	for _, entry := range allLog[len(allLog)-1].log {
 		if entry.Entry.Term.IsFinite {
 			t.Fatal("Must not contain finite term log entry here")
 		}
@@ -1352,7 +1377,7 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 	if isTestRace() {
 		return
 	}
-	for range 1 {
+	for range 1 { // TODO change num
 		runTestThreeNodesMembershipChangeThreeTimes(t)
 	}
 }
@@ -1404,6 +1429,7 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			}
 		}
 
+		fmt.Println("Max Pos Replicated:", maxPos)
 		s.printAllWaiting()
 
 		assert.Equal(t, 1, len(finalMembers))

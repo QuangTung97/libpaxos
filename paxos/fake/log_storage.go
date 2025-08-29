@@ -56,6 +56,9 @@ func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry, markCommitte
 	copy(newEntries, s.logEntries)
 
 	for _, e := range entries {
+		if e.Pos <= s.fullyReplicatedPos {
+			continue
+		}
 		index := e.Pos - 1
 		newEntries[index] = e.Entry
 	}
@@ -89,6 +92,9 @@ func (s *LogStorageFake) increaseFullyReplicated() {
 
 func (s *LogStorageFake) doMarkCommitted(posList []paxos.LogPos) {
 	for _, pos := range posList {
+		if pos <= s.fullyReplicatedPos {
+			return // TODO testing
+		}
 		index := pos - 1
 		s.logEntries[index].Term = paxos.InfiniteTerm{}
 	}
