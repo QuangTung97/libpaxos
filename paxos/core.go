@@ -1305,6 +1305,26 @@ StartFunction:
 	}, nil
 }
 
+func (c *coreLogicImpl) computeNextWakeUp(numTicks int) TimestampMilli {
+	return c.nowFunc() + (c.timeoutTickDuration+c.getRandomJitter())*TimestampMilli(numTicks)
+}
+
+func (c *coreLogicImpl) getRandomJitter() TimestampMilli {
+	if c.tickRandomJitter <= 0 {
+		return 0
+	}
+	randVal := rand.Intn(int(c.tickRandomJitter))
+	return TimestampMilli(randVal)
+}
+
+func (c *coreLogicImpl) getCurrentTerm() TermNum {
+	return c.persistent.GetLastTerm()
+}
+
+func (c *coreLogicImpl) isExpired(ts TimestampMilli) bool {
+	return ts <= c.nowFunc()
+}
+
 // ---------------------------------------------------------------------------
 // Utility Functions for testing
 // ---------------------------------------------------------------------------
@@ -1345,30 +1365,9 @@ func (c *coreLogicImpl) GetFollowerWakeUpAt() TimestampMilli {
 	return c.follower.wakeUpAt
 }
 
-func (c *coreLogicImpl) computeNextWakeUp(numTicks int) TimestampMilli {
-	return c.nowFunc() + (c.timeoutTickDuration+c.getRandomJitter())*TimestampMilli(numTicks)
-}
-
-func (c *coreLogicImpl) getRandomJitter() TimestampMilli {
-	if c.tickRandomJitter <= 0 {
-		return 0
-	}
-	randVal := rand.Intn(int(c.tickRandomJitter))
-	return TimestampMilli(randVal)
-}
-
-func (c *coreLogicImpl) getCurrentTerm() TermNum {
-	return c.persistent.GetLastTerm()
-}
-
-func (c *coreLogicImpl) isExpired(ts TimestampMilli) bool {
-	return ts <= c.nowFunc()
-}
-
 func (c *coreLogicImpl) CheckInvariant() {
 	c.mut.Lock()
 	defer c.mut.Unlock()
-
 	c.internalCheckInvariant()
 }
 
