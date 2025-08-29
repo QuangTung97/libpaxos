@@ -1387,6 +1387,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		memLog := c.leader.memLog
 		for pos := c.leader.lastCommitted + 1; pos <= memLog.MaxLogPos(); pos++ {
 			entry := memLog.Get(pos)
+			AssertTrue(entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
 		}
 
