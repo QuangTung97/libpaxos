@@ -46,6 +46,9 @@ type CoreLogic interface {
 	GetState() State
 	GetLastCommitted() LogPos
 	GetMinBufferLogPos() LogPos
+	GetCurrentMembers() []MemberInfo
+	GetMaxLogPos() LogPos
+	GetMemLog() *MemLog
 	GetFollowerWakeUpAt() TimestampMilli
 
 	// CheckInvariant for testing only
@@ -1315,6 +1318,22 @@ func (c *coreLogicImpl) GetMinBufferLogPos() LogPos {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 	return c.leader.logBuffer.GetFrontPos()
+}
+
+func (c *coreLogicImpl) GetCurrentMembers() []MemberInfo {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return slices.Clone(c.leader.members)
+}
+
+func (c *coreLogicImpl) GetMaxLogPos() LogPos {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+	return c.leader.memLog.MaxLogPos()
+}
+
+func (c *coreLogicImpl) GetMemLog() *MemLog {
+	return c.leader.memLog
 }
 
 func (c *coreLogicImpl) GetFollowerWakeUpAt() TimestampMilli {

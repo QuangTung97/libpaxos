@@ -511,6 +511,8 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 				return err
 			}
 
+			fmt.Printf("SEND ACCEPT REQ: %+v, from %s->%s\n", input, h.current.String()[:6], toNode.String()[:6])
+
 			conn.SendRequest(input)
 
 			fromPos = input.NextPos
@@ -1425,13 +1427,27 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 				for pos := 1; pos <= 4; pos++ {
 					entry := s.nodeMap[id].log.GetEntriesWithPos(LogPos(pos))
 					fmt.Printf("Entry at pos=4: %+v\n", entry)
-					fmt.Printf("Committed: %d\n", s.nodeMap[nodeID2].core.GetLastCommitted())
-					fmt.Printf("Node1: %d\n", s.nodeMap[nodeID1].log.GetFullyReplicated())
-					fmt.Printf("Node2: %d\n", s.nodeMap[nodeID2].log.GetFullyReplicated())
-					fmt.Printf("Node3: %d\n", s.nodeMap[nodeID3].log.GetFullyReplicated())
-					fmt.Printf("Node4: %d\n", s.nodeMap[nodeID4].log.GetFullyReplicated())
-					fmt.Printf("Node5: %d\n", s.nodeMap[nodeID5].log.GetFullyReplicated())
 
+					state2 := s.nodeMap[nodeID2]
+					fmt.Printf("Committed: %d\n", state2.core.GetLastCommitted())
+					fmt.Printf("Members: %+v\n", state2.core.GetCurrentMembers())
+					fmt.Printf("Max Mem Pos: %v\n", state2.core.GetMaxLogPos())
+					fmt.Printf("Mem Log Vote pos=5: %+v\n", state2.core.GetMemLog().GetVoted(5))
+					fmt.Printf("Mem Log Entry pos=5: %+v\n", state2.core.GetMemLog().Get(5))
+
+					accReq, err := s.nodeMap[nodeID2].core.GetAcceptEntriesRequest(
+						context.Background(), state2.log.GetTerm(), nodeID3, 0, 0,
+					)
+					fmt.Printf("REQ: %+v, err %v\n", accReq.Entries, err)
+
+					fmt.Printf("Node1: %d\n ", s.nodeMap[nodeID1].log.GetFullyReplicated())
+					fmt.Printf("Node2: %d\n", s.nodeMap[nodeID2].log.GetFullyReplicated())
+					fmt.Printf("Node3: %d, Term: %v\n", s.nodeMap[nodeID3].log.GetFullyReplicated(), s.nodeMap[nodeID3].log.GetTerm())
+					fmt.Printf("Node4: %d, Term: %v\n", s.nodeMap[nodeID4].log.GetFullyReplicated(), s.nodeMap[nodeID4].log.GetTerm())
+					fmt.Printf("Node5: %d, Term: %v\n", s.nodeMap[nodeID5].log.GetFullyReplicated(), s.nodeMap[nodeID5].log.GetTerm())
+					fmt.Printf("Log Entries Node 5: %+v\n", s.nodeMap[nodeID5].log.GetEntries(5, 100))
+
+					fmt.Println("Node1 state:", s.nodeMap[nodeID1].core.GetState())
 					fmt.Println("Node2 state:", s.nodeMap[nodeID2].core.GetState())
 					fmt.Println("Node3 state:", s.nodeMap[nodeID3].core.GetState())
 					fmt.Println("Node4 state:", s.nodeMap[nodeID4].core.GetState())
