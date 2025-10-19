@@ -23,6 +23,11 @@ func NewMemLog(lastCommitted *LogPos, sizeLog int) *MemLog {
 	}
 }
 
+func (m *MemLog) PutV2(entry LogEntry) {
+	m.Put(entry.Pos, entry)
+}
+
+// Put TODO remove
 func (m *MemLog) Put(pos LogPos, entry LogEntry) {
 	newLen := m.queueLen
 	memPos := int(pos - *m.lastCommitted)

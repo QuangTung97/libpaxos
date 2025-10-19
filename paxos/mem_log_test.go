@@ -10,8 +10,9 @@ import (
 )
 
 func TestMemLog(t *testing.T) {
-	newEntry := func(cmd string) LogEntry {
+	newEntry := func(pos LogPos, cmd string) LogEntry {
 		return LogEntry{
+			Pos:  pos,
 			Type: LogTypeCmd,
 			Term: TermNum{
 				Num:    15,
@@ -28,13 +29,13 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, LogPos(20), m.MaxLogPos())
 		assert.Equal(t, 0, m.GetQueueSize())
 
-		entry1 := newEntry("cmd 01")
-		entry2 := newEntry("cmd 02")
-		entry3 := newEntry("cmd 03")
+		entry1 := newEntry(21, "cmd 01")
+		entry2 := newEntry(22, "cmd 02")
+		entry3 := newEntry(24, "cmd 03")
 
-		m.Put(21, entry1)
-		m.Put(22, entry2)
-		m.Put(24, entry3)
+		m.PutV2(entry1)
+		m.PutV2(entry2)
+		m.PutV2(entry3)
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
 		assert.Equal(t, 4, m.GetQueueSize())
@@ -65,13 +66,13 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := newEntry("cmd 01")
-		entry2 := newEntry("cmd 02")
-		entry3 := newEntry("cmd 03")
+		entry1 := newEntry(21, "cmd 01")
+		entry2 := newEntry(22, "cmd 02")
+		entry3 := newEntry(27, "cmd 03")
 
-		m.Put(21, entry1)
-		m.Put(22, entry2)
-		m.Put(27, entry3)
+		m.PutV2(entry1)
+		m.PutV2(entry2)
+		m.PutV2(entry3)
 
 		assert.Equal(t, LogPos(27), m.MaxLogPos())
 
@@ -93,13 +94,13 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := newEntry("cmd 01")
-		entry2 := newEntry("cmd 02")
-		entry3 := newEntry("cmd 03")
-		entry4 := newEntry("cmd 04")
+		entry1 := newEntry(21, "cmd 01")
+		entry2 := newEntry(22, "cmd 02")
+		entry3 := newEntry(27, "cmd 03")
+		entry4 := newEntry(28, "cmd 04")
 
-		m.Put(21, entry1)
-		m.Put(22, entry2)
+		m.PutV2(entry1)
+		m.PutV2(entry2)
 		assert.Equal(t, 2, m.GetQueueSize())
 
 		popEntry := m.PopFront()
@@ -109,8 +110,8 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, entry2, popEntry)
 		assert.Equal(t, 0, m.GetQueueSize())
 
-		m.Put(27, entry3)
-		m.Put(28, entry4)
+		m.PutV2(entry3)
+		m.PutV2(entry4)
 
 		assert.Equal(t, LogPos(22), lastCommitted)
 		assert.Equal(t, LogPos(28), m.MaxLogPos())
@@ -136,13 +137,13 @@ func TestMemLog(t *testing.T) {
 		lastCommitted := LogPos(20)
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := newEntry("cmd 01")
-		entry2 := newEntry("cmd 02")
-		entry3 := newEntry("cmd 03")
+		entry1 := newEntry(21, "cmd 01")
+		entry2 := newEntry(22, "cmd 02")
+		entry3 := newEntry(24, "cmd 03")
 
-		m.Put(21, entry1)
-		m.Put(22, entry2)
-		m.Put(24, entry3)
+		m.PutV2(entry1)
+		m.PutV2(entry2)
+		m.PutV2(entry3)
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
 
@@ -164,7 +165,7 @@ func TestMemLog(t *testing.T) {
 		addVote(22, node2)
 
 		entry1.Term = InfiniteTerm{}
-		m.Put(21, entry1)
+		m.PutV2(entry1)
 
 		assert.Equal(t, map[NodeID]struct{}{
 			node1: {},
@@ -190,20 +191,20 @@ func TestMemLog(t *testing.T) {
 
 		m := NewMemLog(&lastCommitted, 2)
 
-		entry1 := newEntry("cmd 01")
-		entry2 := newEntry("cmd 02")
-		entry3 := newEntry("cmd 03")
-		entry4 := newEntry("cmd 04")
+		entry1 := newEntry(21, "cmd 01")
+		entry2 := newEntry(22, "cmd 02")
+		entry3 := newEntry(23, "cmd 03")
+		entry4 := newEntry(24, "cmd 04")
 
-		m.Put(21, entry1)
-		m.Put(22, entry2)
-		m.Put(23, entry3)
-		m.Put(24, entry4)
+		m.PutV2(entry1)
+		m.PutV2(entry2)
+		m.PutV2(entry3)
+		m.PutV2(entry4)
 
 		m.PopFront()
 
-		entry5 := newEntry("cmd 05")
-		m.Put(25, entry5)
+		entry5 := newEntry(25, "cmd 05")
+		m.PutV2(entry5)
 
 		assert.Equal(t, entry5, m.Get(25))
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(25))
