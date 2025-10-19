@@ -116,18 +116,6 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 	return c
 }
 
-// newLogEntry TODO remove
-func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
-	return LogEntry{
-		Type: LogTypeCmd,
-		Term: TermNum{
-			Num:    termNum,
-			NodeID: nodeID3,
-		}.ToInf(),
-		CmdData: []byte(cmdStr),
-	}
-}
-
 func (c *coreLogicTest) newLogEntryV2(pos LogPos, cmdStr string, termNum TermValue) LogEntry {
 	return LogEntry{
 		Pos:  pos,

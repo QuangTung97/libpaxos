@@ -9,8 +9,8 @@ import (
 )
 
 func TestLogBuffer(t *testing.T) {
-	newCmd := func(cmd string) LogEntry {
-		return NewCmdLogEntry(InfiniteTerm{}, []byte(cmd))
+	newCmd := func(pos LogPos, cmd string) LogEntry {
+		return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmd))
 	}
 
 	t.Run("normal", func(t *testing.T) {
@@ -20,8 +20,8 @@ func TestLogBuffer(t *testing.T) {
 		assert.Equal(t, 0, b.Size())
 		assert.Equal(t, LogPos(21), b.GetFrontPos())
 
-		entry1 := newCmd("test cmd 01")
-		entry2 := newCmd("test cmd 01")
+		entry1 := newCmd(19, "test cmd 01")
+		entry2 := newCmd(20, "test cmd 01")
 
 		b.Insert(entry1)
 		b.Insert(entry2)
@@ -44,18 +44,18 @@ func TestLogBuffer(t *testing.T) {
 		// get not found
 		entries = b.GetEntries(18)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 18},
+			{Pos: 18, Entry: NewNullEntry(18)},
 		}, entries)
 
 		// get not found
 		entries = b.GetEntries(21)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 21},
+			{Pos: 21, Entry: NewNullEntry(21)},
 		}, entries)
 
 		// extend queue
-		entry3 := newCmd("test cmd 03")
-		entry4 := newCmd("test cmd 04")
+		entry3 := newCmd(21, "test cmd 03")
+		entry4 := newCmd(22, "test cmd 04")
 		lastCommitted += 2
 		b.Insert(entry3)
 		b.Insert(entry4)
@@ -81,9 +81,9 @@ func TestLogBuffer(t *testing.T) {
 		lastCommitted := LogPos(20)
 		b := NewLogBuffer(&lastCommitted, 2)
 
-		entry1 := newCmd("test cmd 01")
-		entry2 := newCmd("test cmd 02")
-		entry3 := newCmd("test cmd 03")
+		entry1 := newCmd(21, "test cmd 01")
+		entry2 := newCmd(22, "test cmd 02")
+		entry3 := newCmd(23, "test cmd 03")
 
 		lastCommitted += 3
 		b.Insert(entry1)
@@ -95,25 +95,25 @@ func TestLogBuffer(t *testing.T) {
 		// get all
 		entries := b.GetEntries(21, 22, 23)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 21},
+			{Pos: 21, Entry: NewNullEntry(21)},
 			{Pos: 22, Entry: entry2},
 			{Pos: 23, Entry: entry3},
 		}, entries)
 
 		entries = b.GetEntries(21)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 21},
+			{Pos: 21, Entry: NewNullEntry(21)},
 		}, entries)
 
 		entries = b.GetEntries(24)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 24},
+			{Pos: 24, Entry: NewNullEntry(24)},
 		}, entries)
 
 		// insert wrap around
-		entry4 := newCmd("test cmd 04")
-		entry5 := newCmd("test cmd 05")
-		entry6 := newCmd("test cmd 06")
+		entry4 := newCmd(24, "test cmd 04")
+		entry5 := newCmd(25, "test cmd 05")
+		entry6 := newCmd(26, "test cmd 06")
 		lastCommitted += 3
 		b.Insert(entry4)
 		b.Insert(entry5)
@@ -122,13 +122,13 @@ func TestLogBuffer(t *testing.T) {
 		// get all
 		entries = b.GetEntries(21, 22, 23, 24, 25, 26, 27)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 21},
+			{Pos: 21, Entry: NewNullEntry(21)},
 			{Pos: 22, Entry: entry2},
 			{Pos: 23, Entry: entry3},
 			{Pos: 24, Entry: entry4},
 			{Pos: 25, Entry: entry5},
 			{Pos: 26, Entry: entry6},
-			{Pos: 27},
+			{Pos: 27, Entry: NewNullEntry(27)},
 		}, entries)
 
 		assert.Equal(t, LogPos(22), b.GetFrontPos())
@@ -141,11 +141,11 @@ func TestLogBuffer(t *testing.T) {
 		// get all
 		entries = b.GetEntries(23, 24, 25, 26, 27)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 23},
+			{Pos: 23, Entry: NewNullEntry(23)},
 			{Pos: 24, Entry: entry4},
 			{Pos: 25, Entry: entry5},
 			{Pos: 26, Entry: entry6},
-			{Pos: 27},
+			{Pos: 27, Entry: NewNullEntry(27)},
 		}, entries)
 	})
 
@@ -153,8 +153,8 @@ func TestLogBuffer(t *testing.T) {
 		lastCommitted := LogPos(20)
 		b := NewLogBuffer(&lastCommitted, 2)
 
-		entry1 := newCmd("test cmd 01")
-		entry2 := newCmd("test cmd 02")
+		entry1 := newCmd(19, "test cmd 01")
+		entry2 := newCmd(20, "test cmd 02")
 
 		lastCommitted += 2
 		b.Insert(entry1)
