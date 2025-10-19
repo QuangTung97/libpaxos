@@ -75,6 +75,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 
 	// setup init members
 	initEntry := LogEntry{
+		Pos:  1,
 		Type: LogTypeMembership,
 		Term: InfiniteTerm{},
 		Members: []MemberInfo{
@@ -115,6 +116,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 	return c
 }
 
+// newLogEntry TODO remove
 func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
 	return LogEntry{
 		Type: LogTypeCmd,
@@ -126,12 +128,34 @@ func (c *coreLogicTest) newLogEntry(cmdStr string, termNum TermValue) LogEntry {
 	}
 }
 
+func (c *coreLogicTest) newLogEntryV2(pos LogPos, cmdStr string, termNum TermValue) LogEntry {
+	return LogEntry{
+		Pos:  pos,
+		Type: LogTypeCmd,
+		Term: TermNum{
+			Num:    termNum,
+			NodeID: nodeID3,
+		}.ToInf(),
+		CmdData: []byte(cmdStr),
+	}
+}
+
+// newInfLogEntry TODO remove
 func (c *coreLogicTest) newInfLogEntry(cmdStr string) LogEntry {
 	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmdStr))
 }
 
+func (c *coreLogicTest) newInfLogEntryV2(pos LogPos, cmdStr string) LogEntry {
+	return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmdStr))
+}
+
+// newAcceptLogEntry TODO remove
 func (c *coreLogicTest) newAcceptLogEntry(cmdStr string) LogEntry {
 	return NewCmdLogEntry(c.currentTerm.ToInf(), []byte(cmdStr))
+}
+
+func (c *coreLogicTest) newAcceptLogEntryV2(pos LogPos, cmdStr string) LogEntry {
+	return NewCmdLogEntryV2(pos, c.currentTerm.ToInf(), []byte(cmdStr))
 }
 
 func (c *coreLogicTest) doHandleVoteResp(
@@ -139,11 +163,13 @@ func (c *coreLogicTest) doHandleVoteResp(
 ) {
 	voteEntries := make([]VoteLogEntry, 0, len(entries)+1)
 	for index, e := range entries {
+		pos := fromPos + LogPos(index)
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     fromPos + LogPos(index),
+			Pos:     pos,
 			IsFinal: false,
 			Entry:   e,
 		})
+		AssertTrue(e.Pos == pos)
 	}
 
 	if withFinal {
@@ -312,7 +338,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	// start election
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd test 01", 19)
+	entry1 := c.newLogEntryV2(2, "cmd test 01", 19)
 
 	c.doHandleVoteResp(nodeID1, 2, true, entry1)
 	c.doHandleVoteResp(nodeID2, 2, true)
@@ -348,12 +374,12 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	// start election
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 19)
-	entry2 := c.newLogEntry("cmd data 02", 19)
-	entry3 := c.newLogEntry("cmd data 03", 18)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 19)
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 19)
+	entry3 := c.newLogEntryV2(3, "cmd data 03", 18)
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
-	c.doHandleVoteResp(nodeID2, 2, true, LogEntry{}, entry3)
+	c.doHandleVoteResp(nodeID2, 2, true, NewNullEntry(2), entry3)
 
 	// check get accept req
 	acceptReq, err := c.core.GetAcceptEntriesRequest(
@@ -387,11 +413,11 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 	// start election
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 19)
+	entry1 := c.newLogEntryV2(3, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 19)
 
-	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
-	c.doHandleVoteResp(nodeID2, 2, false, LogEntry{}, entry2)
+	c.doHandleVoteResp(nodeID1, 2, false, NewNullEntry(2), entry1)
+	c.doHandleVoteResp(nodeID2, 2, false, NewNullEntry(2), entry2)
 
 	// check get accept req
 	acceptReq, err := c.core.GetAcceptEntriesRequest(
@@ -407,6 +433,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 			{
 				Pos: 2,
 				Entry: LogEntry{
+					Pos:  2,
 					Type: LogTypeNoOp,
 					Term: c.currentTerm.ToInf(),
 				},
@@ -426,11 +453,11 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry__Replaced_By_Other_E
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 15)
-	entry3 := c.newLogEntry("cmd data 03", 19)
+	entry1 := c.newLogEntryV2(3, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(2, "cmd data 02", 15)
+	entry3 := c.newLogEntryV2(3, "cmd data 03", 19)
 
-	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID1, 2, false, NewNullEntry(2), entry1)
 	c.doHandleVoteResp(nodeID2, 2, false, entry2, entry3)
 
 	// check get accept req
@@ -464,10 +491,10 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 19)
+	entry1 := c.newLogEntryV2(3, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(2, "cmd data 02", 19)
 
-	c.doHandleVoteResp(nodeID1, 2, false, LogEntry{}, entry1)
+	c.doHandleVoteResp(nodeID1, 2, false, NewNullEntry(2), entry1)
 	c.doHandleVoteResp(nodeID2, 2, false, entry2)
 
 	// check get accept req
@@ -496,7 +523,7 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry1 := c.newLogEntryV2(3, "cmd data 01", 18)
 
 	c.doHandleVoteResp(nodeID1, 2, true)
 	c.doHandleVoteResp(nodeID2, 3, false, entry1)
@@ -542,7 +569,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 	c.doStartElection()
 	c.firstGetAcceptToSetTimeout(nodeID2)
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
 
 	synctest.Test(t, func(t *testing.T) {
 		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
@@ -592,8 +619,8 @@ func TestCoreLogic_GetAcceptEntries__Current_Node__Wait(t *testing.T) {
 			ToNode: nodeID1,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
-				{Pos: 2, Entry: c.newAcceptLogEntry("cmd test 02")},
-				{Pos: 3, Entry: c.newAcceptLogEntry("cmd test 03")},
+				{Pos: 2, Entry: c.newAcceptLogEntryV2(2, "cmd test 02")},
+				{Pos: 3, Entry: c.newAcceptLogEntryV2(3, "cmd test 03")},
 			},
 			NextPos:   4,
 			Committed: 1,
@@ -606,8 +633,8 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 19)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 19)
 
 	c.firstGetAcceptToSetTimeout(nodeID2)
 
@@ -675,9 +702,9 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 17)
-	entry2 := c.newLogEntry("cmd data 02", 18)
-	entry3 := c.newLogEntry("cmd data 03", 22)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 17)
+	entry2 := c.newLogEntryV2(2, "cmd data 02", 18)
+	entry3 := c.newLogEntryV2(2, "cmd data 03", 22)
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1)
 	c.doHandleVoteResp(nodeID2, 2, false, entry2)
@@ -721,6 +748,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 			{
 				Pos: 2,
 				Entry: LogEntry{
+					Pos:     2,
 					Type:    LogTypeCmd,
 					Term:    c.currentTerm.ToInf(),
 					CmdData: []byte("cmd data 01"),
@@ -729,6 +757,7 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 			{
 				Pos: 3,
 				Entry: LogEntry{
+					Pos:     3,
 					Type:    LogTypeCmd,
 					Term:    c.currentTerm.ToInf(),
 					CmdData: []byte("cmd data 02"),
@@ -855,8 +884,8 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *
 
 		c.doStartElection()
 
-		entry1 := c.newLogEntry("cmd data 01", 18)
-		entry2 := c.newLogEntry("cmd data 02", 18)
+		entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+		entry2 := c.newLogEntryV2(3, "cmd data 02", 18)
 
 		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
 		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
@@ -871,8 +900,8 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *
 
 		c.doStartElection()
 
-		entry1 := c.newLogEntry("cmd data 01", 18)
-		entry2 := c.newLogEntry("cmd data 02", 18)
+		entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+		entry2 := c.newLogEntryV2(3, "cmd data 02", 18)
 
 		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
 		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
@@ -887,8 +916,8 @@ func TestCoreLogic__Handle_Vote_Resp__Without_More__After_Accept_Pos_Went_Up(t *
 
 		c.doStartElection()
 
-		entry1 := c.newLogEntry("cmd data 01", 18)
-		entry2 := c.newLogEntry("cmd data 02", 18)
+		entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+		entry2 := c.newLogEntryV2(3, "cmd data 02", 18)
 
 		c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2)
 		c.doHandleVoteResp(nodeID2, 2, false, entry1, entry2)
@@ -940,6 +969,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 			{
 				Pos: 4,
 				Entry: LogEntry{
+					Pos:  4,
 					Type: LogTypeMembership,
 					Term: c.currentTerm.ToInf(),
 					Members: []MemberInfo{
@@ -970,9 +1000,10 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 4},
 	}
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 18)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 18)
 	entry3 := LogEntry{
+		Pos:  4,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -1043,6 +1074,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		}
 
 		entry1 := LogEntry{
+			Pos:  2,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    19,
@@ -1051,6 +1083,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 			Members: newMembers1,
 		}
 		entry2 := LogEntry{
+			Pos:  3,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    19,
@@ -1058,7 +1091,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 			}.ToInf(),
 			Members: newMembers2,
 		}
-		entry3 := c.newLogEntry("cmd data 03", 18)
+		entry3 := c.newLogEntryV2(4, "cmd data 03", 18)
 
 		c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 		c.doHandleVoteResp(nodeID3, 2, true)
@@ -1152,13 +1185,14 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 	// check accept req
 	acceptReq := c.doGetAcceptReq(nodeID6, 0, 0)
 
-	newCmdFunc := func(cmdStr string) LogEntry {
-		entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
+	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
+		entry := c.newLogEntryV2(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
 		return entry
 	}
 
 	membersEntry := LogEntry{
+		Pos:  2,
 		Type: LogTypeMembership,
 		Term: c.currentTerm.ToInf(),
 		Members: []MemberInfo{
@@ -1172,9 +1206,9 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
 			{Pos: 2, Entry: membersEntry},
-			{Pos: 3, Entry: newCmdFunc("cmd data 01")},
-			{Pos: 4, Entry: newCmdFunc("cmd data 02")},
-			{Pos: 5, Entry: newCmdFunc("cmd data 03")},
+			{Pos: 3, Entry: newCmdFunc(3, "cmd data 01")},
+			{Pos: 4, Entry: newCmdFunc(4, "cmd data 02")},
+			{Pos: 5, Entry: newCmdFunc(5, "cmd data 03")},
 		},
 		NextPos:   6,
 		Committed: 1,
@@ -1193,7 +1227,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 			ToNode: nodeID6,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
-				{Pos: 6, Entry: newCmdFunc("cmd data 04")},
+				{Pos: 6, Entry: newCmdFunc(6, "cmd data 04")},
 			},
 			NextPos:   7,
 			Committed: 1,
@@ -1212,8 +1246,8 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	// check accept req
 	acceptReq := c.doGetAcceptReq(nodeID3, 0, 0)
 
-	newCmdFunc := func(cmdStr string) LogEntry {
-		entry := c.newLogEntry(cmdStr, c.currentTerm.Num)
+	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
+		entry := c.newLogEntryV2(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
 		return entry
 	}
@@ -1222,9 +1256,9 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		ToNode: nodeID3,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
-			{Pos: 2, Entry: newCmdFunc("cmd data 01")},
-			{Pos: 3, Entry: newCmdFunc("cmd data 02")},
-			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
+			{Pos: 2, Entry: newCmdFunc(2, "cmd data 01")},
+			{Pos: 3, Entry: newCmdFunc(3, "cmd data 02")},
+			{Pos: 4, Entry: newCmdFunc(4, "cmd data 03")},
 		},
 		NextPos:   5,
 		Committed: 1,
@@ -1253,7 +1287,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
-			{Pos: 4, Entry: newCmdFunc("cmd data 03")},
+			{Pos: 4, Entry: newCmdFunc(4, "cmd data 03")},
 		},
 		NextPos:   5,
 		Committed: 3,
@@ -1424,6 +1458,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 0, 0)
 	newMembers := LogEntry{
+		Pos:  5,
 		Type: LogTypeMembership,
 		Term: c.currentTerm.ToInf(),
 		Members: []MemberInfo{
@@ -1481,6 +1516,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 5, 0)
 	newMembers := LogEntry{
+		Pos:  5,
 		Type: LogTypeMembership,
 		Term: c.currentTerm.ToInf(),
 		Members: []MemberInfo{
@@ -1502,8 +1538,8 @@ func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd 01", 18)
-	entry2 := c.newLogEntry("cmd 02", 18)
+	entry1 := c.newLogEntryV2(2, "cmd 01", 18)
+	entry2 := c.newLogEntryV2(3, "cmd 02", 18)
 	entry2.Term = InfiniteTerm{}
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
@@ -1538,6 +1574,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	}
 
 	entry1 := LogEntry{
+		Pos:  2,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -1546,6 +1583,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 		Members: newMembers1,
 	}
 	entry2 := LogEntry{
+		Pos:  3,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -1553,7 +1591,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 		}.ToInf(),
 		Members: newMembers2,
 	}
-	entry3 := c.newLogEntry("cmd data 03", 18) // pos = 4
+	entry3 := c.newLogEntryV2(4, "cmd data 03", 18) // pos = 4
 
 	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 	c.doHandleVoteResp(nodeID3, 2, true)
@@ -1710,7 +1748,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd test 01", 19)
+	entry1 := c.newLogEntryV2(2, "cmd test 01", 19)
 
 	c.doHandleVoteResp(nodeID1, 2, true)
 	c.doHandleVoteResp(nodeID1, 2, true, entry1)
@@ -1771,6 +1809,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	}
 
 	entry1 := LogEntry{
+		Pos:  2,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -1780,7 +1819,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	}
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1)
-	c.doHandleVoteResp(nodeID2, 2, false, LogEntry{})
+	c.doHandleVoteResp(nodeID2, 2, false, NewNullEntry(2))
 
 	// do get accept req
 	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
@@ -1846,6 +1885,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
 	}
 	entry2 := LogEntry{
+		Pos:     3,
 		Type:    LogTypeMembership,
 		Term:    c.currentTerm.ToInf(),
 		Members: newMembers2,
@@ -1983,9 +2023,9 @@ func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry("cmd data 02")},
-			{Pos: 4, Entry: c.newInfLogEntry("cmd data 04")},
-			{Pos: 5, Entry: LogEntry{}},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd data 02")},
+			{Pos: 4, Entry: c.newInfLogEntryV2(4, "cmd data 04")},
+			{Pos: 5, Entry: NewNullEntry(5)},
 		},
 	}, input)
 }
@@ -1997,10 +2037,10 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting(t *testing.T) {
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18) // pos = 2
-	entry2 := c.newLogEntry("cmd data 02", 18) // pos = 3
-	entry3 := c.newLogEntry("cmd data 03", 18) // pos = 4
-	entry4 := c.newLogEntry("cmd data 04", 18) // pos = 5
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 18) // pos = 2
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 18) // pos = 3
+	entry3 := c.newLogEntryV2(4, "cmd data 03", 18) // pos = 4
+	entry4 := c.newLogEntryV2(5, "cmd data 04", 18) // pos = 5
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2, entry3)
 
@@ -2042,10 +2082,10 @@ func TestCoreLogic__Candidate__With_Max_Buffer_Len__Waiting__State_Change_To_Fol
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd data 01", 18)
-	entry2 := c.newLogEntry("cmd data 02", 18)
-	entry3 := c.newLogEntry("cmd data 03", 18)
-	entry4 := c.newLogEntry("cmd data 04", 18)
+	entry1 := c.newLogEntryV2(2, "cmd data 01", 18)
+	entry2 := c.newLogEntryV2(3, "cmd data 02", 18)
+	entry3 := c.newLogEntryV2(4, "cmd data 03", 18)
+	entry4 := c.newLogEntryV2(5, "cmd data 04", 18)
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2, entry3)
 
@@ -2107,9 +2147,9 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
-				{Pos: 3, Entry: c.newAcceptLogEntry("cmd test 02")},
-				{Pos: 4, Entry: c.newAcceptLogEntry("cmd test 03")},
-				{Pos: 5, Entry: c.newAcceptLogEntry("cmd test 04")},
+				{Pos: 3, Entry: c.newAcceptLogEntryV2(3, "cmd test 02")},
+				{Pos: 4, Entry: c.newAcceptLogEntryV2(4, "cmd test 03")},
+				{Pos: 5, Entry: c.newAcceptLogEntryV2(5, "cmd test 04")},
 			},
 			NextPos:   6,
 			Committed: 2,
@@ -2378,7 +2418,8 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 		Entries: []PosLogEntry{
 			{
 				Pos: 1,
-				Entry: NewMembershipLogEntry(
+				Entry: NewMembershipLogEntryV2(
+					1,
 					InfiniteTerm{},
 					[]MemberInfo{
 						{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
@@ -2387,11 +2428,11 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 			},
 			{
 				Pos:   2,
-				Entry: c.newInfLogEntry("cmd test 02"),
+				Entry: c.newInfLogEntryV2(2, "cmd test 02"),
 			},
 			{
 				Pos:   3,
-				Entry: c.newInfLogEntry("cmd test 03"),
+				Entry: c.newInfLogEntryV2(3, "cmd test 03"),
 			},
 		},
 	}, input2)
@@ -2421,7 +2462,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	}
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
+			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
 		},
 		NextPos: 2,
 	}, output)
@@ -2441,10 +2482,10 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntryV2(4, "cmd test 04")},
 		},
 		NextPos: 5,
 	}, output)
@@ -2453,9 +2494,9 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 3)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
 		},
 		NextPos: 4,
 	}, output)
@@ -2464,8 +2505,8 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(2, 2)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
 		},
 		NextPos: 4,
 	}, output)
@@ -2473,9 +2514,9 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// inc fully replicated
 	c.log.UpsertEntries(
 		[]PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntryV2(4, "cmd test 04")},
 		},
 		nil,
 	)
@@ -2485,10 +2526,10 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry("cmd test 04")},
+			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+			{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
+			{Pos: 4, Entry: c.newInfLogEntryV2(4, "cmd test 04")},
 		},
 		NextPos: 5,
 	}, output)
@@ -2514,8 +2555,8 @@ func TestCoreLogic__Leader__GetEntriesWithWait__Waiting(t *testing.T) {
 
 		assert.Equal(t, GetCommittedEntriesOutput{
 			Entries: []PosLogEntry{
-				{Pos: 2, Entry: c.newInfLogEntry("cmd test 02")},
-				{Pos: 3, Entry: c.newInfLogEntry("cmd test 03")},
+				{Pos: 2, Entry: c.newInfLogEntryV2(2, "cmd test 02")},
+				{Pos: 3, Entry: c.newInfLogEntryV2(3, "cmd test 03")},
 			},
 			NextPos: 4,
 		}, resultFn())
@@ -2568,8 +2609,8 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
-				{Pos: 4, Entry: c.newAcceptLogEntry("cmd test 04")},
-				{Pos: 5, Entry: NewMembershipLogEntry(c.currentTerm.ToInf(), members)},
+				{Pos: 4, Entry: c.newAcceptLogEntryV2(4, "cmd test 04")},
+				{Pos: 5, Entry: NewMembershipLogEntryV2(5, c.currentTerm.ToInf(), members)},
 			},
 			NextPos:   6,
 			Committed: 3,
@@ -2610,6 +2651,7 @@ func TestCoreLogic__Candidate__Change_Membership_3_Nodes__Current_Leader_Not_In_
 	}
 
 	entry1 := LogEntry{
+		Pos:  2,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -2618,6 +2660,7 @@ func TestCoreLogic__Candidate__Change_Membership_3_Nodes__Current_Leader_Not_In_
 		Members: newMembers1,
 	}
 	entry2 := LogEntry{
+		Pos:  3,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -2693,6 +2736,7 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 	}
 
 	entry1 := LogEntry{
+		Pos:  2,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -2701,6 +2745,7 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 		Members: newMembers1,
 	}
 	entry2 := LogEntry{
+		Pos:  3,
 		Type: LogTypeMembership,
 		Term: TermNum{
 			Num:    19,
@@ -2831,13 +2876,13 @@ func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
 
 	c.doStartElection()
 
-	entry1 := c.newLogEntry("cmd test 01", 18)
-	c.doHandleVoteResp(nodeID1, 2, true, LogEntry{}, entry1)
+	entry1 := c.newLogEntryV2(3, "cmd test 01", 18)
+	c.doHandleVoteResp(nodeID1, 2, true, NewNullEntry(2), entry1)
 	c.doHandleVoteResp(nodeID2, 2, true)
 
 	req := c.doGetAcceptReq(nodeID1, 0, 0)
 
-	noopEntry := NewNoOpLogEntry()
+	noopEntry := NewNoOpLogEntryV2(2)
 	noopEntry.Term = c.currentTerm.ToInf()
 	entry1.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{

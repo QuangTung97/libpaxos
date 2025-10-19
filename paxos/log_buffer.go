@@ -70,7 +70,7 @@ func (b *LogBuffer) GetEntries(posList ...LogPos) []PosLogEntry {
 	for _, pos := range posList {
 		queueIndex := int(pos + LogPos(b.queueSize-1) - *b.lastCommitted)
 		if queueIndex < 0 || queueIndex >= b.queueSize {
-			result = append(result, PosLogEntry{Pos: pos})
+			result = append(result, PosLogEntry{Pos: pos, Entry: NewNullEntry(pos)})
 		} else {
 			realIndex := b.computeRealIndex(queueIndex)
 			result = append(result, PosLogEntry{

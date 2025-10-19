@@ -97,7 +97,15 @@ func (s State) String() string {
 
 // ----------------------------------------------------------
 
+func NewNullEntry(pos LogPos) LogEntry {
+	return LogEntry{
+		Pos:  pos,
+		Type: LogTypeNull,
+	}
+}
+
 type LogEntry struct {
+	Pos  LogPos
 	Type LogType
 	Term InfiniteTerm
 
@@ -140,6 +148,7 @@ const (
 	LogTypeNoOp
 )
 
+// NewNoOpLogEntry TODO remove
 func NewNoOpLogEntry() LogEntry {
 	term := TermNum{
 		Num: -1,
@@ -150,6 +159,18 @@ func NewNoOpLogEntry() LogEntry {
 	}
 }
 
+func NewNoOpLogEntryV2(pos LogPos) LogEntry {
+	term := TermNum{
+		Num: -1,
+	}
+	return LogEntry{
+		Pos:  pos,
+		Type: LogTypeNoOp,
+		Term: term.ToInf(),
+	}
+}
+
+// NewCmdLogEntry TODO remove
 func NewCmdLogEntry(term InfiniteTerm, data []byte) LogEntry {
 	return LogEntry{
 		Type:    LogTypeCmd,
@@ -158,11 +179,34 @@ func NewCmdLogEntry(term InfiniteTerm, data []byte) LogEntry {
 	}
 }
 
+func NewCmdLogEntryV2(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
+	return LogEntry{
+		Pos:     pos,
+		Type:    LogTypeCmd,
+		Term:    term,
+		CmdData: data,
+	}
+}
+
+// NewMembershipLogEntry TODO remove
 func NewMembershipLogEntry(
 	term InfiniteTerm,
 	members []MemberInfo,
 ) LogEntry {
 	return LogEntry{
+		Type:    LogTypeMembership,
+		Term:    term,
+		Members: members,
+	}
+}
+
+func NewMembershipLogEntryV2(
+	pos LogPos,
+	term InfiniteTerm,
+	members []MemberInfo,
+) LogEntry {
+	return LogEntry{
+		Pos:     pos,
 		Type:    LogTypeMembership,
 		Term:    term,
 		Members: members,

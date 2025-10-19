@@ -38,6 +38,7 @@ func (m *MemLog) Put(pos LogPos, entry LogEntry) {
 	}
 
 	index := m.getQueueIndex(memPos - 1)
+	entry.Pos = pos // TODO remove
 	m.queueData[index].entry = entry
 }
 

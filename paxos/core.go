@@ -1389,6 +1389,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			entry := memLog.Get(pos)
 			AssertTrue(entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
+			AssertTrue(entry.Pos == pos)
 		}
 
 		// check fully replicated always greater than or equal min buffer pos

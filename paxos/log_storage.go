@@ -42,6 +42,7 @@ type LogStorage interface {
 	GetFullyReplicated() LogPos
 }
 
+// PosLogEntry TODO remove
 type PosLogEntry struct {
 	Pos   LogPos
 	Entry LogEntry
