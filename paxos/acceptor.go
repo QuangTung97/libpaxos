@@ -127,6 +127,7 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 		voteEntries = append(voteEntries, VoteLogEntry{
 			Pos:     newFromPos,
 			IsFinal: true,
+			Entry:   NewNullEntry(newFromPos),
 		})
 	}
 

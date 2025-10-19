@@ -79,8 +79,10 @@ func (s *acceptorLogicTest) doHandleVote(term TermNum, fromPos LogPos) []Request
 func newPosLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	result := make([]PosLogEntry, 0, len(entries))
 	for index, e := range entries {
+		pos := from + LogPos(index)
+		AssertTrue(e.Pos == pos)
 		result = append(result, PosLogEntry{
-			Pos:   from + LogPos(index),
+			Pos:   pos,
 			Entry: e,
 		})
 	}
@@ -90,20 +92,31 @@ func newPosLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 func newAcceptLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	result := make([]PosLogEntry, 0, len(entries))
 	for index, e := range entries {
+		pos := from + LogPos(index)
+		AssertTrue(e.Pos == pos)
 		result = append(result, PosLogEntry{
-			Pos:   from + LogPos(index),
+			Pos:   pos,
 			Entry: e,
 		})
 	}
 	return result
 }
 
-func (s *acceptorLogicTest) newCmd(cmd string) LogEntry {
+// newCmdV1 TODO remove
+func (s *acceptorLogicTest) newCmdV1(cmd string) LogEntry {
 	return NewCmdLogEntry(s.currentTerm.ToInf(), []byte(cmd))
 }
 
-func (s *acceptorLogicTest) newCmdInf(cmd string) LogEntry {
+func (s *acceptorLogicTest) newCmd(pos LogPos, cmd string) LogEntry {
+	return NewCmdLogEntryV2(pos, s.currentTerm.ToInf(), []byte(cmd))
+}
+
+func (s *acceptorLogicTest) newCmdInfV1(cmd string) LogEntry {
 	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmd))
+}
+
+func (s *acceptorLogicTest) newCmdInf(pos LogPos, cmd string) LogEntry {
+	return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmd))
 }
 
 func (s *acceptorLogicTest) newCmdTerm(term TermNum, cmd string) LogEntry {
@@ -137,6 +150,7 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 				{
 					Pos:     2,
 					IsFinal: true,
+					Entry:   NewNullEntry(2),
 				},
 			},
 		},
@@ -154,6 +168,7 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 				{
 					Pos:     2,
 					IsFinal: true,
+					Entry:   NewNullEntry(2),
 				},
 			},
 		},
@@ -168,9 +183,9 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 
 	s.log.UpsertEntries(
 		newPosLogEntries(2,
-			s.newCmd("cmd test 01"),
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
 		),
 		nil,
 	)
@@ -183,10 +198,10 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 2, Entry: s.newCmd("cmd test 01")},
-				{Pos: 3, Entry: s.newCmd("cmd test 02")},
-				{Pos: 4, Entry: s.newCmd("cmd test 03")},
-				{Pos: 5, IsFinal: true},
+				{Pos: 2, Entry: s.newCmd(2, "cmd test 01")},
+				{Pos: 3, Entry: s.newCmd(3, "cmd test 02")},
+				{Pos: 4, Entry: s.newCmd(4, "cmd test 03")},
+				{Pos: 5, IsFinal: true, Entry: NewNullEntry(5)},
 			},
 		},
 	}, outputs)
@@ -199,9 +214,9 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 
 	s.log.UpsertEntries(
 		newPosLogEntries(2,
-			s.newCmd("cmd test 01"),
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
 		),
 		nil,
 	)
@@ -214,16 +229,16 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 2, Entry: s.newCmd("cmd test 01")},
-				{Pos: 3, Entry: s.newCmd("cmd test 02")},
+				{Pos: 2, Entry: s.newCmd(2, "cmd test 01")},
+				{Pos: 3, Entry: s.newCmd(3, "cmd test 02")},
 			},
 		},
 		{
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 4, Entry: s.newCmd("cmd test 03")},
-				{Pos: 5, IsFinal: true},
+				{Pos: 4, Entry: s.newCmd(4, "cmd test 03")},
+				{Pos: 5, IsFinal: true, Entry: NewNullEntry(5)},
 			},
 		},
 	}, outputs)
@@ -262,9 +277,9 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 01"),
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
 		)...,
 	)
 	assert.Equal(t, AcceptEntriesOutput{
@@ -276,16 +291,16 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 	entries := s.log.GetEntries(2, 100)
 	assert.Equal(t, newPosLogEntries(
 		2,
-		s.newCmd("cmd test 01"),
-		s.newCmd("cmd test 02"),
-		s.newCmd("cmd test 03"),
+		s.newCmd(2, "cmd test 01"),
+		s.newCmd(3, "cmd test 02"),
+		s.newCmd(4, "cmd test 03"),
 	), entries)
 
 	// accept again
 	resp = s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(5,
-			s.newCmd("cmd test 04"),
+			s.newCmd(5, "cmd test 04"),
 		)...,
 	)
 	assert.Equal(t, AcceptEntriesOutput{
@@ -297,8 +312,8 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 	entries = s.log.GetEntries(4, 100)
 	assert.Equal(t, newPosLogEntries(
 		4,
-		s.newCmd("cmd test 03"),
-		s.newCmd("cmd test 04"),
+		s.newCmd(4, "cmd test 03"),
+		s.newCmd(5, "cmd test 04"),
 	), entries)
 
 	// accept entries on lower term
@@ -308,7 +323,7 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 		ToNode: nodeID2,
 		Term:   lowerTerm,
 		Entries: newAcceptLogEntries(2,
-			s.newCmd("cmd test 05"),
+			s.newCmd(2, "cmd test 05"),
 		),
 		Committed: 1,
 	})
@@ -325,9 +340,9 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 01"),
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -336,8 +351,8 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	resp = s.doAcceptEntries(
 		3,
 		newAcceptLogEntries(6,
-			s.newCmd("cmd test 04"),
-			s.newCmd("cmd test 05"),
+			s.newCmd(6, "cmd test 04"),
+			s.newCmd(7, "cmd test 05"),
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -345,12 +360,12 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	entries := s.log.GetEntries(2, 100)
 	assert.Equal(t, newPosLogEntries(
 		2,
-		s.newCmdInf("cmd test 01"),
-		s.newCmdInf("cmd test 02"),
-		s.newCmd("cmd test 03"),
-		LogEntry{},
-		s.newCmd("cmd test 04"),
-		s.newCmd("cmd test 05"),
+		s.newCmdInf(2, "cmd test 01"),
+		s.newCmdInf(3, "cmd test 02"),
+		s.newCmd(4, "cmd test 03"),
+		NewNullEntry(5),
+		s.newCmd(6, "cmd test 04"),
+		s.newCmd(7, "cmd test 05"),
 	), entries)
 
 	// do accept only increase commit pos
@@ -361,12 +376,12 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	entries = s.log.GetEntries(2, 100)
 	assert.Equal(t, newPosLogEntries(
 		2,
-		s.newCmdInf("cmd test 01"),
-		s.newCmdInf("cmd test 02"),
-		s.newCmdInf("cmd test 03"),
-		LogEntry{},
-		s.newCmdInf("cmd test 04"),
-		s.newCmd("cmd test 05"),
+		s.newCmdInf(2, "cmd test 01"),
+		s.newCmdInf(3, "cmd test 02"),
+		s.newCmdInf(4, "cmd test 03"),
+		NewNullEntry(5),
+		s.newCmdInf(6, "cmd test 04"),
+		s.newCmd(7, "cmd test 05"),
 	), entries)
 
 	assert.Equal(t, []fake.UpsertInput{
@@ -383,9 +398,9 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 01"),
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
+			s.newCmdV1("cmd test 01"),
+			s.newCmdV1("cmd test 02"),
+			s.newCmdV1("cmd test 03"),
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -397,8 +412,8 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 	resp = s.doAcceptEntries(
 		3,
 		newAcceptLogEntries(5,
-			s.newCmd("cmd test 04"),
-			s.newCmd("cmd test 05"),
+			s.newCmdV1("cmd test 04"),
+			s.newCmdV1("cmd test 05"),
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -410,8 +425,8 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 		s.newCmdTerm(oldTerm, "cmd test 01"),
 		s.newCmdTerm(oldTerm, "cmd test 02"),
 		s.newCmdTerm(oldTerm, "cmd test 03"),
-		s.newCmd("cmd test 04"),
-		s.newCmd("cmd test 05"),
+		s.newCmdV1("cmd test 04"),
+		s.newCmdV1("cmd test 05"),
 	), entries)
 
 	// increase commit pos only
@@ -425,8 +440,8 @@ func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 		s.newCmdTerm(oldTerm, "cmd test 01"),
 		s.newCmdTerm(oldTerm, "cmd test 02"),
 		s.newCmdTerm(oldTerm, "cmd test 03"),
-		s.newCmdInf("cmd test 04"),
-		s.newCmdInf("cmd test 05"),
+		s.newCmdInfV1("cmd test 04"),
+		s.newCmdInfV1("cmd test 05"),
 	), entries)
 
 	assert.Equal(t, []fake.UpsertInput{
@@ -443,8 +458,8 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(4,
-			s.newCmd("cmd test 03"), // pos = 4
-			s.newCmd("cmd test 04"), // pos = 5
+			s.newCmdV1("cmd test 03"), // pos = 4
+			s.newCmdV1("cmd test 04"), // pos = 5
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -471,8 +486,8 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 		2,
 		LogEntry{},
 		LogEntry{},
-		s.newCmdInf("cmd test 03"),
-		s.newCmdInf("cmd test 04"),
+		s.newCmdInfV1("cmd test 03"),
+		s.newCmdInfV1("cmd test 04"),
 	), entries)
 }
 
@@ -482,8 +497,8 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Incre
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(4,
-			s.newCmd("cmd test 03"), // pos = 4
-			s.newCmd("cmd test 04"), // pos = 5
+			s.newCmdV1("cmd test 03"), // pos = 4
+			s.newCmdV1("cmd test 04"), // pos = 5
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -532,9 +547,9 @@ func TestAcceptorLogic_AcceptEntries__Mark_Committed__Multiple_Batches(t *testin
 	s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
-			s.newCmd("cmd test 04"),
+			s.newCmdV1("cmd test 02"),
+			s.newCmdV1("cmd test 03"),
+			s.newCmdV1("cmd test 04"),
 		)...,
 	)
 
@@ -542,9 +557,9 @@ func TestAcceptorLogic_AcceptEntries__Mark_Committed__Multiple_Batches(t *testin
 	s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(6,
-			s.newCmd("cmd test 06"),
-			s.newCmd("cmd test 07"),
-			s.newCmd("cmd test 08"),
+			s.newCmdV1("cmd test 06"),
+			s.newCmdV1("cmd test 07"),
+			s.newCmdV1("cmd test 08"),
 		)...,
 	)
 
@@ -558,7 +573,7 @@ func TestAcceptorLogic_AcceptEntries__Mark_Committed__Multiple_Batches(t *testin
 	// increase commit
 	s.doAcceptEntries(8,
 		newAcceptLogEntries(9,
-			s.newCmd("cmd test 09"),
+			s.newCmdV1("cmd test 09"),
 		)...,
 	)
 
@@ -668,8 +683,8 @@ func TestAcceptorLogic__Get_Need_Replicated__Wait_For_New_Fully_Replicated(t *te
 
 		s.doAcceptEntries(0,
 			newAcceptLogEntries(2,
-				s.newCmd("cmd data 01"),
-				s.newCmd("cmd data 02"),
+				s.newCmdV1("cmd data 01"),
+				s.newCmdV1("cmd data 02"),
 			)...,
 		)
 
@@ -688,9 +703,9 @@ func TestAcceptorLogic__Get_Need_Replicated__For_Finite_Term_Entries(t *testing.
 	s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
-			s.newCmd("cmd test 04"),
+			s.newCmdV1("cmd test 02"),
+			s.newCmdV1("cmd test 03"),
+			s.newCmdV1("cmd test 04"),
 		)...,
 	)
 
@@ -698,8 +713,8 @@ func TestAcceptorLogic__Get_Need_Replicated__For_Finite_Term_Entries(t *testing.
 	s.doAcceptEntries(
 		5,
 		newAcceptLogEntries(6,
-			s.newCmd("cmd test 06"),
-			s.newCmd("cmd test 07"),
+			s.newCmdV1("cmd test 06"),
+			s.newCmdV1("cmd test 07"),
 		)...,
 	)
 	assert.Equal(t, LogPos(1), s.log.GetFullyReplicated())
@@ -771,9 +786,9 @@ func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
 	resp := s.doAcceptEntries(
 		1,
 		newAcceptLogEntries(2,
-			s.newCmd("cmd test 02"),
-			s.newCmd("cmd test 03"),
-			s.newCmd("cmd test 04"),
+			s.newCmdV1("cmd test 02"),
+			s.newCmdV1("cmd test 03"),
+			s.newCmdV1("cmd test 04"),
 		)...,
 	)
 	assert.Equal(t, true, resp.Success)
@@ -787,8 +802,8 @@ func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []PosLogEntry{
 		{Pos: 1, Entry: s.initMemberLogEntry()},
-		{Pos: 2, Entry: s.newCmdInf("cmd test 02")},
-		{Pos: 3, Entry: s.newCmdInf("cmd test 03")},
+		{Pos: 2, Entry: s.newCmdInfV1("cmd test 02")},
+		{Pos: 3, Entry: s.newCmdInfV1("cmd test 03")},
 	}, output.Entries)
 	assert.Equal(t, LogPos(4), output.NextPos)
 
@@ -797,7 +812,7 @@ func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.Equal(t, []PosLogEntry{
 		{Pos: 1, Entry: s.initMemberLogEntry()},
-		{Pos: 2, Entry: s.newCmdInf("cmd test 02")},
+		{Pos: 2, Entry: s.newCmdInfV1("cmd test 02")},
 	}, output.Entries)
 	assert.Equal(t, LogPos(3), output.NextPos)
 
@@ -810,14 +825,14 @@ func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
 		s.doAcceptEntries(
 			4,
 			newAcceptLogEntries(5,
-				s.newCmd("cmd test 05"),
-				s.newCmd("cmd test 06"),
+				s.newCmdV1("cmd test 05"),
+				s.newCmdV1("cmd test 06"),
 			)...,
 		)
 
 		output := resultFn()
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 4, Entry: s.newCmdInf("cmd test 04")},
+			{Pos: 4, Entry: s.newCmdInfV1("cmd test 04")},
 		}, output.Entries)
 		assert.Equal(t, LogPos(5), output.NextPos)
 
@@ -826,8 +841,8 @@ func TestAcceptorLogic__GetEntriesWithWait(t *testing.T) {
 		// get again
 		output = s.doGetCommitted(5, 100)
 		assert.Equal(t, []PosLogEntry{
-			{Pos: 5, Entry: s.newCmdInf("cmd test 05")},
-			{Pos: 6, Entry: s.newCmdInf("cmd test 06")},
+			{Pos: 5, Entry: s.newCmdInfV1("cmd test 05")},
+			{Pos: 6, Entry: s.newCmdInfV1("cmd test 06")},
 		}, output.Entries)
 		assert.Equal(t, LogPos(7), output.NextPos)
 	})
