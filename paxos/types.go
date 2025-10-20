@@ -114,6 +114,21 @@ type LogEntry struct {
 
 	// CmdData valid only when Type = LogTypeCmd
 	CmdData []byte
+
+	CreatedTerm TermNum
+}
+
+func ValidateCreatedTerm(entry LogEntry) {
+	if entry.IsNull() {
+		return
+	}
+	if entry.Type == LogTypeNoOp {
+		return
+	}
+	if entry.Type == LogTypeMembership {
+		return
+	}
+	AssertTrue(entry.CreatedTerm != TermNum{})
 }
 
 func (e LogEntry) IsNull() bool {
@@ -171,12 +186,23 @@ func NewNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
 	}
 }
 
-func NewCmdLogEntry(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
+// NewCmdLogEntryV1 TODO remove
+func NewCmdLogEntryV1(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
 	return LogEntry{
 		Pos:     pos,
 		Type:    LogTypeCmd,
 		Term:    term,
 		CmdData: data,
+	}
+}
+
+func NewCmdLogEntry(pos LogPos, term InfiniteTerm, data []byte, createdTerm TermNum) LogEntry {
+	return LogEntry{
+		Pos:         pos,
+		Type:        LogTypeCmd,
+		Term:        term,
+		CmdData:     data,
+		CreatedTerm: createdTerm,
 	}
 }
 

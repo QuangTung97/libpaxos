@@ -116,6 +116,14 @@ type simulateNodeState struct {
 	stateLastPos    LogPos
 }
 
+func (s *simulateNodeState) getMachineLog() []LogEntry {
+	result := slices.Clone(s.stateMachineLog)
+	for i := range result {
+		result[i].CreatedTerm = TermNum{}
+	}
+	return result
+}
+
 type simulationTestConfig struct {
 	maxBufferLen  int
 	acceptorLimit int
@@ -777,7 +785,7 @@ func (s *simulationTestCase) insertNewCommand(
 }
 
 func (s *simulationTestCase) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
-	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr))
+	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr), TermNum{})
 }
 
 func (s *simulationTestCase) newPosLogEntries(
@@ -914,7 +922,7 @@ func TestPaxos__Single_Node(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "new cmd 02"),
 			s.newInfLogEntry(3, "new cmd 03"),
-		), s.nodeMap[nodeID1].stateMachineLog)
+		), s.nodeMap[nodeID1].getMachineLog())
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].stateLastPos)
 
 		s.printAllWaiting()
@@ -995,7 +1003,7 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "cmd test 02"),
 			s.newInfLogEntry(3, "cmd test 03"),
-		), s.nodeMap[nodeID1].stateMachineLog)
+		), s.nodeMap[nodeID1].getMachineLog())
 
 		// check logs of node 2
 		assert.Equal(t, s.newPosLogEntries(1,
@@ -1010,7 +1018,7 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "cmd test 02"),
 			s.newInfLogEntry(3, "cmd test 03"),
-		), s.nodeMap[nodeID2].stateMachineLog)
+		), s.nodeMap[nodeID2].getMachineLog())
 
 		// restart state machine of node 3
 		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
@@ -1035,7 +1043,7 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "cmd test 02"),
 			s.newInfLogEntry(3, "cmd test 03"),
-		), s.nodeMap[nodeID3].stateMachineLog)
+		), s.nodeMap[nodeID3].getMachineLog())
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].log.GetFullyReplicated())
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
 
@@ -1104,7 +1112,7 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members1),
 			NewMembershipLogEntry(2, InfiniteTerm{}, members2),
-		), s.nodeMap[nodeID1].stateMachineLog)
+		), s.nodeMap[nodeID1].getMachineLog())
 
 		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
 		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
@@ -1126,14 +1134,14 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members1),
 			NewMembershipLogEntry(2, InfiniteTerm{}, members2),
 			NewMembershipLogEntry(3, InfiniteTerm{}, members3),
-		), s.nodeMap[nodeID1].stateMachineLog)
+		), s.nodeMap[nodeID1].getMachineLog())
 
 		// check logs of node 2
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members1),
 			NewMembershipLogEntry(2, InfiniteTerm{}, members2),
 			NewMembershipLogEntry(3, InfiniteTerm{}, members3),
-		), s.nodeMap[nodeID2].stateMachineLog)
+		), s.nodeMap[nodeID2].getMachineLog())
 
 		// check logs of node 3
 		assert.Equal(t, s.newPosLogEntries(1), s.nodeMap[nodeID3].stateMachineLog)
@@ -1150,7 +1158,7 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 			NewMembershipLogEntry(1, InfiniteTerm{}, members1),
 			NewMembershipLogEntry(2, InfiniteTerm{}, members2),
 			NewMembershipLogEntry(3, InfiniteTerm{}, members3),
-		), s.nodeMap[nodeID3].stateMachineLog)
+		), s.nodeMap[nodeID3].getMachineLog())
 
 		s.printAllWaiting()
 	})

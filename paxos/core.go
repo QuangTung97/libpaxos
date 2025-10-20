@@ -941,6 +941,7 @@ func (c *coreLogicImpl) handleInsertSingleCmd(
 			pos,
 			c.getCurrentTerm().ToInf(),
 			cmd,
+			c.getCurrentTerm(),
 		)
 		c.appendNewEntry(entry)
 	})

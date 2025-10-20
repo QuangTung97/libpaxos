@@ -25,6 +25,7 @@ func NewMemLog(lastCommitted *LogPos, sizeLog int) *MemLog {
 
 func (m *MemLog) Put(entry LogEntry) {
 	AssertTrue(entry.Pos > 0)
+	ValidateCreatedTerm(entry)
 
 	pos := entry.Pos
 

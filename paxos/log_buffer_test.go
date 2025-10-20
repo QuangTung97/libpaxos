@@ -14,7 +14,7 @@ func newLogList(entries ...LogEntry) []LogEntry {
 
 func TestLogBuffer(t *testing.T) {
 	newCmd := func(pos LogPos, cmd string) LogEntry {
-		return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmd))
+		return NewCmdLogEntryV1(pos, InfiniteTerm{}, []byte(cmd))
 	}
 
 	t.Run("normal", func(t *testing.T) {

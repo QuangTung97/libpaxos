@@ -24,6 +24,11 @@ var (
 	nodeID6 = fake.NewNodeID(6)
 )
 
+var testCreatedTerm = TermNum{
+	Num:    17,
+	NodeID: nodeID3,
+}
+
 type coreLogicTest struct {
 	ctx       context.Context
 	cancelCtx context.Context
@@ -111,7 +116,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 }
 
 func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue) LogEntry {
-	return NewCmdLogEntry(
+	entry := NewCmdLogEntryV1(
 		pos,
 		TermNum{
 			Num:    termNum,
@@ -119,14 +124,16 @@ func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue
 		}.ToInf(),
 		[]byte(cmdStr),
 	)
+	entry.CreatedTerm = testCreatedTerm
+	return entry
 }
 
 func (c *coreLogicTest) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
-	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr))
+	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr), c.currentTerm)
 }
 
 func (c *coreLogicTest) newAcceptLogEntry(pos LogPos, cmdStr string) LogEntry {
-	return NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr))
+	return NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr), c.currentTerm)
 }
 
 func (c *coreLogicTest) doHandleVoteResp(
@@ -689,11 +696,13 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 				2,
 				c.currentTerm.ToInf(),
 				[]byte("cmd data 01"),
+				c.currentTerm,
 			),
 			NewCmdLogEntry(
 				3,
 				c.currentTerm.ToInf(),
 				[]byte("cmd data 02"),
+				c.currentTerm,
 			),
 		),
 		NextPos:   4,
@@ -1101,6 +1110,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
 		entry := c.newLogEntry(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
+		entry.CreatedTerm = c.currentTerm
 		return entry
 	}
 
@@ -1161,6 +1171,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
 		entry := c.newLogEntry(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
+		entry.CreatedTerm = c.currentTerm
 		return entry
 	}
 

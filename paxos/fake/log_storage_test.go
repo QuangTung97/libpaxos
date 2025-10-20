@@ -15,12 +15,12 @@ func newLogList(entries ...paxos.LogEntry) []paxos.LogEntry {
 func TestLogStorageFake(t *testing.T) {
 	s := &LogStorageFake{}
 
-	entry1 := paxos.NewCmdLogEntry(
+	entry1 := paxos.NewCmdLogEntryV1(
 		2,
 		paxos.InfiniteTerm{},
 		[]byte("hello01"),
 	)
-	entry2 := paxos.NewCmdLogEntry(
+	entry2 := paxos.NewCmdLogEntryV1(
 		4,
 		paxos.InfiniteTerm{},
 		[]byte("hello02"),
@@ -60,13 +60,13 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		members,
 	)
 
-	entry2 := paxos.NewCmdLogEntry(
+	entry2 := paxos.NewCmdLogEntryV1(
 		2,
 		paxos.InfiniteTerm{},
 		[]byte("hello01"),
 	)
 
-	entry3 := paxos.NewCmdLogEntry(
+	entry3 := paxos.NewCmdLogEntryV1(
 		3,
 		paxos.TermNum{
 			Num:    41,
@@ -95,7 +95,7 @@ func TestLogStorageFake_Membership(t *testing.T) {
 }
 
 func newCmdLog(pos paxos.LogPos, term paxos.TermNum, cmd string) paxos.LogEntry {
-	return paxos.NewCmdLogEntry(
+	return paxos.NewCmdLogEntryV1(
 		pos,
 		term.ToInf(),
 		[]byte(cmd),

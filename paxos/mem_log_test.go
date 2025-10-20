@@ -11,15 +11,16 @@ import (
 
 func TestMemLog(t *testing.T) {
 	newEntry := func(pos LogPos, cmd string) LogEntry {
-		return LogEntry{
-			Pos:  pos,
-			Type: LogTypeCmd,
-			Term: TermNum{
+		return NewCmdLogEntry(
+			pos,
+
+			TermNum{
 				Num:    15,
 				NodeID: nodeID3,
 			}.ToInf(),
-			CmdData: []byte(cmd),
-		}
+			[]byte(cmd),
+			testCreatedTerm,
+		)
 	}
 
 	t.Run("normal", func(t *testing.T) {
