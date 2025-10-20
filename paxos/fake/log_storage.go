@@ -144,9 +144,12 @@ func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosL
 		}
 
 		index := pos - 1
+		entry := s.logEntries[index]
+		entry.Pos = pos
+
 		result = append(result, paxos.PosLogEntry{
 			Pos:   pos,
-			Entry: s.logEntries[index],
+			Entry: entry,
 		})
 	}
 

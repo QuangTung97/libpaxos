@@ -11,14 +11,16 @@ import (
 func TestLogStorageFake(t *testing.T) {
 	s := &LogStorageFake{}
 
-	entry1 := paxos.LogEntry{
-		Type:    paxos.LogTypeCmd,
-		CmdData: []byte("hello01"),
-	}
-	entry2 := paxos.LogEntry{
-		Type:    paxos.LogTypeCmd,
-		CmdData: []byte("hello02"),
-	}
+	entry1 := paxos.NewCmdLogEntry(
+		2,
+		paxos.InfiniteTerm{},
+		[]byte("hello01"),
+	)
+	entry2 := paxos.NewCmdLogEntry(
+		4,
+		paxos.InfiniteTerm{},
+		[]byte("hello02"),
+	)
 
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{
@@ -54,24 +56,26 @@ func TestLogStorageFake_Membership(t *testing.T) {
 			CreatedAt: 1,
 		},
 	}
+	entry1 := paxos.NewMembershipLogEntry(
+		1,
+		paxos.InfiniteTerm{},
+		members,
+	)
 
-	entry1 := paxos.LogEntry{
-		Type:    paxos.LogTypeMembership,
-		Term:    paxos.InfiniteTerm{},
-		Members: members,
-	}
-	entry2 := paxos.LogEntry{
-		Type:    paxos.LogTypeCmd,
-		CmdData: []byte("hello01"),
-	}
-	entry3 := paxos.LogEntry{
-		Type: paxos.LogTypeCmd,
-		Term: paxos.TermNum{
+	entry2 := paxos.NewCmdLogEntry(
+		2,
+		paxos.InfiniteTerm{},
+		[]byte("hello01"),
+	)
+
+	entry3 := paxos.NewCmdLogEntry(
+		3,
+		paxos.TermNum{
 			Num:    41,
 			NodeID: NewNodeID(2),
 		}.ToInf(),
-		CmdData: []byte("hello02"),
-	}
+		[]byte("hello02"),
+	)
 
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 1, Entry: entry1},
@@ -93,12 +97,11 @@ func TestLogStorageFake_Membership(t *testing.T) {
 }
 
 func newCmdLog(pos paxos.LogPos, term paxos.TermNum, cmd string) paxos.LogEntry {
-	return paxos.LogEntry{
-		Pos:     pos,
-		Type:    paxos.LogTypeCmd,
-		Term:    term.ToInf(),
-		CmdData: []byte(cmd),
-	}
+	return paxos.NewCmdLogEntry(
+		pos,
+		term.ToInf(),
+		[]byte(cmd),
+	)
 }
 
 func newMembershipLog(pos paxos.LogPos, term paxos.TermNum, nodes ...paxos.NodeID) paxos.LogEntry {
@@ -237,7 +240,7 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 	entries := s.GetEntriesWithPos(2, 3, 4)
 	assert.Equal(t, []paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
-		{Pos: 3, Entry: paxos.LogEntry{}},
+		{Pos: 3, Entry: paxos.NewNullEntry(3)},
 		{Pos: 4, Entry: entry2},
 	}, entries)
 
