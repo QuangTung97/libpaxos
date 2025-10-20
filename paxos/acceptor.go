@@ -11,7 +11,6 @@ type AcceptorLogic interface {
 	StateMachineLogGetter
 
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
-	AcceptEntriesV1(input AcceptEntriesInputV1) (AcceptEntriesOutput, error)
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
 
 	GetNeedReplicatedPos(
@@ -135,20 +134,6 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 		Term:    inputTerm,
 		Entries: voteEntries,
 	}, newFromPos, isFinal
-}
-
-// AcceptEntriesV1 TODO remove
-func (s *acceptorLogicImpl) AcceptEntriesV1(
-	input AcceptEntriesInputV1,
-) (AcceptEntriesOutput, error) {
-	newInput := AcceptEntriesInput{
-		ToNode:    input.ToNode,
-		Term:      input.Term,
-		Entries:   UnwrapPosLogEntryList(input.Entries),
-		NextPos:   input.NextPos,
-		Committed: input.Committed,
-	}
-	return s.AcceptEntries(newInput)
 }
 
 func (s *acceptorLogicImpl) AcceptEntries(

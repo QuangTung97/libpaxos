@@ -240,10 +240,10 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 	}, nil)
 
 	entries := s.GetEntriesWithPos(2, 3, 4)
-	assert.Equal(t, []paxos.PosLogEntry{
-		{Pos: 2, Entry: entry1},
-		{Pos: 3, Entry: paxos.NewNullEntry(3)},
-		{Pos: 4, Entry: entry2},
+	assert.Equal(t, []paxos.LogEntry{
+		entry1,
+		paxos.NewNullEntry(3),
+		entry2,
 	}, entries)
 
 	// with outside of max

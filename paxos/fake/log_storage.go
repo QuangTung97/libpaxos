@@ -148,13 +148,13 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.LogEnt
 	return result
 }
 
-func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosLogEntry {
+func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.LogEntry {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
 	maxPos := paxos.LogPos(len(s.logEntries))
 
-	result := make([]paxos.PosLogEntry, 0)
+	result := make([]paxos.LogEntry, 0)
 	for _, pos := range posList {
 		if pos > maxPos {
 			panic("Outside of log range")
@@ -164,10 +164,7 @@ func (s *LogStorageFake) GetEntriesWithPos(posList ...paxos.LogPos) []paxos.PosL
 		entry := s.logEntries[index]
 		entry.Pos = pos
 
-		result = append(result, paxos.PosLogEntry{
-			Pos:   pos,
-			Entry: entry,
-		})
+		result = append(result, entry)
 	}
 
 	return result

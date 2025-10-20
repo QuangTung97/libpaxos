@@ -1890,7 +1890,7 @@ func TestAssertTrue(t *testing.T) {
 	})
 }
 
-func (c *coreLogicTest) doGetNeedReplicated(nodeID NodeID, posList ...LogPos) AcceptEntriesInputV1 {
+func (c *coreLogicTest) doGetNeedReplicated(nodeID NodeID, posList ...LogPos) AcceptEntriesInput {
 	input, err := c.core.GetNeedReplicatedLogEntries(NeedReplicatedInput{
 		Term:     c.currentTerm,
 		FromNode: nodeID,
@@ -1921,13 +1921,13 @@ func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
 
 	input := c.doGetNeedReplicated(nodeID1, 2, 4, 5)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd data 02")},
-			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd data 04")},
-			{Pos: 5, Entry: NewNullEntry(5)},
+		Entries: []LogEntry{
+			c.newInfLogEntry(2, "cmd data 02"),
+			c.newInfLogEntry(4, "cmd data 04"),
+			NewNullEntry(5),
 		},
 	}, input)
 }
@@ -2314,28 +2314,19 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 	assert.Equal(t, LogPos(3), c.core.GetMinBufferLogPos())
 
 	input2 := c.doGetNeedReplicated(nodeID1, 1, 2, 3)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{
-				Pos: 1,
-				Entry: NewMembershipLogEntry(
-					1,
-					InfiniteTerm{},
-					[]MemberInfo{
-						{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
-					},
-				),
-			},
-			{
-				Pos:   2,
-				Entry: c.newInfLogEntry(2, "cmd test 02"),
-			},
-			{
-				Pos:   3,
-				Entry: c.newInfLogEntry(3, "cmd test 03"),
-			},
+		Entries: []LogEntry{
+			NewMembershipLogEntry(
+				1,
+				InfiniteTerm{},
+				[]MemberInfo{
+					{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
+				},
+			),
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
 		},
 	}, input2)
 }

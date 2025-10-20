@@ -489,7 +489,7 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
-			func(_ context.Context, req AcceptEntriesInputV1) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
@@ -507,7 +507,7 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 				return err
 			}
 
-			input, err := h.state.core.GetAcceptEntriesRequestV1(ctx, term, toNode, fromPos, lastCommitted)
+			input, err := h.state.core.GetAcceptEntriesRequest(ctx, term, toNode, fromPos, lastCommitted)
 			if err != nil {
 				return err
 			}
@@ -521,12 +521,12 @@ func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode No
 }
 
 func (h *simulationHandlers) handleAcceptEntriesRequest(
-	req AcceptEntriesInputV1, toNode NodeID,
+	req AcceptEntriesInput, toNode NodeID,
 ) (iter.Seq[AcceptEntriesOutput], error) {
 	toState := h.root.nodeMap[toNode]
 	toState.core.FollowerReceiveTermNum(req.Term)
 
-	output, err := toState.acceptor.AcceptEntriesV1(req)
+	output, err := toState.acceptor.AcceptEntries(req)
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +538,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 		acceptConn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionReplicateAcceptRequest,
-			func(_ context.Context, req AcceptEntriesInputV1) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {

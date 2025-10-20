@@ -12,7 +12,7 @@ type LeaderLogGetter interface {
 	// GetEntries does not wait when not found any entries from log pos
 	GetEntries(from LogPos, limit int) []LogEntry
 
-	GetEntriesWithPos(posList ...LogPos) []PosLogEntry
+	GetEntriesWithPos(posList ...LogPos) []LogEntry
 }
 
 // StateMachineLogGetter is implemented by both CoreLogic & AcceptorLogic
@@ -24,9 +24,8 @@ type StateMachineLogGetter interface {
 }
 
 type GetCommittedEntriesOutput struct {
-	EntriesV1 []PosLogEntry
-	Entries   []LogEntry
-	NextPos   LogPos
+	Entries []LogEntry
+	NextPos LogPos
 }
 
 type LogStorage interface {
@@ -52,13 +51,6 @@ type LogStorage interface {
 type PosLogEntry struct {
 	Pos   LogPos
 	Entry LogEntry
-}
-
-func PosLogEntryEqual(a, b PosLogEntry) bool {
-	if a.Pos != b.Pos {
-		return false
-	}
-	return LogEntryEqual(a.Entry, b.Entry)
 }
 
 func NewPosLogEntryListValues(entries ...LogEntry) []PosLogEntry {

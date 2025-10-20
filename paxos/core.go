@@ -37,7 +37,7 @@ type CoreLogic interface {
 
 	ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error
 
-	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInputV1, error)
+	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
 	GetChoosingLeaderInfo() ChooseLeaderInfo
 
@@ -1142,10 +1142,10 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	input NeedReplicatedInput,
-) (AcceptEntriesInputV1, error) {
+) (AcceptEntriesInput, error) {
 	acceptInput, diskPosList, err := c.getNeedReplicatedFromMem(input)
 	if err != nil {
-		return AcceptEntriesInputV1{}, err
+		return AcceptEntriesInput{}, err
 	}
 
 	if len(diskPosList) > 0 {
@@ -1158,25 +1158,25 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 
 func (c *coreLogicImpl) getNeedReplicatedFromMem(
 	input NeedReplicatedInput,
-) (AcceptEntriesInputV1, []LogPos, error) {
+) (AcceptEntriesInput, []LogPos, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if err := c.isCandidateOrLeader(input.Term); err != nil {
-		return AcceptEntriesInputV1{}, nil, err
+		return AcceptEntriesInput{}, nil, err
 	}
 
 	if err := c.validateInMemberList(input.FromNode); err != nil {
-		return AcceptEntriesInputV1{}, nil, err
+		return AcceptEntriesInput{}, nil, err
 	}
 
 	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
-		return AcceptEntriesInputV1{}, nil, err
+		return AcceptEntriesInput{}, nil, err
 	}
 
 	if len(input.PosList) == 0 {
 		c.checkInvariantIfEnabled()
-		return AcceptEntriesInputV1{
+		return AcceptEntriesInput{
 			ToNode: input.FromNode,
 			Term:   c.getCurrentTerm(),
 		}, nil, nil
@@ -1194,10 +1194,10 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 	}
 
 	c.checkInvariantIfEnabled()
-	return AcceptEntriesInputV1{
+	return AcceptEntriesInput{
 		ToNode:  input.FromNode,
 		Term:    c.getCurrentTerm(),
-		Entries: NewPosLogEntryList(c.leader.logBuffer.GetEntries(memPosList...)),
+		Entries: c.leader.logBuffer.GetEntries(memPosList...),
 	}, diskPosList, nil
 }
 
@@ -1433,8 +1433,8 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 	for pos := LogPos(1); pos <= fullyReplicated; pos++ {
 		entry := c.log.GetEntriesWithPos(pos)[0]
 		AssertTrue(pos == entry.Pos)
-		AssertTrue(!entry.Entry.Term.IsFinite)
-		AssertTrue(!entry.Entry.IsNull())
+		AssertTrue(!entry.Term.IsFinite)
+		AssertTrue(!entry.IsNull())
 	}
 
 	switch c.state {
