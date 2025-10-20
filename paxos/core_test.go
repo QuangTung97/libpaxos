@@ -128,12 +128,38 @@ func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue
 	return entry
 }
 
-func (c *coreLogicTest) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
+func (c *coreLogicTest) newInfLogEntryNoPrev(pos LogPos, cmdStr string) LogEntry {
 	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr), c.currentTerm)
 }
 
-func (c *coreLogicTest) newAcceptLogEntry(pos LogPos, cmdStr string) LogEntry {
+func (c *coreLogicTest) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
+	entry := NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr), c.currentTerm)
+	entry.PrevPointer = PreviousPointer{
+		Pos:  pos - 1,
+		Term: c.currentTerm,
+	}
+	return entry
+}
+
+func (c *coreLogicTest) newAcceptLogEntryNoPrev(pos LogPos, cmdStr string) LogEntry {
 	return NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr), c.currentTerm)
+}
+
+func (c *coreLogicTest) newAcceptLogEntry(pos LogPos, cmdStr string) LogEntry {
+	entry := NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr), c.currentTerm)
+	entry.PrevPointer = PreviousPointer{
+		Pos:  pos - 1,
+		Term: c.currentTerm,
+	}
+	return entry
+}
+
+func newNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
+	return LogEntry{
+		Pos:  pos,
+		Type: LogTypeNoOp,
+		Term: term,
+	}
 }
 
 func (c *coreLogicTest) doHandleVoteResp(
@@ -396,7 +422,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: newLogList(
-			NewNoOpLogEntryWithTerm(2, c.currentTerm.ToInf()),
+			newNoOpLogEntryWithTerm(2, c.currentTerm.ToInf()),
 			entry2,
 		),
 		NextPos:   4,
@@ -566,7 +592,7 @@ func TestCoreLogic_GetAcceptEntries__Current_Node__Wait(t *testing.T) {
 			ToNode: nodeID1,
 			Term:   c.currentTerm,
 			Entries: newLogList(
-				c.newAcceptLogEntry(2, "cmd test 02"),
+				c.newAcceptLogEntryNoPrev(2, "cmd test 02"),
 				c.newAcceptLogEntry(3, "cmd test 03"),
 			),
 			NextPos:   4,
@@ -688,22 +714,28 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 
 	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 1, 0)
 	assert.Equal(t, nil, err)
+
+	entry1 := NewCmdLogEntry(
+		2,
+		c.currentTerm.ToInf(),
+		[]byte("cmd data 01"),
+		c.currentTerm,
+	)
+
+	entry2 := NewCmdLogEntry(
+		3,
+		c.currentTerm.ToInf(),
+		[]byte("cmd data 02"),
+		c.currentTerm,
+	)
+	entry2.PrevPointer = entry1.NextPreviousPointer()
+
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID2,
 		Term:   c.currentTerm,
 		Entries: newLogList(
-			NewCmdLogEntry(
-				2,
-				c.currentTerm.ToInf(),
-				[]byte("cmd data 01"),
-				c.currentTerm,
-			),
-			NewCmdLogEntry(
-				3,
-				c.currentTerm.ToInf(),
-				[]byte("cmd data 02"),
-				c.currentTerm,
-			),
+			entry1,
+			entry2,
 		),
 		NextPos:   4,
 		Committed: 1,
@@ -1107,10 +1139,11 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 	// check accept req
 	acceptReq := c.doGetAcceptReq(nodeID6, 0, 0)
 
-	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
+	newCmdFunc := func(pos LogPos, cmdStr string, prev PreviousPointer) LogEntry {
 		entry := c.newLogEntry(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
 		entry.CreatedTerm = c.currentTerm
+		entry.PrevPointer = prev
 		return entry
 	}
 
@@ -1128,9 +1161,9 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 		Term:   c.currentTerm,
 		Entries: newLogList(
 			membersEntry,
-			newCmdFunc(3, "cmd data 01"),
-			newCmdFunc(4, "cmd data 02"),
-			newCmdFunc(5, "cmd data 03"),
+			newCmdFunc(3, "cmd data 01", PreviousPointer{}),
+			newCmdFunc(4, "cmd data 02", PreviousPointer{Pos: 3, Term: c.currentTerm}),
+			newCmdFunc(5, "cmd data 03", PreviousPointer{Pos: 4, Term: c.currentTerm}),
 		),
 		NextPos:   6,
 		Committed: 1,
@@ -1149,7 +1182,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 			ToNode: nodeID6,
 			Term:   c.currentTerm,
 			Entries: newLogList(
-				newCmdFunc(6, "cmd data 04"),
+				newCmdFunc(6, "cmd data 04", PreviousPointer{Pos: 5, Term: c.currentTerm}),
 			),
 			NextPos:   7,
 			Committed: 1,
@@ -1168,10 +1201,11 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	// check accept req
 	acceptReq := c.doGetAcceptReq(nodeID3, 0, 0)
 
-	newCmdFunc := func(pos LogPos, cmdStr string) LogEntry {
+	newCmdFunc := func(pos LogPos, cmdStr string, prev PreviousPointer) LogEntry {
 		entry := c.newLogEntry(pos, cmdStr, c.currentTerm.Num)
 		entry.Term = c.currentTerm.ToInf()
 		entry.CreatedTerm = c.currentTerm
+		entry.PrevPointer = prev
 		return entry
 	}
 
@@ -1179,9 +1213,9 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		ToNode: nodeID3,
 		Term:   c.currentTerm,
 		Entries: newLogList(
-			newCmdFunc(2, "cmd data 01"),
-			newCmdFunc(3, "cmd data 02"),
-			newCmdFunc(4, "cmd data 03"),
+			newCmdFunc(2, "cmd data 01", PreviousPointer{}),
+			newCmdFunc(3, "cmd data 02", PreviousPointer{Pos: 2, Term: c.currentTerm}),
+			newCmdFunc(4, "cmd data 03", PreviousPointer{Pos: 3, Term: c.currentTerm}),
 		),
 		NextPos:   5,
 		Committed: 1,
@@ -1210,7 +1244,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: newLogList(
-			newCmdFunc(4, "cmd data 03"),
+			newCmdFunc(4, "cmd data 03", PreviousPointer{Pos: 3, Term: c.currentTerm}),
 		),
 		NextPos:   5,
 		Committed: 3,
@@ -1926,7 +1960,7 @@ func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []LogEntry{
-			c.newInfLogEntry(2, "cmd data 02"),
+			c.newInfLogEntryNoPrev(2, "cmd data 02"),
 			c.newInfLogEntry(4, "cmd data 04"),
 			NewNullEntry(5),
 		},
@@ -2041,7 +2075,7 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 		assertNotFinish()
 
-		c.insertToDiskLog(2, c.newAcceptLogEntry(2, "cmd test 01"))
+		c.insertToDiskLog(2, c.newAcceptLogEntryNoPrev(2, "cmd test 01"))
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, true, finishFn())
 
@@ -2326,7 +2360,7 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 					{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
 				},
 			),
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 		},
 	}, input2)
@@ -2377,7 +2411,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []LogEntry{
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 			c.newInfLogEntry(4, "cmd test 04"),
 		},
@@ -2389,7 +2423,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []LogEntry{
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 		},
 		NextPos: 4,
@@ -2399,7 +2433,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(2, 2)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []LogEntry{
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 		},
 		NextPos: 4,
@@ -2408,7 +2442,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// inc fully replicated
 	c.log.UpsertEntries(
 		[]LogEntry{
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 			c.newInfLogEntry(4, "cmd test 04"),
 		},
@@ -2421,7 +2455,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []LogEntry{
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
-			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntryNoPrev(2, "cmd test 02"),
 			c.newInfLogEntry(3, "cmd test 03"),
 			c.newInfLogEntry(4, "cmd test 04"),
 		},
@@ -2449,7 +2483,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait__Waiting(t *testing.T) {
 
 		assert.Equal(t, GetCommittedEntriesOutput{
 			Entries: []LogEntry{
-				c.newInfLogEntry(2, "cmd test 02"),
+				c.newInfLogEntryNoPrev(2, "cmd test 02"),
 				c.newInfLogEntry(3, "cmd test 03"),
 			},
 			NextPos: 4,
@@ -2490,7 +2524,7 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 		c.doHandleAccept(nodeID2, 2, 3)
 		assertNotFinish()
 
-		c.insertToDiskLog(2, c.newAcceptLogEntry(2, "cmd test 02"))
+		c.insertToDiskLog(2, c.newAcceptLogEntryNoPrev(2, "cmd test 02"))
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, nil, resultFn())
 

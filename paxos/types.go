@@ -74,6 +74,20 @@ func CompareInfiniteTerm(a, b InfiniteTerm) int {
 
 // ----------------------------------------------------------
 
+type PreviousPointer struct {
+	Pos  LogPos
+	Term TermNum
+}
+
+func (e LogEntry) NextPreviousPointer() PreviousPointer {
+	return PreviousPointer{
+		Pos:  e.Pos,
+		Term: e.CreatedTerm,
+	}
+}
+
+// ----------------------------------------------------------
+
 type State int
 
 const (
@@ -116,16 +130,24 @@ type LogEntry struct {
 	CmdData []byte
 
 	CreatedTerm TermNum
+	PrevPointer PreviousPointer
+}
+
+func (t LogType) WithPreviousPointer() bool {
+	switch t {
+	case LogTypeNull:
+		return false
+	case LogTypeNoOp:
+		return false
+	case LogTypeMembership:
+		return false
+	default:
+		return true
+	}
 }
 
 func ValidateCreatedTerm(entry LogEntry) {
-	if entry.IsNull() {
-		return
-	}
-	if entry.Type == LogTypeNoOp {
-		return
-	}
-	if entry.Type == LogTypeMembership {
+	if !entry.Type.WithPreviousPointer() {
 		return
 	}
 	AssertTrue(entry.CreatedTerm != TermNum{})
@@ -175,14 +197,6 @@ func NewNoOpLogEntry(pos LogPos) LogEntry {
 		Pos:  pos,
 		Type: LogTypeNoOp,
 		Term: term.ToInf(),
-	}
-}
-
-func NewNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
-	return LogEntry{
-		Pos:  pos,
-		Type: LogTypeNoOp,
-		Term: term,
 	}
 }
 

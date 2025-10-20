@@ -120,6 +120,7 @@ func (s *simulateNodeState) getMachineLog() []LogEntry {
 	result := slices.Clone(s.stateMachineLog)
 	for i := range result {
 		result[i].CreatedTerm = TermNum{}
+		result[i].PrevPointer = PreviousPointer{}
 	}
 	return result
 }

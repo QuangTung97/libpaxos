@@ -142,6 +142,7 @@ type leaderStateInfo struct {
 	leaderStepDownAt NullLogPos
 
 	lastCommitted LogPos
+	prevPointer   PreviousPointer // TODO init correctly
 
 	memLog *MemLog
 
@@ -943,6 +944,13 @@ func (c *coreLogicImpl) handleInsertSingleCmd(
 			cmd,
 			c.getCurrentTerm(),
 		)
+
+		// set entry's previous pointer
+		entry.PrevPointer = c.leader.prevPointer
+
+		// update prev pointer
+		c.leader.prevPointer = entry.NextPreviousPointer()
+
 		c.appendNewEntry(entry)
 	})
 }
