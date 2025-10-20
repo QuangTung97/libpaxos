@@ -92,23 +92,24 @@ func TestLogStorageFake_Membership(t *testing.T) {
 	assert.Equal(t, paxos.LogPos(2), s.GetFullyReplicated())
 }
 
-func newCmdLog(term paxos.TermNum, cmd string) paxos.LogEntry {
+func newCmdLog(pos paxos.LogPos, term paxos.TermNum, cmd string) paxos.LogEntry {
 	return paxos.LogEntry{
+		Pos:     pos,
 		Type:    paxos.LogTypeCmd,
 		Term:    term.ToInf(),
 		CmdData: []byte(cmd),
 	}
 }
 
-func newMembershipLog(term paxos.TermNum, nodes ...paxos.NodeID) paxos.LogEntry {
+func newMembershipLog(pos paxos.LogPos, term paxos.TermNum, nodes ...paxos.NodeID) paxos.LogEntry {
 	members := []paxos.MemberInfo{
 		{Nodes: nodes, CreatedAt: 1},
 	}
-	return paxos.LogEntry{
-		Type:    paxos.LogTypeMembership,
-		Term:    term.ToInf(),
-		Members: members,
-	}
+	return paxos.NewMembershipLogEntryV2(
+		pos,
+		term.ToInf(),
+		members,
+	)
 }
 
 func TestLogStorageFake_MarkCommitted(t *testing.T) {
@@ -118,8 +119,8 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		Num:    21,
 		NodeID: NewNodeID(1),
 	}
-	entry1 := newCmdLog(term, "cmd test 01")
-	entry2 := newCmdLog(term, "cmd test 02")
+	entry1 := newCmdLog(2, term, "cmd test 01")
+	entry2 := newCmdLog(4, term, "cmd test 02")
 
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
@@ -134,7 +135,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}, s.logEntries)
 	assert.Equal(t, paxos.CommittedInfo{}, s.GetCommittedInfo())
 
-	entry3 := newMembershipLog(term,
+	entry3 := newMembershipLog(1, term,
 		NewNodeID(1),
 		NewNodeID(2),
 	)
@@ -164,7 +165,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}, s.GetCommittedInfo())
 
 	// add committed entry
-	entry4 := newCmdLog(term, "cmd test 04")
+	entry4 := newCmdLog(3, term, "cmd test 04")
 	entry4.Term = paxos.InfiniteTerm{}
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 3, Entry: entry4},
@@ -223,9 +224,9 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 		Num:    21,
 		NodeID: NewNodeID(1),
 	}
-	entry1 := newCmdLog(term, "cmd test 01")
-	entry2 := newCmdLog(term, "cmd test 02")
-	entry3 := newCmdLog(term, "cmd test 03")
+	entry1 := newCmdLog(2, term, "cmd test 01")
+	entry2 := newCmdLog(4, term, "cmd test 02")
+	entry3 := newCmdLog(5, term, "cmd test 03")
 
 	s.UpsertEntries([]paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
