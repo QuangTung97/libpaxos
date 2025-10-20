@@ -17,6 +17,7 @@ type VoteLogEntry struct {
 	Entry   LogEntry // must be a null log entry when IsFinal = true
 }
 
+// AcceptEntriesInputV1 TODO remove
 type AcceptEntriesInputV1 struct {
 	ToNode    NodeID
 	Term      TermNum
