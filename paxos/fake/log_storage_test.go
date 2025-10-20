@@ -98,6 +98,10 @@ func TestLogStorageFake_Membership(t *testing.T) {
 	assert.Equal(t, paxos.CommittedInfo{
 		Members:         members,
 		FullyReplicated: 2,
+		PrevPointer: paxos.PreviousPointer{
+			Pos:  2,
+			Term: testCreatedTerm,
+		},
 	}, s.GetCommittedInfo())
 
 	assert.Equal(t, paxos.LogPos(2), s.GetFullyReplicated())
@@ -132,6 +136,10 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}
 	entry1 := newCmdLog(2, term, "cmd test 01")
 	entry2 := newCmdLog(4, term, "cmd test 02")
+	entry2.PrevPointer = paxos.PreviousPointer{
+		Pos:  3,
+		Term: testCreatedTerm,
+	}
 
 	s.UpsertEntries([]paxos.LogEntry{
 		entry1,
@@ -165,21 +173,29 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 1,
 		Members:         entry3.Members,
+		PrevPointer:     paxos.PreviousPointer{},
 	}, s.GetCommittedInfo())
 
+	// mark 2 4 as committed
 	s.UpsertEntries(nil, []paxos.LogPos{2, 4})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 2,
 		Members:         entry3.Members,
+		PrevPointer: paxos.PreviousPointer{
+			Pos:  2,
+			Term: testCreatedTerm,
+		},
 	}, s.GetCommittedInfo())
 
 	// add committed entry
 	entry4 := newCmdLog(3, term, "cmd test 04")
 	entry4.Term = paxos.InfiniteTerm{}
+	entry4.PrevPointer = entry1.NextPreviousPointer()
 	s.UpsertEntries([]paxos.LogEntry{entry4}, nil)
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 4,
 		Members:         entry3.Members,
+		PrevPointer:     entry2.NextPreviousPointer(),
 	}, s.GetCommittedInfo())
 
 	// get entries
@@ -208,6 +224,50 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 		entry1,
 		entry4,
 	), entries)
+}
+
+func TestLogStorageFake_Add_Committed_Entries__With_Disconnected_Prev_Pointer(t *testing.T) {
+	s := &LogStorageFake{}
+
+	term := paxos.TermNum{
+		Num:    21,
+		NodeID: NewNodeID(1),
+	}
+
+	entry1 := newMembershipLog(1, term,
+		NewNodeID(1),
+		NewNodeID(2),
+	)
+	entry1.Term = paxos.InfiniteTerm{}
+
+	entry2 := newCmdLog(2, term, "cmd test 02")
+
+	entry3 := newCmdLog(3, term, "cmd test 03")
+	entry3.PrevPointer = entry2.NextPreviousPointer()
+
+	nullEntry := paxos.NewNoOpLogEntry(3)
+	nullEntry.Term = term.ToInf()
+
+	entry4 := newCmdLog(4, term, "cmd test 04")
+	entry4.PrevPointer = entry3.NextPreviousPointer()
+
+	// insert
+	s.UpsertEntries([]paxos.LogEntry{entry1, entry2, nullEntry, entry4}, nil)
+	assert.Equal(t, paxos.CommittedInfo{
+		Members:         entry1.Members,
+		FullyReplicated: 1,
+	}, s.GetCommittedInfo())
+
+	// mark committed
+	s.UpsertEntries(nil, []paxos.LogPos{2, 3, 4})
+	assert.Equal(t, paxos.CommittedInfo{
+		Members:         entry1.Members,
+		FullyReplicated: 4,
+		PrevPointer: paxos.PreviousPointer{
+			Pos:  2,
+			Term: testCreatedTerm,
+		},
+	}, s.GetCommittedInfo())
 }
 
 func TestLogStorageFake_SetTerm(t *testing.T) {

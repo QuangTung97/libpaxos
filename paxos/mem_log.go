@@ -1,7 +1,7 @@
 package paxos
 
 type MemLog struct {
-	lastCommitted *LogPos
+	lastCommitted *LogPos // can be updated by PopFront()
 
 	queueData  []memLogEntry
 	frontIndex int

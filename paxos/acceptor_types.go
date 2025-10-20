@@ -34,7 +34,7 @@ type AcceptEntriesOutput struct {
 type CommittedInfo struct {
 	Members         []MemberInfo
 	FullyReplicated LogPos
-	PrevPointer     PreviousPointer // TODO handle
+	PrevPointer     PreviousPointer
 }
 
 type NeedReplicatedInput struct {

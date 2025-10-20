@@ -142,7 +142,7 @@ type leaderStateInfo struct {
 	leaderStepDownAt NullLogPos
 
 	lastCommitted LogPos
-	prevPointer   PreviousPointer // TODO init correctly
+	prevPointer   PreviousPointer
 
 	memLog *MemLog
 
@@ -210,6 +210,7 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 	// init leader state
 	c.leader = &leaderStateInfo{
 		lastCommitted: commitInfo.FullyReplicated,
+		prevPointer:   commitInfo.PrevPointer,
 
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{
 			c.persistent.GetNodeID(): math.MaxInt64, // current node never wake up
@@ -1411,6 +1412,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			AssertTrue(!entry.IsNull())
 			AssertTrue(entry.Pos == pos)
 			ValidateCreatedTerm(entry)
+			AssertImply(entry.PrevPointer != PreviousPointer{}, entry.Type.WithPreviousPointer())
 		}
 
 		// check fully replicated always greater than or equal min buffer pos
@@ -1424,6 +1426,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			AssertTrue(!entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
 			ValidateCreatedTerm(entry)
+			AssertImply(entry.PrevPointer != PreviousPointer{}, entry.Type.WithPreviousPointer())
 		}
 	}
 
@@ -1464,4 +1467,8 @@ func AssertTrue(b bool) {
 	if !b {
 		panic("Should be true here")
 	}
+}
+
+func AssertImply(a, b bool) {
+	AssertTrue(!a || b)
 }

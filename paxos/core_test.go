@@ -1072,6 +1072,36 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	}, acceptReq)
 }
 
+func TestCoreLogic__Leader__Insert_Cmd__With_Committed_Info__Previous_Pointer(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	entry2 := c.newLogEntry(2, "cmd prev 02", testCreatedTerm.Num)
+	entry2.Term = InfiniteTerm{}
+	c.log.UpsertEntries(
+		newLogList(entry2),
+		nil,
+	)
+
+	c.startAsLeader()
+
+	c.doInsertCmd(
+		"cmd data 03",
+		"cmd data 04",
+	)
+
+	accReq := c.doGetAcceptReq(nodeID1, 0, 0)
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: newLogList(
+			c.newAcceptLogEntryWithPrev(3, "cmd data 03", entry2.NextPreviousPointer()),
+			c.newAcceptLogEntry(4, "cmd data 04"),
+		),
+		NextPos:   5,
+		Committed: 2,
+	}, accReq)
+}
+
 func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testing.T) {
 	c := newCoreLogicTest(t)
 

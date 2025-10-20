@@ -11,6 +11,7 @@ type LogStorageFake struct {
 	logEntries         []paxos.LogEntry
 	lastMembers        []paxos.MemberInfo
 	fullyReplicatedPos paxos.LogPos
+	prevPointer        paxos.PreviousPointer
 
 	Term paxos.TermNum
 
@@ -84,6 +85,11 @@ func (s *LogStorageFake) increaseFullyReplicated() {
 			break
 		}
 
+		// update prev pointer
+		if entry.AcceptPrevPointer(s.prevPointer) {
+			s.prevPointer = entry.NextPreviousPointer()
+		}
+
 		s.fullyReplicatedPos = pos
 
 		if entry.Type == paxos.LogTypeMembership {
@@ -106,6 +112,7 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 	return paxos.CommittedInfo{
 		Members:         s.lastMembers,
 		FullyReplicated: s.fullyReplicatedPos,
+		PrevPointer:     s.prevPointer,
 	}
 }
 
