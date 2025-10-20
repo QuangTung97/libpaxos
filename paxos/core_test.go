@@ -154,6 +154,12 @@ func (c *coreLogicTest) newAcceptLogEntry(pos LogPos, cmdStr string) LogEntry {
 	return entry
 }
 
+func (c *coreLogicTest) newAcceptLogEntryWithPrev(pos LogPos, cmdStr string, prev PreviousPointer) LogEntry {
+	entry := NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr), c.currentTerm)
+	entry.PrevPointer = prev
+	return entry
+}
+
 func newNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
 	return LogEntry{
 		Pos:  pos,
@@ -697,6 +703,113 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 			entry2,
 		),
 		NextPos:   3,
+		Committed: 1,
+	}, acceptReq)
+}
+
+func TestCoreLogic_HandleVoteResponse__With_Previous_Pointer(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	entry2 := c.newLogEntry(2, "cmd data 02", 18)
+
+	entry3 := c.newLogEntry(3, "cmd data 03", 18)
+	entry3.PrevPointer = entry2.NextPreviousPointer()
+
+	entry4 := c.newLogEntry(4, "cmd data 04", 18)
+	entry4.PrevPointer = entry3.NextPreviousPointer()
+
+	// first resp
+	c.doHandleVoteResp(nodeID1, 2, true, entry2, entry3, entry4)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// second resp
+	c.doHandleVoteResp(nodeID2, 2, true, entry2, entry3, entry4)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// then insert
+	c.doInsertCmd(
+		"new cmd 05",
+		"new cmd 06",
+		"new cmd 07",
+	)
+
+	// check get accept req
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 1, 0)
+	assert.Equal(t, nil, err)
+
+	// update the term to current
+	entry2.Term = c.currentTerm.ToInf()
+	entry3.Term = c.currentTerm.ToInf()
+	entry4.Term = c.currentTerm.ToInf()
+
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: newLogList(
+			entry2,
+			entry3,
+			entry4,
+			c.newAcceptLogEntryWithPrev(5, "new cmd 05", entry4.NextPreviousPointer()),
+			c.newAcceptLogEntry(6, "new cmd 06"),
+			c.newAcceptLogEntry(7, "new cmd 07"),
+		),
+		NextPos:   8,
+		Committed: 1,
+	}, acceptReq)
+}
+
+func TestCoreLogic_HandleVoteResponse__With_Previous_Pointer__Null_At_Middle(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	entry2 := c.newLogEntry(2, "cmd data 02", 18)
+
+	entry3 := c.newLogEntry(3, "cmd data 03", 18)
+	entry3.PrevPointer = entry2.NextPreviousPointer()
+
+	nullEntry := NewNullEntry(3)
+
+	entry4 := c.newLogEntry(4, "cmd data 04", 18)
+	entry4.PrevPointer = entry3.NextPreviousPointer()
+
+	// first resp
+	c.doHandleVoteResp(nodeID1, 2, true, entry2, nullEntry, entry4)
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// second resp
+	c.doHandleVoteResp(nodeID2, 2, true, entry2, nullEntry, entry4)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	// then insert
+	c.doInsertCmd(
+		"new cmd 05",
+		"new cmd 06",
+		"new cmd 07",
+	)
+
+	// check get accept req
+	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 1, 0)
+	assert.Equal(t, nil, err)
+
+	// update the term to current
+	entry2.Term = c.currentTerm.ToInf()
+	entry4.Term = c.currentTerm.ToInf()
+
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode: nodeID1,
+		Term:   c.currentTerm,
+		Entries: newLogList(
+			entry2,
+			newNoOpLogEntryWithTerm(3, c.currentTerm.ToInf()),
+			entry4,
+			c.newAcceptLogEntryWithPrev(5, "new cmd 05", entry2.NextPreviousPointer()),
+			c.newAcceptLogEntry(6, "new cmd 06"),
+			c.newAcceptLogEntry(7, "new cmd 07"),
+		),
+		NextPos:   8,
 		Committed: 1,
 	}, acceptReq)
 }

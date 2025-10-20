@@ -86,6 +86,13 @@ func (e LogEntry) NextPreviousPointer() PreviousPointer {
 	}
 }
 
+func (e LogEntry) AcceptPrevPointer(prev PreviousPointer) bool {
+	if !e.Type.WithPreviousPointer() {
+		return false
+	}
+	return e.PrevPointer == prev
+}
+
 // ----------------------------------------------------------
 
 type State int

@@ -491,9 +491,19 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 		return false, nil
 	}
 
+	// update to new accept pos
 	c.candidate.acceptPos = pos
+
+	// update term to equal current term
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getCurrentTerm().ToInf()
+
+	// check previous pointer
+	if logEntry.AcceptPrevPointer(c.leader.prevPointer) {
+		c.leader.prevPointer = logEntry.NextPreviousPointer()
+	}
+
+	// update mem log and broadcast
 	c.leader.memLog.Put(logEntry)
 	c.broadcastAllAcceptors()
 
