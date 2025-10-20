@@ -13,9 +13,8 @@ type RequestVoteOutput struct {
 }
 
 type VoteLogEntry struct {
-	Pos     LogPos
-	IsFinal bool // when true => it's the final log entry marker and Entry is null
-	Entry   LogEntry
+	IsFinal bool     // when true => it's the final log entry marker and Entry is null
+	Entry   LogEntry // must be a null log entry when IsFinal = true
 }
 
 type AcceptEntriesInput struct {

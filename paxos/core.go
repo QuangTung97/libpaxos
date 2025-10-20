@@ -377,6 +377,8 @@ const (
 func (c *coreLogicImpl) handleVoteResponseEntry(
 	ctx context.Context, id NodeID, entry VoteLogEntry,
 ) (handleStatus, error) {
+	AssertTrue(entry.Entry.Pos > 0) // TODO remove
+
 	remainPos := c.candidate.remainPosMap[id]
 	if !remainPos.IsFinite {
 		// is infinite => do nothing

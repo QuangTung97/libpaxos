@@ -138,7 +138,6 @@ func (c *coreLogicTest) doHandleVoteResp(
 	for index, e := range entries {
 		pos := fromPos + LogPos(index)
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     pos,
 			IsFinal: false,
 			Entry:   e,
 		})
@@ -148,7 +147,6 @@ func (c *coreLogicTest) doHandleVoteResp(
 	if withFinal {
 		pos := fromPos + LogPos(len(entries))
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     pos,
 			IsFinal: true,
 			Entry:   NewNullEntry(pos),
 		})
@@ -278,7 +276,6 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 		Term:    c.currentTerm,
 		Entries: []VoteLogEntry{
 			{
-				Pos:     2,
 				IsFinal: true,
 				Entry:   NewNullEntry(2),
 			},
@@ -2908,8 +2905,8 @@ func TestCoreLogic__Candidate__Handle_Vote__Not_In_MemberList(t *testing.T) {
 		Term:    c.currentTerm,
 		Entries: []VoteLogEntry{
 			{
-				Pos:     2,
 				IsFinal: true,
+				Entry:   NewNullEntry(2),
 			},
 		},
 	}
