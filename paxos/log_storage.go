@@ -6,9 +6,6 @@ import "context"
 type LeaderLogGetter interface {
 	GetCommittedInfo() CommittedInfo
 
-	// GetEntriesV1 TODO remove
-	GetEntriesV1(from LogPos, limit int) []PosLogEntry
-
 	// GetEntries does not wait when not found any entries from log pos
 	GetEntries(from LogPos, limit int) []LogEntry
 

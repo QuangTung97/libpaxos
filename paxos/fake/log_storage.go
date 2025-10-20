@@ -117,12 +117,6 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 	}
 }
 
-// GetEntriesV1 TODO remove
-func (s *LogStorageFake) GetEntriesV1(from paxos.LogPos, limit int) []paxos.PosLogEntry {
-	entries := s.GetEntries(from, limit)
-	return paxos.NewPosLogEntryList(entries)
-}
-
 func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.LogEntry {
 	s.mut.Lock()
 	defer s.mut.Unlock()

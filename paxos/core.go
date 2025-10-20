@@ -22,10 +22,6 @@ type CoreLogic interface {
 		ctx context.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
-	GetAcceptEntriesRequestV1(
-		ctx context.Context, term TermNum, toNode NodeID,
-		fromPos LogPos, lastCommittedSent LogPos,
-	) (AcceptEntriesInputV1, error)
 
 	FollowerReceiveTermNum(term TermNum) bool
 
@@ -571,24 +567,6 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() error {
 	})
 
 	return c.finishMembershipChange()
-}
-
-// GetAcceptEntriesRequestV1 TODO remove
-func (c *coreLogicImpl) GetAcceptEntriesRequestV1(
-	ctx context.Context, term TermNum, toNode NodeID,
-	fromPos LogPos, lastCommittedSent LogPos,
-) (AcceptEntriesInputV1, error) {
-	input, err := c.GetAcceptEntriesRequest(ctx, term, toNode, fromPos, lastCommittedSent)
-	if err != nil {
-		return AcceptEntriesInputV1{}, err
-	}
-	return AcceptEntriesInputV1{
-		ToNode:    input.ToNode,
-		Term:      input.Term,
-		Entries:   NewPosLogEntryList(input.Entries),
-		NextPos:   input.NextPos,
-		Committed: input.Committed,
-	}, nil
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
