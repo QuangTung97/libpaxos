@@ -971,7 +971,8 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 	assert.Equal(t, StateLeader, c.core.GetState())
 }
 
-func (c *coreLogicTest) doGetAcceptReq(
+// doGetAcceptReqV1 TODO remove
+func (c *coreLogicTest) doGetAcceptReqV1(
 	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
 ) AcceptEntriesInputV1 {
 	req, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
@@ -981,14 +982,14 @@ func (c *coreLogicTest) doGetAcceptReq(
 	return req
 }
 
-func (c *coreLogicTest) doGetAcceptReqAsync(
-	t *testing.T, nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
-) func() AcceptEntriesInputV1 {
-	t.Helper()
-	fn, _ := testutil.RunAsync[AcceptEntriesInputV1](t, func() AcceptEntriesInputV1 {
-		return c.doGetAcceptReq(nodeID, fromPos, lastCommitted)
-	})
-	return fn
+func (c *coreLogicTest) doGetAcceptReq(
+	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
+) AcceptEntriesInput {
+	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
+	if err != nil {
+		panic("Get accept entries req should return ok, but got: " + err.Error())
+	}
+	return req
 }
 
 func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
@@ -1060,14 +1061,12 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		entry3.Term = c.currentTerm.ToInf()
 
 		accReq := c.doGetAcceptReq(nodeID5, 2, 0)
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode: nodeID5,
 			Term:   c.currentTerm,
-			Entries: []PosLogEntry{
-				{Pos: 2, Entry: entry1},
-				{Pos: 3, Entry: entry2},
-				{Pos: 4, Entry: entry3},
-			},
+			Entries: newLogList(
+				entry1, entry2, entry3,
+			),
 			NextPos:   5,
 			Committed: 1,
 		}, accReq)
@@ -1078,7 +1077,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 
 		// get again empty but not wait
 		accReq = c.doGetAcceptReq(nodeID5, 5, 1)
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID5,
 			Term:      c.currentTerm,
 			NextPos:   5,
@@ -1130,34 +1129,34 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 		},
 	)
 
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: membersEntry},
-			{Pos: 3, Entry: newCmdFunc(3, "cmd data 01")},
-			{Pos: 4, Entry: newCmdFunc(4, "cmd data 02")},
-			{Pos: 5, Entry: newCmdFunc(5, "cmd data 03")},
-		},
+		Entries: newLogList(
+			membersEntry,
+			newCmdFunc(3, "cmd data 01"),
+			newCmdFunc(4, "cmd data 02"),
+			newCmdFunc(5, "cmd data 03"),
+		),
 		NextPos:   6,
 		Committed: 1,
 	}, acceptReq)
 
 	synctest.Test(t, func(t *testing.T) {
 		// check accept req again, waiting
-		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
 			return c.doGetAcceptReq(nodeID6, 6, 1)
 		})
 
 		c.doInsertCmd("cmd data 04")
 
 		acceptReq := acceptFn()
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode: nodeID6,
 			Term:   c.currentTerm,
-			Entries: []PosLogEntry{
-				{Pos: 6, Entry: newCmdFunc(6, "cmd data 04")},
-			},
+			Entries: newLogList(
+				newCmdFunc(6, "cmd data 04"),
+			),
 			NextPos:   7,
 			Committed: 1,
 		}, acceptReq)
@@ -1181,21 +1180,21 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		return entry
 	}
 
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID3,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: newCmdFunc(2, "cmd data 01")},
-			{Pos: 3, Entry: newCmdFunc(3, "cmd data 02")},
-			{Pos: 4, Entry: newCmdFunc(4, "cmd data 03")},
-		},
+		Entries: newLogList(
+			newCmdFunc(2, "cmd data 01"),
+			newCmdFunc(3, "cmd data 02"),
+			newCmdFunc(4, "cmd data 03"),
+		),
 		NextPos:   5,
 		Committed: 1,
 	}, acceptReq)
 
 	synctest.Test(t, func(t *testing.T) {
 		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
-			return c.doGetAcceptReq(nodeID3, 5, 1)
+			return c.doGetAcceptReqV1(nodeID3, 5, 1)
 		})
 
 		c.doHandleAccept(nodeID1, 2, 3)
@@ -1212,12 +1211,12 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 
 	// check accept req after committed pos = 3
 	acceptReq = c.doGetAcceptReq(nodeID1, 0, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 4, Entry: newCmdFunc(4, "cmd data 03")},
-		},
+		Entries: newLogList(
+			newCmdFunc(4, "cmd data 03"),
+		),
 		NextPos:   5,
 		Committed: 3,
 	}, acceptReq)
@@ -1235,7 +1234,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	c.doStartElection()
 
 	accReq := c.doGetAcceptReq(nodeID3, 2, 1)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   2,
@@ -1364,7 +1363,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 
 	// check accept entries
 	accReq := c.doGetAcceptReq(nodeID5, 0, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
 		NextPos:   5,
@@ -1394,12 +1393,10 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
 	)
-	assert.Equal(t, AcceptEntriesInputV1{
-		ToNode: nodeID5,
-		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 5, Entry: newMembers},
-		},
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID5,
+		Term:      c.currentTerm,
+		Entries:   newLogList(newMembers),
 		NextPos:   6,
 		Committed: 4,
 	}, accReq)
@@ -1426,7 +1423,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 
 	// check accept entries
 	accReq := c.doGetAcceptReq(nodeID5, 5, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
 		NextPos:   5,
@@ -1451,12 +1448,10 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
 	)
-	assert.Equal(t, AcceptEntriesInputV1{
-		ToNode: nodeID5,
-		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 5, Entry: newMembers},
-		},
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID5,
+		Term:      c.currentTerm,
+		Entries:   newLogList(newMembers),
 		NextPos:   6,
 		Committed: 4,
 	}, accReq)
@@ -1480,7 +1475,7 @@ func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
 
 	// check get accept req
 	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   3,
@@ -1544,14 +1539,12 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	entry3.Term = c.currentTerm.ToInf()
 
 	accReq := c.doGetAcceptReq(nodeID4, 2, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID4,
 		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: entry1},
-			{Pos: 3, Entry: entry2},
-			{Pos: 4, Entry: entry3},
-		},
+		Entries: newLogList(
+			entry1, entry2, entry3,
+		),
 		NextPos:   5,
 		Committed: 1,
 	}, accReq)
@@ -1683,7 +1676,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	req := c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   2,
@@ -1749,12 +1742,10 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	// do get accept req
 	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
 	entry1.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInputV1{
-		ToNode: nodeID3,
-		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: entry1},
-		},
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID3,
+		Term:      c.currentTerm,
+		Entries:   newLogList(entry1),
 		NextPos:   3,
 		Committed: 1,
 	}, accReq)
@@ -1784,7 +1775,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 
 	// get accept req again
 	accReq = c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInputV1{
+	assert.Equal(t, AcceptEntriesInput{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   3,
@@ -1814,12 +1805,10 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		c.currentTerm.ToInf(),
 		newMembers2,
 	)
-	assert.Equal(t, AcceptEntriesInputV1{
-		ToNode: nodeID6,
-		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 3, Entry: entry2},
-		},
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID6,
+		Term:      c.currentTerm,
+		Entries:   newLogList(entry2),
 		NextPos:   4,
 		Committed: 2,
 	}, accReq)
@@ -2067,14 +2056,14 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 		assert.Equal(t, true, finishFn())
 
 		accReq := c.doGetAcceptReq(nodeID3, 0, 0)
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
-			Entries: []PosLogEntry{
-				{Pos: 3, Entry: c.newAcceptLogEntry(3, "cmd test 02")},
-				{Pos: 4, Entry: c.newAcceptLogEntry(4, "cmd test 03")},
-				{Pos: 5, Entry: c.newAcceptLogEntry(5, "cmd test 04")},
-			},
+			Entries: newLogList(
+				c.newAcceptLogEntry(3, "cmd test 02"),
+				c.newAcceptLogEntry(4, "cmd test 03"),
+				c.newAcceptLogEntry(5, "cmd test 04"),
+			),
 			NextPos:   6,
 			Committed: 2,
 		}, accReq)
@@ -2323,9 +2312,9 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 
 	input1 := c.doGetAcceptReq(nodeID1, 0, 0)
 	for i := range input1.Entries {
-		input1.Entries[i].Entry.Term = InfiniteTerm{}
+		input1.Entries[i].Term = InfiniteTerm{}
 	}
-	c.log.UpsertEntries(input1.Entries, nil)
+	c.log.UpsertEntries(NewPosLogEntryList(input1.Entries), nil)
 
 	c.doHandleAccept(nodeID1, 2, 3, 4)
 	c.doHandleAccept(nodeID2, 2, 3, 4)
@@ -2529,13 +2518,13 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 5},
 		}
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
-			Entries: []PosLogEntry{
-				{Pos: 4, Entry: c.newAcceptLogEntry(4, "cmd test 04")},
-				{Pos: 5, Entry: NewMembershipLogEntry(5, c.currentTerm.ToInf(), members)},
-			},
+			Entries: newLogList(
+				c.newAcceptLogEntry(4, "cmd test 04"),
+				NewMembershipLogEntry(5, c.currentTerm.ToInf(), members),
+			),
 			NextPos:   6,
 			Committed: 3,
 		}, accReq)
@@ -2719,7 +2708,7 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 	c.doChangeMembers([]NodeID{nodeID4, nodeID5, nodeID6})
 	accReq := c.doGetAcceptReq(nodeID1, 2, 0)
 	logEntry := accReq.Entries[0]
-	logEntry.Entry.Term = InfiniteTerm{}
+	logEntry.Term = InfiniteTerm{}
 
 	c.doHandleAccept(nodeID1, 2)
 	c.doHandleAccept(nodeID2, 2)
@@ -2728,7 +2717,7 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 	// put to log storage
-	c.log.UpsertEntries([]PosLogEntry{logEntry}, nil)
+	c.log.UpsertEntries(NewPosLogEntryList(newLogList(logEntry)), nil)
 
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	c.doUpdateFullyReplicated(nodeID2, 2)
@@ -2737,7 +2726,7 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 
 	accReq = c.doGetAcceptReq(nodeID4, 3, 0)
 	finishEntry := accReq.Entries[0]
-	finishEntry.Entry.Term = InfiniteTerm{}
+	finishEntry.Term = InfiniteTerm{}
 
 	c.doHandleAccept(nodeID4, 3)
 	c.doHandleAccept(nodeID5, 3)
@@ -2756,14 +2745,14 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 	info := c.core.GetChoosingLeaderInfo()
 	assert.Equal(t, ChooseLeaderInfo{
 		NoActiveLeader:  true,
-		Members:         logEntry.Entry.Members,
+		Members:         logEntry.Members,
 		FullyReplicated: 2,
 		LastTermVal:     21,
 	}, info)
 
 	info2 := ChooseLeaderInfo{
 		NoActiveLeader:  false,
-		Members:         finishEntry.Entry.Members,
+		Members:         finishEntry.Members,
 		FullyReplicated: 3,
 		LastTermVal:     21,
 	}
@@ -2805,13 +2794,10 @@ func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
 	noopEntry := NewNoOpLogEntry(2)
 	noopEntry.Term = c.currentTerm.ToInf()
 	entry1.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInputV1{
-		ToNode: nodeID1,
-		Term:   c.currentTerm,
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: noopEntry},
-			{Pos: 3, Entry: entry1},
-		},
+	assert.Equal(t, AcceptEntriesInput{
+		ToNode:    nodeID1,
+		Term:      c.currentTerm,
+		Entries:   newLogList(noopEntry, entry1),
 		NextPos:   4,
 		Committed: 1,
 	}, req)
@@ -2830,14 +2816,14 @@ func TestCoreLogic__Leader__Finish_Membership__Increase_Last_Committed(t *testin
 
 	accReq := c.doGetAcceptReq(nodeID4, 1, 0)
 	memberEntry := accReq.Entries[0]
-	memberEntry.Entry.Term = InfiniteTerm{}
+	memberEntry.Term = InfiniteTerm{}
 
 	c.doHandleAccept(nodeID1, 2)
 	c.doHandleAccept(nodeID2, 2)
 	c.doHandleAccept(nodeID4, 2, 3, 4)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 
-	c.log.UpsertEntries([]PosLogEntry{memberEntry}, nil)
+	c.log.UpsertEntries(NewPosLogEntryListValues(memberEntry), nil)
 
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	assert.Equal(t, LogPos(2), c.core.GetReplicatedPosTest(nodeID1))

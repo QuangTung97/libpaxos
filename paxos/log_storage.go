@@ -55,6 +55,10 @@ func PosLogEntryEqual(a, b PosLogEntry) bool {
 	return LogEntryEqual(a.Entry, b.Entry)
 }
 
+func NewPosLogEntryListValues(entries ...LogEntry) []PosLogEntry {
+	return NewPosLogEntryList(entries)
+}
+
 func NewPosLogEntryList(entries []LogEntry) []PosLogEntry {
 	if entries == nil {
 		return nil
