@@ -209,9 +209,7 @@ func (s *simulationTestCase) initNodeState(
 	state.log = &fake.LogStorageFake{}
 
 	if _, ok := initNodeSet[id]; ok {
-		state.log.UpsertEntriesV1([]PosLogEntry{
-			{Pos: 1, Entry: initMembersEntry},
-		}, nil)
+		state.log.UpsertEntries([]LogEntry{initMembersEntry}, nil)
 	}
 
 	state.acceptor = NewAcceptorLogic(

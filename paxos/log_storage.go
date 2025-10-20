@@ -32,8 +32,6 @@ type LogStorage interface {
 	// Follower functions are only required to not race with LeaderLogGetter
 	// ----------------------------------------------------------------------
 
-	// UpsertEntriesV1 TODO update
-	UpsertEntriesV1(entries []PosLogEntry, markCommitted []LogPos)
 	UpsertEntries(entries []LogEntry, markCommitted []LogPos)
 	SetTerm(term TermNum)
 
@@ -42,40 +40,4 @@ type LogStorage interface {
 
 	// GetFullyReplicated is not required to be thread safe
 	GetFullyReplicated() LogPos
-}
-
-// PosLogEntry TODO remove
-type PosLogEntry struct {
-	Pos   LogPos
-	Entry LogEntry
-}
-
-func NewPosLogEntryListValues(entries ...LogEntry) []PosLogEntry {
-	return NewPosLogEntryList(entries)
-}
-
-func NewPosLogEntryList(entries []LogEntry) []PosLogEntry {
-	if entries == nil {
-		return nil
-	}
-
-	result := make([]PosLogEntry, 0, len(entries))
-	for _, e := range entries {
-		result = append(result, PosLogEntry{
-			Pos:   e.Pos,
-			Entry: e,
-		})
-	}
-	return result
-}
-
-func UnwrapPosLogEntryList(entries []PosLogEntry) []LogEntry {
-	if entries == nil {
-		return nil
-	}
-	result := make([]LogEntry, 0, len(entries))
-	for _, e := range entries {
-		result = append(result, e.Entry)
-	}
-	return result
 }

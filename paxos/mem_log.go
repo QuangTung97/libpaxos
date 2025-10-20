@@ -24,7 +24,7 @@ func NewMemLog(lastCommitted *LogPos, sizeLog int) *MemLog {
 }
 
 func (m *MemLog) Put(entry LogEntry) {
-	AssertTrue(entry.Pos > 0) // TODO remove
+	AssertTrue(entry.Pos > 0)
 
 	pos := entry.Pos
 

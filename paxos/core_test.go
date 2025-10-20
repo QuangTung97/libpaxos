@@ -84,9 +84,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 			},
 		},
 	)
-	c.log.UpsertEntriesV1([]PosLogEntry{
-		{Pos: 1, Entry: initEntry},
-	}, nil)
+	c.log.UpsertEntries([]LogEntry{initEntry}, nil)
 
 	// setup current term
 	c.currentTerm = TermNum{
@@ -189,18 +187,15 @@ func (c *coreLogicTest) doInsertCmd(cmdList ...string) {
 }
 
 func (c *coreLogicTest) insertToDiskLog(from LogPos, entries ...LogEntry) {
-	var posEntries []PosLogEntry
+	var upsertEntries []LogEntry
 	for _, entry := range entries {
 		AssertTrue(from == entry.Pos)
 
 		entry.Term = InfiniteTerm{}
-		posEntries = append(posEntries, PosLogEntry{
-			Pos:   from,
-			Entry: entry,
-		})
+		upsertEntries = append(upsertEntries, entry)
 		from++
 	}
-	c.log.UpsertEntriesV1(posEntries, nil)
+	c.log.UpsertEntries(upsertEntries, nil)
 }
 
 func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
@@ -1632,12 +1627,7 @@ func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T)
 			{Nodes: []NodeID{nodeID2, nodeID3}, CreatedAt: 1},
 		},
 	)
-	c.log.UpsertEntriesV1([]PosLogEntry{
-		{
-			Pos:   2,
-			Entry: initEntry,
-		},
-	}, nil)
+	c.log.UpsertEntries([]LogEntry{initEntry}, nil)
 
 	err := c.core.StartElection(0)
 	assert.Equal(t, errors.New("current node is not in its membership config"), err)
@@ -2303,7 +2293,7 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 	for i := range input1.Entries {
 		input1.Entries[i].Term = InfiniteTerm{}
 	}
-	c.log.UpsertEntriesV1(NewPosLogEntryList(input1.Entries), nil)
+	c.log.UpsertEntries(input1.Entries, nil)
 
 	c.doHandleAccept(nodeID1, 2, 3, 4)
 	c.doHandleAccept(nodeID2, 2, 3, 4)
@@ -2405,11 +2395,11 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	}, output)
 
 	// inc fully replicated
-	c.log.UpsertEntriesV1(
-		[]PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd test 04")},
+	c.log.UpsertEntries(
+		[]LogEntry{
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
+			c.newInfLogEntry(4, "cmd test 04"),
 		},
 		nil,
 	)
@@ -2697,7 +2687,7 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 	// put to log storage
-	c.log.UpsertEntriesV1(NewPosLogEntryList(newLogList(logEntry)), nil)
+	c.log.UpsertEntries(newLogList(logEntry), nil)
 
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	c.doUpdateFullyReplicated(nodeID2, 2)
@@ -2803,7 +2793,7 @@ func TestCoreLogic__Leader__Finish_Membership__Increase_Last_Committed(t *testin
 	c.doHandleAccept(nodeID4, 2, 3, 4)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 
-	c.log.UpsertEntriesV1(NewPosLogEntryListValues(memberEntry), nil)
+	c.log.UpsertEntries(newLogList(memberEntry), nil)
 
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	assert.Equal(t, LogPos(2), c.core.GetReplicatedPosTest(nodeID1))

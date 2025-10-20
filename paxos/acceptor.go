@@ -139,7 +139,6 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 func (s *acceptorLogicImpl) AcceptEntries(
 	input AcceptEntriesInput,
 ) (AcceptEntriesOutput, error) {
-	// TODO remove
 	for _, e := range input.Entries {
 		AssertTrue(e.Pos > 0)
 	}

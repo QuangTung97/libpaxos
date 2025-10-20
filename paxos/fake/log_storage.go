@@ -24,16 +24,7 @@ type UpsertInput struct {
 
 var _ paxos.LogStorage = &LogStorageFake{}
 
-// UpsertEntriesV1 TODO remove
-func (s *LogStorageFake) UpsertEntriesV1(entries []paxos.PosLogEntry, markCommitted []paxos.LogPos) {
-	s.UpsertEntries(
-		paxos.UnwrapPosLogEntryList(entries),
-		markCommitted,
-	)
-}
-
 func (s *LogStorageFake) UpsertEntries(entries []paxos.LogEntry, markCommitted []paxos.LogPos) {
-	// TODO remove
 	for _, e := range entries {
 		paxos.AssertTrue(e.Pos > 0)
 	}
