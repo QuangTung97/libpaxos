@@ -23,6 +23,11 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
+	GetAcceptEntriesRequestV1(
+		ctx context.Context, term TermNum, toNode NodeID,
+		fromPos LogPos, lastCommittedSent LogPos,
+	) (AcceptEntriesInputV1, error)
+
 	FollowerReceiveTermNum(term TermNum) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
@@ -33,7 +38,7 @@ type CoreLogic interface {
 
 	ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error
 
-	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
+	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInputV1, error)
 
 	GetChoosingLeaderInfo() ChooseLeaderInfo
 
@@ -569,6 +574,24 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() error {
 	return c.finishMembershipChange()
 }
 
+// GetAcceptEntriesRequestV1 TODO remove
+func (c *coreLogicImpl) GetAcceptEntriesRequestV1(
+	ctx context.Context, term TermNum, toNode NodeID,
+	fromPos LogPos, lastCommittedSent LogPos,
+) (AcceptEntriesInputV1, error) {
+	input, err := c.GetAcceptEntriesRequest(ctx, term, toNode, fromPos, lastCommittedSent)
+	if err != nil {
+		return AcceptEntriesInputV1{}, err
+	}
+	return AcceptEntriesInputV1{
+		ToNode:    input.ToNode,
+		Term:      input.Term,
+		Entries:   NewPosLogEntryList(input.Entries),
+		NextPos:   input.NextPos,
+		Committed: input.Committed,
+	}, nil
+}
+
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
 	ctx context.Context, term TermNum, toNode NodeID,
 	fromPos LogPos, lastCommittedSent LogPos,
@@ -612,12 +635,9 @@ StartFunction:
 		goto StartFunction
 	}
 
-	var acceptEntries []PosLogEntry
+	var acceptEntries []LogEntry
 	for pos := fromPos; pos <= maxLogPos; pos++ {
-		acceptEntries = append(acceptEntries, PosLogEntry{
-			Pos:   pos,
-			Entry: c.leader.memLog.Get(pos),
-		})
+		acceptEntries = append(acceptEntries, c.leader.memLog.Get(pos))
 	}
 
 	c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp(1)
@@ -1123,10 +1143,10 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 
 func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 	input NeedReplicatedInput,
-) (AcceptEntriesInput, error) {
+) (AcceptEntriesInputV1, error) {
 	acceptInput, diskPosList, err := c.getNeedReplicatedFromMem(input)
 	if err != nil {
-		return AcceptEntriesInput{}, err
+		return AcceptEntriesInputV1{}, err
 	}
 
 	if len(diskPosList) > 0 {
@@ -1139,25 +1159,25 @@ func (c *coreLogicImpl) GetNeedReplicatedLogEntries(
 
 func (c *coreLogicImpl) getNeedReplicatedFromMem(
 	input NeedReplicatedInput,
-) (AcceptEntriesInput, []LogPos, error) {
+) (AcceptEntriesInputV1, []LogPos, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if err := c.isCandidateOrLeader(input.Term); err != nil {
-		return AcceptEntriesInput{}, nil, err
+		return AcceptEntriesInputV1{}, nil, err
 	}
 
 	if err := c.validateInMemberList(input.FromNode); err != nil {
-		return AcceptEntriesInput{}, nil, err
+		return AcceptEntriesInputV1{}, nil, err
 	}
 
 	if err := c.doUpdateAcceptorFullyReplicated(input.FromNode, input.FullyReplicated); err != nil {
-		return AcceptEntriesInput{}, nil, err
+		return AcceptEntriesInputV1{}, nil, err
 	}
 
 	if len(input.PosList) == 0 {
 		c.checkInvariantIfEnabled()
-		return AcceptEntriesInput{
+		return AcceptEntriesInputV1{
 			ToNode: input.FromNode,
 			Term:   c.getCurrentTerm(),
 		}, nil, nil
@@ -1175,7 +1195,7 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 	}
 
 	c.checkInvariantIfEnabled()
-	return AcceptEntriesInput{
+	return AcceptEntriesInputV1{
 		ToNode:  input.FromNode,
 		Term:    c.getCurrentTerm(),
 		Entries: NewPosLogEntryList(c.leader.logBuffer.GetEntries(memPosList...)),

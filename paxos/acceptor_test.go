@@ -118,7 +118,7 @@ func (s *acceptorLogicTest) newCmdTerm(pos LogPos, term TermNum, cmd string) Log
 func (s *acceptorLogicTest) doAcceptEntries(
 	committed LogPos, entries ...PosLogEntry,
 ) AcceptEntriesOutput {
-	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInputV1{
 		ToNode:    nodeID2,
 		Term:      s.currentTerm,
 		Entries:   entries,
@@ -309,7 +309,7 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 	// accept entries on lower term
 	lowerTerm := s.currentTerm
 	lowerTerm.Num--
-	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInputV1{
 		ToNode: nodeID2,
 		Term:   lowerTerm,
 		Entries: newAcceptLogEntries(2,

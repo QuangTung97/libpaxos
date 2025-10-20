@@ -17,10 +17,18 @@ type VoteLogEntry struct {
 	Entry   LogEntry // must be a null log entry when IsFinal = true
 }
 
-type AcceptEntriesInput struct {
+type AcceptEntriesInputV1 struct {
 	ToNode    NodeID
 	Term      TermNum
 	Entries   []PosLogEntry
+	NextPos   LogPos
+	Committed LogPos
+}
+
+type AcceptEntriesInput struct {
+	ToNode    NodeID
+	Term      TermNum
+	Entries   []LogEntry
 	NextPos   LogPos
 	Committed LogPos
 }

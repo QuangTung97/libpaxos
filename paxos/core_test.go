@@ -319,13 +319,13 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Entries__To_Leader(t *testing.T
 	c.doHandleVoteResp(nodeID2, 2, true)
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
 	assert.Equal(t, nil, err)
 
 	entry1.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -357,14 +357,14 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 	c.doHandleVoteResp(nodeID2, 2, true, NewNullEntry(2), entry3)
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
 	assert.Equal(t, nil, err)
 
 	entry1.Term = c.currentTerm.ToInf()
 	entry2.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -395,13 +395,13 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 	c.doHandleVoteResp(nodeID2, 2, false, NewNullEntry(2), entry2)
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
 	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -432,14 +432,14 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Null_Entry__Replaced_By_Other_E
 	c.doHandleVoteResp(nodeID2, 2, false, entry2, entry3)
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
 	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
 	entry3.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -469,13 +469,13 @@ func TestCoreLogic_HandleVoteResponse__Accept_Pos_Inc_By_One_Only(t *testing.T) 
 	c.doHandleVoteResp(nodeID2, 2, false, entry2)
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.ctx, c.currentTerm, nodeID1, 1, 0,
 	)
 	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -502,11 +502,11 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req, first time not wait
-	acceptReq, err := c.core.GetAcceptEntriesRequest(
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(
 		c.cancelCtx, c.currentTerm, nodeID2, 2, 1,
 	)
 	assert.Equal(t, nil, err)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID2,
 		Term:      c.currentTerm,
 		NextPos:   2,
@@ -514,16 +514,16 @@ func TestCoreLogic_HandleVoteResponse__Vote_Entry_Wrong_Start_Pos(t *testing.T) 
 	}, acceptReq)
 
 	// check get accept req, waiting
-	acceptReq, err = c.core.GetAcceptEntriesRequest(
+	acceptReq, err = c.core.GetAcceptEntriesRequestV1(
 		c.cancelCtx, c.currentTerm, nodeID2, 2, 1,
 	)
 	assert.Equal(t, context.Canceled, err)
-	assert.Equal(t, AcceptEntriesInput{}, acceptReq)
+	assert.Equal(t, AcceptEntriesInputV1{}, acceptReq)
 }
 
 func (c *coreLogicTest) firstGetAcceptToSetTimeout(id NodeID) {
 	// check get accept req, first time not wait
-	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, id, 2, 1)
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, id, 2, 1)
 	if err != nil {
 		panic("Should be ok here, but got: " + err.Error())
 	}
@@ -543,9 +543,9 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 	entry1 := c.newLogEntry(2, "cmd data 01", 18)
 
 	synctest.Test(t, func(t *testing.T) {
-		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			// check get accept req, waiting
-			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
+			acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID2, 2, 1)
 			assert.Equal(t, nil, err)
 			return acceptReq
 		})
@@ -557,7 +557,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs(t *testin
 		acceptEntry1 := entry1
 		acceptEntry1.Term = c.currentTerm.ToInf()
 
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID2,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -574,9 +574,9 @@ func TestCoreLogic_GetAcceptEntries__Current_Node__Wait(t *testing.T) {
 	c.startAsLeader()
 
 	synctest.Test(t, func(t *testing.T) {
-		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			// check get accept req, waiting
-			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 2, 1)
+			acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID1, 2, 1)
 			assert.Equal(t, nil, err)
 			return acceptReq
 		})
@@ -586,7 +586,7 @@ func TestCoreLogic_GetAcceptEntries__Current_Node__Wait(t *testing.T) {
 			"cmd test 03",
 		)
 
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID1,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -610,9 +610,9 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 	c.firstGetAcceptToSetTimeout(nodeID2)
 
 	synctest.Test(t, func(t *testing.T) {
-		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		resultFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			// check get accept req, waiting
-			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
+			acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID2, 2, 1)
 			assert.Equal(t, nil, err)
 			return acceptReq
 		})
@@ -628,7 +628,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_Recv_2_Vote_Outputs__One_Is_I
 		acceptEntry2 := entry2
 		acceptEntry2.Term = c.currentTerm.ToInf()
 
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID2,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -648,9 +648,9 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 	c.firstGetAcceptToSetTimeout(nodeID2)
 
 	synctest.Test(t, func(t *testing.T) {
-		fn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		fn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			// check get accept req, waiting
-			acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 2, 1)
+			acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID2, 2, 1)
 			assert.Equal(t, nil, err)
 			return acceptReq
 		})
@@ -658,7 +658,7 @@ func TestCoreLogic_GetAcceptEntries__Waiting__Then_5_Sec_Timeout(t *testing.T) {
 		c.now.Add(6_000)
 		c.core.CheckTimeout()
 
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode:    nodeID2,
 			Term:      c.currentTerm,
 			Entries:   nil,
@@ -684,11 +684,11 @@ func TestCoreLogic_HandleVoteResponse__Do_Not_Handle_Third_Vote_Response(t *test
 	assert.Equal(t, StateCandidate, c.core.GetState())
 
 	// check get accept req
-	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID1, 1, 0)
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID1, 1, 0)
 	assert.Equal(t, nil, err)
 
 	entry2.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -710,9 +710,9 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 		"cmd data 02",
 	)
 
-	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID2, 1, 0)
+	req, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID2, 1, 0)
 	assert.Equal(t, nil, err)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID2,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -929,9 +929,9 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 	// finally move up
 	assert.Equal(t, LogPos(3), c.core.GetLastCommitted())
 
-	acceptReq, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID6, 0, 0)
+	acceptReq, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID6, 0, 0)
 	assert.Equal(t, nil, err)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1008,8 +1008,8 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 
 func (c *coreLogicTest) doGetAcceptReq(
 	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
-) AcceptEntriesInput {
-	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
+) AcceptEntriesInputV1 {
+	req, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
 	if err != nil {
 		panic("Get accept entries req should return ok, but got: " + err.Error())
 	}
@@ -1018,9 +1018,9 @@ func (c *coreLogicTest) doGetAcceptReq(
 
 func (c *coreLogicTest) doGetAcceptReqAsync(
 	t *testing.T, nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
-) func() AcceptEntriesInput {
+) func() AcceptEntriesInputV1 {
 	t.Helper()
-	fn, _ := testutil.RunAsync[AcceptEntriesInput](t, func() AcceptEntriesInput {
+	fn, _ := testutil.RunAsync[AcceptEntriesInputV1](t, func() AcceptEntriesInputV1 {
 		return c.doGetAcceptReq(nodeID, fromPos, lastCommitted)
 	})
 	return fn
@@ -1095,7 +1095,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 		entry3.Term = c.currentTerm.ToInf()
 
 		accReq := c.doGetAcceptReq(nodeID5, 2, 0)
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID5,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -1113,7 +1113,7 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 
 		// get again empty but not wait
 		accReq = c.doGetAcceptReq(nodeID5, 5, 1)
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode:    nodeID5,
 			Term:      c.currentTerm,
 			NextPos:   5,
@@ -1165,7 +1165,7 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 		},
 	)
 
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1180,14 +1180,14 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 
 	synctest.Test(t, func(t *testing.T) {
 		// check accept req again, waiting
-		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			return c.doGetAcceptReq(nodeID6, 6, 1)
 		})
 
 		c.doInsertCmd("cmd data 04")
 
 		acceptReq := acceptFn()
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID6,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -1216,7 +1216,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		return entry
 	}
 
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID3,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1229,7 +1229,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	}, acceptReq)
 
 	synctest.Test(t, func(t *testing.T) {
-		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
 			return c.doGetAcceptReq(nodeID3, 5, 1)
 		})
 
@@ -1237,7 +1237,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 		c.doHandleAccept(nodeID2, 2, 3)
 
 		accReq := acceptFn()
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode:    nodeID3,
 			Term:      c.currentTerm,
 			NextPos:   5,
@@ -1247,7 +1247,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 
 	// check accept req after committed pos = 3
 	acceptReq = c.doGetAcceptReq(nodeID1, 0, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1270,7 +1270,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	c.doStartElection()
 
 	accReq := c.doGetAcceptReq(nodeID3, 2, 1)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   2,
@@ -1281,7 +1281,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		acceptResult, _ := testutil.RunAsync(t, func() error {
-			_, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID3, 2, 1)
+			_, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID3, 2, 1)
 			return err
 		})
 
@@ -1399,7 +1399,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 
 	// check accept entries
 	accReq := c.doGetAcceptReq(nodeID5, 0, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
 		NextPos:   5,
@@ -1429,7 +1429,7 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
 	)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID5,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1461,7 +1461,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 
 	// check accept entries
 	accReq := c.doGetAcceptReq(nodeID5, 5, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID5,
 		Term:      c.currentTerm,
 		NextPos:   5,
@@ -1486,7 +1486,7 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
 	)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID5,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1515,7 +1515,7 @@ func TestCoreLogic__Candidate__Handle_Inf_Term_Vote_Response(t *testing.T) {
 
 	// check get accept req
 	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   3,
@@ -1579,7 +1579,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 	entry3.Term = c.currentTerm.ToInf()
 
 	accReq := c.doGetAcceptReq(nodeID4, 2, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID4,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1661,9 +1661,9 @@ func TestCoreLogic__Leader__Get_Accept_Entries__Not_In_MemberList(t *testing.T) 
 
 	c.doInsertCmd("cmd 01", "cmd 02")
 
-	req, err := c.core.GetAcceptEntriesRequest(c.ctx, c.currentTerm, nodeID4, 0, 0)
+	req, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID4, 0, 0)
 	assert.Equal(t, errors.New("node id '64040000000000000000000000000000' is not in current member list"), err)
-	assert.Equal(t, AcceptEntriesInput{}, req)
+	assert.Equal(t, AcceptEntriesInputV1{}, req)
 }
 
 func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
@@ -1718,7 +1718,7 @@ func TestCoreLogic__Candidate__Handle_Vote_Inf_Multi_Times(t *testing.T) {
 	assert.Equal(t, StateLeader, c.core.GetState())
 
 	req := c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   2,
@@ -1784,7 +1784,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	// do get accept req
 	accReq := c.doGetAcceptReq(nodeID3, 0, 0)
 	entry1.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID3,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1819,7 +1819,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 
 	// get accept req again
 	accReq = c.doGetAcceptReq(nodeID3, 0, 0)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode:    nodeID3,
 		Term:      c.currentTerm,
 		NextPos:   3,
@@ -1849,7 +1849,7 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		c.currentTerm.ToInf(),
 		newMembers2,
 	)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -1947,7 +1947,7 @@ func TestAssertTrue(t *testing.T) {
 	})
 }
 
-func (c *coreLogicTest) doGetNeedReplicated(nodeID NodeID, posList ...LogPos) AcceptEntriesInput {
+func (c *coreLogicTest) doGetNeedReplicated(nodeID NodeID, posList ...LogPos) AcceptEntriesInputV1 {
 	input, err := c.core.GetNeedReplicatedLogEntries(NeedReplicatedInput{
 		Term:     c.currentTerm,
 		FromNode: nodeID,
@@ -1978,7 +1978,7 @@ func TestCoreLogic__Leader__GetNeedReplicated(t *testing.T) {
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
 
 	input := c.doGetNeedReplicated(nodeID1, 2, 4, 5)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -2102,7 +2102,7 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 		assert.Equal(t, true, finishFn())
 
 		accReq := c.doGetAcceptReq(nodeID3, 0, 0)
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -2371,7 +2371,7 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 	assert.Equal(t, LogPos(3), c.core.GetMinBufferLogPos())
 
 	input2 := c.doGetNeedReplicated(nodeID1, 1, 2, 3)
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
@@ -2564,7 +2564,7 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 			{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 5},
 		}
-		assert.Equal(t, AcceptEntriesInput{
+		assert.Equal(t, AcceptEntriesInputV1{
 			ToNode: nodeID3,
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
@@ -2840,7 +2840,7 @@ func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
 	noopEntry := NewNoOpLogEntry(2)
 	noopEntry.Term = c.currentTerm.ToInf()
 	entry1.Term = c.currentTerm.ToInf()
-	assert.Equal(t, AcceptEntriesInput{
+	assert.Equal(t, AcceptEntriesInputV1{
 		ToNode: nodeID1,
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{

@@ -56,6 +56,10 @@ func PosLogEntryEqual(a, b PosLogEntry) bool {
 }
 
 func NewPosLogEntryList(entries []LogEntry) []PosLogEntry {
+	if entries == nil {
+		return nil
+	}
+
 	result := make([]PosLogEntry, 0, len(entries))
 	for _, e := range entries {
 		result = append(result, PosLogEntry{

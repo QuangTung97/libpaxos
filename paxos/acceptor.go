@@ -11,7 +11,7 @@ type AcceptorLogic interface {
 	StateMachineLogGetter
 
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
-	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
+	AcceptEntries(input AcceptEntriesInputV1) (AcceptEntriesOutput, error)
 
 	GetNeedReplicatedPos(
 		ctx context.Context, term TermNum, from LogPos,
@@ -137,7 +137,7 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 }
 
 func (s *acceptorLogicImpl) AcceptEntries(
-	input AcceptEntriesInput,
+	input AcceptEntriesInputV1,
 ) (AcceptEntriesOutput, error) {
 	if err := s.validateNodeID(input.ToNode); err != nil {
 		return AcceptEntriesOutput{}, err
