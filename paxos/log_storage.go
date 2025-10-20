@@ -32,6 +32,7 @@ type LogStorage interface {
 	// Follower functions are only required to not race with LeaderLogGetter
 	// ----------------------------------------------------------------------
 
+	// UpsertEntries TODO update
 	UpsertEntries(entries []PosLogEntry, markCommitted []LogPos)
 	SetTerm(term TermNum)
 
@@ -70,6 +71,17 @@ func NewPosLogEntryList(entries []LogEntry) []PosLogEntry {
 			Pos:   e.Pos,
 			Entry: e,
 		})
+	}
+	return result
+}
+
+func UnwrapPosLogEntryList(entries []PosLogEntry) []LogEntry {
+	if entries == nil {
+		return nil
+	}
+	result := make([]LogEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, e.Entry)
 	}
 	return result
 }

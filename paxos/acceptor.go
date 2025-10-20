@@ -11,7 +11,8 @@ type AcceptorLogic interface {
 	StateMachineLogGetter
 
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
-	AcceptEntries(input AcceptEntriesInputV1) (AcceptEntriesOutput, error)
+	AcceptEntriesV1(input AcceptEntriesInputV1) (AcceptEntriesOutput, error)
+	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
 
 	GetNeedReplicatedPos(
 		ctx context.Context, term TermNum, from LogPos,
@@ -136,9 +137,28 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 	}, newFromPos, isFinal
 }
 
-func (s *acceptorLogicImpl) AcceptEntries(
+// AcceptEntriesV1 TODO remove
+func (s *acceptorLogicImpl) AcceptEntriesV1(
 	input AcceptEntriesInputV1,
 ) (AcceptEntriesOutput, error) {
+	newInput := AcceptEntriesInput{
+		ToNode:    input.ToNode,
+		Term:      input.Term,
+		Entries:   UnwrapPosLogEntryList(input.Entries),
+		NextPos:   input.NextPos,
+		Committed: input.Committed,
+	}
+	return s.AcceptEntries(newInput)
+}
+
+func (s *acceptorLogicImpl) AcceptEntries(
+	input AcceptEntriesInput,
+) (AcceptEntriesOutput, error) {
+	// TODO remove
+	for _, e := range input.Entries {
+		AssertTrue(e.Pos > 0)
+	}
+
 	if err := s.validateNodeID(input.ToNode); err != nil {
 		return AcceptEntriesOutput{}, err
 	}
@@ -159,7 +179,7 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		posList = append(posList, entry.Pos)
 		putEntries = append(putEntries, PosLogEntry{
 			Pos:   entry.Pos,
-			Entry: entry.Entry,
+			Entry: entry,
 		})
 	}
 

@@ -971,17 +971,6 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 	assert.Equal(t, StateLeader, c.core.GetState())
 }
 
-// doGetAcceptReqV1 TODO remove
-func (c *coreLogicTest) doGetAcceptReqV1(
-	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
-) AcceptEntriesInputV1 {
-	req, err := c.core.GetAcceptEntriesRequestV1(c.ctx, c.currentTerm, nodeID, fromPos, lastCommitted)
-	if err != nil {
-		panic("Get accept entries req should return ok, but got: " + err.Error())
-	}
-	return req
-}
-
 func (c *coreLogicTest) doGetAcceptReq(
 	nodeID NodeID, fromPos LogPos, lastCommitted LogPos,
 ) AcceptEntriesInput {
@@ -1193,15 +1182,15 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 	}, acceptReq)
 
 	synctest.Test(t, func(t *testing.T) {
-		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInputV1 {
-			return c.doGetAcceptReqV1(nodeID3, 5, 1)
+		acceptFn, _ := testutil.RunAsync(t, func() AcceptEntriesInput {
+			return c.doGetAcceptReq(nodeID3, 5, 1)
 		})
 
 		c.doHandleAccept(nodeID1, 2, 3)
 		c.doHandleAccept(nodeID2, 2, 3)
 
 		accReq := acceptFn()
-		assert.Equal(t, AcceptEntriesInputV1{
+		assert.Equal(t, AcceptEntriesInput{
 			ToNode:    nodeID3,
 			Term:      c.currentTerm,
 			NextPos:   5,

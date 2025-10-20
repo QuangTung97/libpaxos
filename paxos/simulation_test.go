@@ -526,7 +526,7 @@ func (h *simulationHandlers) handleAcceptEntriesRequest(
 	toState := h.root.nodeMap[toNode]
 	toState.core.FollowerReceiveTermNum(req.Term)
 
-	output, err := toState.acceptor.AcceptEntries(req)
+	output, err := toState.acceptor.AcceptEntriesV1(req)
 	if err != nil {
 		return nil, err
 	}
