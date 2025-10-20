@@ -34,6 +34,7 @@ type LogStorage interface {
 
 	// UpsertEntriesV1 TODO update
 	UpsertEntriesV1(entries []PosLogEntry, markCommitted []LogPos)
+	UpsertEntries(entries []LogEntry, markCommitted []LogPos)
 	SetTerm(term TermNum)
 
 	// GetTerm is not required to be thread safe

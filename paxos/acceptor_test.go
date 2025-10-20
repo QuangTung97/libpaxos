@@ -51,8 +51,8 @@ func (*acceptorLogicTest) initMemberLogEntry() LogEntry {
 }
 
 func (s *acceptorLogicTest) putMembers() {
-	s.log.UpsertEntriesV1([]PosLogEntry{
-		{Pos: 1, Entry: s.initMemberLogEntry()},
+	s.log.UpsertEntries([]LogEntry{
+		s.initMemberLogEntry(),
 	}, nil)
 }
 
