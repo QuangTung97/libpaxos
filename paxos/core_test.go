@@ -113,15 +113,14 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 }
 
 func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue) LogEntry {
-	return LogEntry{
-		Pos:  pos,
-		Type: LogTypeCmd,
-		Term: TermNum{
+	return NewCmdLogEntry(
+		pos,
+		TermNum{
 			Num:    termNum,
 			NodeID: nodeID3,
 		}.ToInf(),
-		CmdData: []byte(cmdStr),
-	}
+		[]byte(cmdStr),
+	)
 }
 
 func (c *coreLogicTest) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
@@ -407,12 +406,8 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T)
 		Term:   c.currentTerm,
 		Entries: []PosLogEntry{
 			{
-				Pos: 2,
-				Entry: LogEntry{
-					Pos:  2,
-					Type: LogTypeNoOp,
-					Term: c.currentTerm.ToInf(),
-				},
+				Pos:   2,
+				Entry: NewNoOpLogEntryWithTerm(2, c.currentTerm.ToInf()),
 			},
 			{
 				Pos:   3,
@@ -723,21 +718,19 @@ func TestCoreLogic__Insert_Cmd__Then_Get_Accept_Request(t *testing.T) {
 		Entries: []PosLogEntry{
 			{
 				Pos: 2,
-				Entry: LogEntry{
-					Pos:     2,
-					Type:    LogTypeCmd,
-					Term:    c.currentTerm.ToInf(),
-					CmdData: []byte("cmd data 01"),
-				},
+				Entry: NewCmdLogEntry(
+					2,
+					c.currentTerm.ToInf(),
+					[]byte("cmd data 01"),
+				),
 			},
 			{
 				Pos: 3,
-				Entry: LogEntry{
-					Pos:     3,
-					Type:    LogTypeCmd,
-					Term:    c.currentTerm.ToInf(),
-					CmdData: []byte("cmd data 02"),
-				},
+				Entry: NewCmdLogEntry(
+					3,
+					c.currentTerm.ToInf(),
+					[]byte("cmd data 02"),
+				),
 			},
 		},
 		NextPos:   4,
@@ -944,11 +937,10 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 		Entries: []PosLogEntry{
 			{
 				Pos: 4,
-				Entry: LogEntry{
-					Pos:  4,
-					Type: LogTypeMembership,
-					Term: c.currentTerm.ToInf(),
-					Members: []MemberInfo{
+				Entry: NewMembershipLogEntry(
+					4,
+					c.currentTerm.ToInf(),
+					[]MemberInfo{
 						{
 							Nodes:     []NodeID{nodeID1, nodeID2, nodeID3},
 							CreatedAt: 1,
@@ -958,7 +950,7 @@ func TestCoreLogic__Leader__Insert_Cmd__Then_Change_Membership(t *testing.T) {
 							CreatedAt: 4,
 						},
 					},
-				},
+				),
 			},
 		},
 		NextPos:   5,
@@ -978,15 +970,14 @@ func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testin
 
 	entry1 := c.newLogEntry(2, "cmd data 01", 18)
 	entry2 := c.newLogEntry(3, "cmd data 02", 18)
-	entry3 := LogEntry{
-		Pos:  4,
-		Type: LogTypeMembership,
-		Term: TermNum{
+	entry3 := NewMembershipLogEntry(
+		4,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers,
-	}
+		newMembers,
+	)
 
 	c.doHandleVoteResp(nodeID1, 2, true, entry1, entry2, entry3)
 
@@ -1049,24 +1040,22 @@ func TestCoreLogic__Candidate__Change_Membership(t *testing.T) {
 			{Nodes: []NodeID{nodeID1, nodeID4, nodeID5}, CreatedAt: 1},
 		}
 
-		entry1 := LogEntry{
-			Pos:  2,
-			Type: LogTypeMembership,
-			Term: TermNum{
+		entry1 := NewMembershipLogEntry(
+			2,
+			TermNum{
 				Num:    19,
 				NodeID: nodeID3,
 			}.ToInf(),
-			Members: newMembers1,
-		}
-		entry2 := LogEntry{
-			Pos:  3,
-			Type: LogTypeMembership,
-			Term: TermNum{
+			newMembers1,
+		)
+		entry2 := NewMembershipLogEntry(
+			3,
+			TermNum{
 				Num:    19,
 				NodeID: nodeID3,
 			}.ToInf(),
-			Members: newMembers2,
-		}
+			newMembers2,
+		)
 		entry3 := c.newLogEntry(4, "cmd data 03", 18)
 
 		c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
@@ -1167,15 +1156,14 @@ func TestCoreLogic__Leader__Change_Membership__Then_Wait_New_Accept_Entry(t *tes
 		return entry
 	}
 
-	membersEntry := LogEntry{
-		Pos:  2,
-		Type: LogTypeMembership,
-		Term: c.currentTerm.ToInf(),
-		Members: []MemberInfo{
+	membersEntry := NewMembershipLogEntry(
+		2,
+		c.currentTerm.ToInf(),
+		[]MemberInfo{
 			{CreatedAt: 1, Nodes: []NodeID{nodeID1, nodeID2, nodeID3}},
 			{CreatedAt: 2, Nodes: []NodeID{nodeID4, nodeID5, nodeID6}},
 		},
-	}
+	)
 
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID6,
@@ -1433,14 +1421,14 @@ func TestCoreLogic__Leader__Change_Membership__Update_Fully_Replicated__Finish_M
 
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 0, 0)
-	newMembers := LogEntry{
-		Pos:  5,
-		Type: LogTypeMembership,
-		Term: c.currentTerm.ToInf(),
-		Members: []MemberInfo{
+
+	newMembers := NewMembershipLogEntry(
+		5,
+		c.currentTerm.ToInf(),
+		[]MemberInfo{
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
-	}
+	)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID5,
 		Term:   c.currentTerm,
@@ -1491,14 +1479,13 @@ func TestCoreLogic__Leader__Fully_Replicated_Faster_Than_Last_Committed(t *testi
 
 	// check accept entries again
 	accReq = c.doGetAcceptReq(nodeID5, 5, 0)
-	newMembers := LogEntry{
-		Pos:  5,
-		Type: LogTypeMembership,
-		Term: c.currentTerm.ToInf(),
-		Members: []MemberInfo{
+	newMembers := NewMembershipLogEntry(
+		5,
+		c.currentTerm.ToInf(),
+		[]MemberInfo{
 			{Nodes: []NodeID{nodeID3, nodeID4, nodeID5}, CreatedAt: 1},
 		},
-	}
+	)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID5,
 		Term:   c.currentTerm,
@@ -1549,25 +1536,23 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 		{Nodes: []NodeID{nodeID4}, CreatedAt: 1},
 	}
 
-	entry1 := LogEntry{
-		Pos:  2,
-		Type: LogTypeMembership,
-		Term: TermNum{
+	entry1 := NewMembershipLogEntry(
+		2,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers1,
-	}
-	entry2 := LogEntry{
-		Pos:  3,
-		Type: LogTypeMembership,
-		Term: TermNum{
+		newMembers1,
+	)
+	entry2 := NewMembershipLogEntry(
+		3,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers2,
-	}
-	entry3 := c.newLogEntry(4, "cmd data 03", 18) // pos = 4
+		newMembers2,
+	)
+	entry3 := c.newLogEntry(4, "cmd data 03", 18)
 
 	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 	c.doHandleVoteResp(nodeID3, 2, true)
@@ -1693,13 +1678,13 @@ func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T)
 	c := newCoreLogicTest(t)
 
 	// setup init members
-	initEntry := LogEntry{
-		Type: LogTypeMembership,
-		Term: InfiniteTerm{},
-		Members: []MemberInfo{
+	initEntry := NewMembershipLogEntry(
+		2,
+		InfiniteTerm{},
+		[]MemberInfo{
 			{Nodes: []NodeID{nodeID2, nodeID3}, CreatedAt: 1},
 		},
-	}
+	)
 	c.log.UpsertEntries([]PosLogEntry{
 		{
 			Pos:   2,
@@ -1784,15 +1769,14 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 2},
 	}
 
-	entry1 := LogEntry{
-		Pos:  2,
-		Type: LogTypeMembership,
-		Term: TermNum{
+	entry1 := NewMembershipLogEntry(
+		2,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers,
-	}
+		newMembers,
+	)
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1)
 	c.doHandleVoteResp(nodeID2, 2, false, NewNullEntry(2))
@@ -1860,12 +1844,11 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 	newMembers2 := []MemberInfo{
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
 	}
-	entry2 := LogEntry{
-		Pos:     3,
-		Type:    LogTypeMembership,
-		Term:    c.currentTerm.ToInf(),
-		Members: newMembers2,
-	}
+	entry2 := NewMembershipLogEntry(
+		3,
+		c.currentTerm.ToInf(),
+		newMembers2,
+	)
 	assert.Equal(t, AcceptEntriesInput{
 		ToNode: nodeID6,
 		Term:   c.currentTerm,
@@ -2626,24 +2609,22 @@ func TestCoreLogic__Candidate__Change_Membership_3_Nodes__Current_Leader_Not_In_
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
 	}
 
-	entry1 := LogEntry{
-		Pos:  2,
-		Type: LogTypeMembership,
-		Term: TermNum{
+	entry1 := NewMembershipLogEntry(
+		2,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers1,
-	}
-	entry2 := LogEntry{
-		Pos:  3,
-		Type: LogTypeMembership,
-		Term: TermNum{
+		newMembers1,
+	)
+	entry2 := NewMembershipLogEntry(
+		3,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers2,
-	}
+		newMembers2,
+	)
 
 	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 	c.doHandleVoteResp(nodeID3, 2, true)
@@ -2711,24 +2692,22 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 		{Nodes: []NodeID{nodeID4, nodeID5, nodeID6}, CreatedAt: 1},
 	}
 
-	entry1 := LogEntry{
-		Pos:  2,
-		Type: LogTypeMembership,
-		Term: TermNum{
+	entry1 := NewMembershipLogEntry(
+		2,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers1,
-	}
-	entry2 := LogEntry{
-		Pos:  3,
-		Type: LogTypeMembership,
-		Term: TermNum{
+		newMembers1,
+	)
+	entry2 := NewMembershipLogEntry(
+		3,
+		TermNum{
 			Num:    19,
 			NodeID: nodeID3,
 		}.ToInf(),
-		Members: newMembers2,
-	}
+		newMembers2,
+	)
 
 	c.doHandleVoteResp(nodeID2, 2, true, entry1, entry2)
 	c.doHandleVoteResp(nodeID3, 2, true)

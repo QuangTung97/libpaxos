@@ -159,6 +159,14 @@ func NewNoOpLogEntry(pos LogPos) LogEntry {
 	}
 }
 
+func NewNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
+	return LogEntry{
+		Pos:  pos,
+		Type: LogTypeNoOp,
+		Term: term,
+	}
+}
+
 func NewCmdLogEntry(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
 	return LogEntry{
 		Pos:     pos,
