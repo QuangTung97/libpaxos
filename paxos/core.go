@@ -1176,7 +1176,7 @@ func (c *coreLogicImpl) getNeedReplicatedFromMem(
 	return AcceptEntriesInput{
 		ToNode:  input.FromNode,
 		Term:    c.getCurrentTerm(),
-		Entries: c.leader.logBuffer.GetEntries(memPosList...),
+		Entries: NewPosLogEntryList(c.leader.logBuffer.GetEntries(memPosList...)),
 	}, diskPosList, nil
 }
 
@@ -1306,7 +1306,7 @@ StartFunction:
 	extra.diskMaxPos = memMinPos - 1
 
 	return GetCommittedEntriesOutput{
-		Entries: memEntries,
+		Entries: NewPosLogEntryList(memEntries),
 		NextPos: maxPos + 1,
 	}, nil
 }
@@ -1402,8 +1402,8 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			entries := c.leader.logBuffer.GetEntries(pos)
 			entry := entries[0]
 			AssertTrue(pos == entry.Pos)
-			AssertTrue(!entry.Entry.Term.IsFinite)
-			AssertTrue(!entry.Entry.IsNull())
+			AssertTrue(!entry.Term.IsFinite)
+			AssertTrue(!entry.IsNull())
 		}
 	}
 

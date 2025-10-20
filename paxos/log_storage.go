@@ -54,3 +54,14 @@ func PosLogEntryEqual(a, b PosLogEntry) bool {
 	}
 	return LogEntryEqual(a.Entry, b.Entry)
 }
+
+func NewPosLogEntryList(entries []LogEntry) []PosLogEntry {
+	result := make([]PosLogEntry, 0, len(entries))
+	for _, e := range entries {
+		result = append(result, PosLogEntry{
+			Pos:   e.Pos,
+			Entry: e,
+		})
+	}
+	return result
+}
