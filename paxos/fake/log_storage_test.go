@@ -22,7 +22,7 @@ func TestLogStorageFake(t *testing.T) {
 		[]byte("hello02"),
 	)
 
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{
 			Pos:   2,
 			Entry: entry1,
@@ -77,7 +77,7 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		[]byte("hello02"),
 	)
 
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{Pos: 1, Entry: entry1},
 		{Pos: 2, Entry: entry2},
 		{Pos: 3, Entry: entry3},
@@ -125,7 +125,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	entry1 := newCmdLog(2, term, "cmd test 01")
 	entry2 := newCmdLog(4, term, "cmd test 02")
 
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
 		{Pos: 4, Entry: entry2},
 	}, nil)
@@ -144,7 +144,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	)
 
 	// upsert member log entry
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{Pos: 1, Entry: entry3},
 	}, nil)
 	assert.Equal(t, []paxos.LogEntry{
@@ -155,13 +155,13 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}, s.logEntries)
 
 	// mark committed
-	s.UpsertEntries(nil, []paxos.LogPos{1})
+	s.UpsertEntriesV1(nil, []paxos.LogPos{1})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 1,
 		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
-	s.UpsertEntries(nil, []paxos.LogPos{2, 4})
+	s.UpsertEntriesV1(nil, []paxos.LogPos{2, 4})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 2,
 		Members:         entry3.Members,
@@ -170,7 +170,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	// add committed entry
 	entry4 := newCmdLog(3, term, "cmd test 04")
 	entry4.Term = paxos.InfiniteTerm{}
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{Pos: 3, Entry: entry4},
 	}, nil)
 	assert.Equal(t, paxos.CommittedInfo{
@@ -231,7 +231,7 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 	entry2 := newCmdLog(4, term, "cmd test 02")
 	entry3 := newCmdLog(5, term, "cmd test 03")
 
-	s.UpsertEntries([]paxos.PosLogEntry{
+	s.UpsertEntriesV1([]paxos.PosLogEntry{
 		{Pos: 2, Entry: entry1},
 		{Pos: 4, Entry: entry2},
 		{Pos: 5, Entry: entry3},

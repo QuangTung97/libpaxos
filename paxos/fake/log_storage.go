@@ -24,7 +24,7 @@ type UpsertInput struct {
 
 var _ paxos.LogStorage = &LogStorageFake{}
 
-func (s *LogStorageFake) UpsertEntries(entries []paxos.PosLogEntry, markCommitted []paxos.LogPos) {
+func (s *LogStorageFake) UpsertEntriesV1(entries []paxos.PosLogEntry, markCommitted []paxos.LogPos) {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 

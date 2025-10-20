@@ -191,7 +191,7 @@ func (s *acceptorLogicImpl) AcceptEntries(
 	}
 
 	oldFullyReplicated := s.log.GetFullyReplicated()
-	s.log.UpsertEntries(putEntries, markCommitted)
+	s.log.UpsertEntriesV1(putEntries, markCommitted)
 
 	if s.log.GetFullyReplicated() > oldFullyReplicated {
 		s.waitCond.Broadcast()
@@ -241,7 +241,7 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []Lo
 		s.waitCond.Broadcast()
 
 		if overLimit {
-			s.log.UpsertEntries(nil, markCommitted)
+			s.log.UpsertEntriesV1(nil, markCommitted)
 		} else {
 			return markCommitted
 		}

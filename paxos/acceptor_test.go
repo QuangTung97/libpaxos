@@ -51,7 +51,7 @@ func (*acceptorLogicTest) initMemberLogEntry() LogEntry {
 }
 
 func (s *acceptorLogicTest) putMembers() {
-	s.log.UpsertEntries([]PosLogEntry{
+	s.log.UpsertEntriesV1([]PosLogEntry{
 		{Pos: 1, Entry: s.initMemberLogEntry()},
 	}, nil)
 }
@@ -90,15 +90,12 @@ func newPosLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	return result
 }
 
-func newAcceptLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
-	result := make([]PosLogEntry, 0, len(entries))
+func newAcceptLogEntries(from LogPos, entries ...LogEntry) []LogEntry {
+	result := make([]LogEntry, 0, len(entries))
 	for index, e := range entries {
 		pos := from + LogPos(index)
 		AssertTrue(e.Pos == pos)
-		result = append(result, PosLogEntry{
-			Pos:   pos,
-			Entry: e,
-		})
+		result = append(result, e)
 	}
 	return result
 }
@@ -116,9 +113,13 @@ func (s *acceptorLogicTest) newCmdTerm(pos LogPos, term TermNum, cmd string) Log
 }
 
 func (s *acceptorLogicTest) doAcceptEntries(
-	committed LogPos, entries ...PosLogEntry,
+	committed LogPos, entries ...LogEntry,
 ) AcceptEntriesOutput {
-	resp, err := s.logic.AcceptEntriesV1(AcceptEntriesInputV1{
+	if len(entries) > 0 {
+		AssertTrue(committed < entries[0].Pos)
+	}
+
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
 		ToNode:    nodeID2,
 		Term:      s.currentTerm,
 		Entries:   entries,
@@ -171,7 +172,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 
 	s.putMembers()
 
-	s.log.UpsertEntries(
+	s.log.UpsertEntriesV1(
 		newPosLogEntries(2,
 			s.newCmd(2, "cmd test 01"),
 			s.newCmd(3, "cmd test 02"),
@@ -202,7 +203,7 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 
 	s.putMembers()
 
-	s.log.UpsertEntries(
+	s.log.UpsertEntriesV1(
 		newPosLogEntries(2,
 			s.newCmd(2, "cmd test 01"),
 			s.newCmd(3, "cmd test 02"),
@@ -309,7 +310,7 @@ func TestAcceptorLogic_AcceptEntries(t *testing.T) {
 	// accept entries on lower term
 	lowerTerm := s.currentTerm
 	lowerTerm.Num--
-	resp, err := s.logic.AcceptEntriesV1(AcceptEntriesInputV1{
+	resp, err := s.logic.AcceptEntries(AcceptEntriesInput{
 		ToNode: nodeID2,
 		Term:   lowerTerm,
 		Entries: newAcceptLogEntries(2,
@@ -454,9 +455,7 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos(t *testing.T) {
 	)
 	assert.Equal(t, true, resp.Success)
 
-	resp = s.doAcceptEntries(
-		5,
-	)
+	resp = s.doAcceptEntries(5)
 	assert.Equal(t, true, resp.Success)
 
 	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, 0, 0)
@@ -493,9 +492,7 @@ func TestAcceptorLogic_AcceptEntries_Then_Get_Replicated_Pos__Commit_Index_Incre
 	)
 	assert.Equal(t, true, resp.Success)
 
-	resp = s.doAcceptEntries(
-		2,
-	)
+	resp = s.doAcceptEntries(2)
 	assert.Equal(t, true, resp.Success)
 
 	input, err := s.logic.GetNeedReplicatedPos(s.ctx, s.currentTerm, 0, 0)
