@@ -1392,7 +1392,7 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			randomExecAction(randObj, s.shutdownWaitMap),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
-			randomChangLeader(randObj, s.nodeMap, &numChangeMember, 2),
+			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 2),
 		)
 
 		s.mut.Unlock()
@@ -1441,3 +1441,5 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 		s.stopRemainingRunners()
 	})
 }
+
+// TODO add timeout tests (both normal test cases and property based tests)

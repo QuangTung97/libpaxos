@@ -18,13 +18,16 @@ func getRandomActionKey[V any](
 		return simulateActionKey{}, false
 	}
 
+	// get all keys
 	keys := make([]simulateActionKey, 0, len(inputMap))
 	for k := range inputMap {
 		keys = append(keys, k)
 	}
 
+	// sort by a deterministic order
 	slices.SortFunc(keys, compareActionKey)
 
+	// get a random key
 	index := randObj.Intn(len(keys))
 	return keys[index], true
 }
@@ -79,6 +82,7 @@ func runRandomAction(
 	}
 }
 
+// randomExecAction run a random action
 func randomExecAction(
 	randObj *rand.Rand,
 	inputMap map[simulateActionKey]chan struct{},
@@ -93,6 +97,7 @@ func randomExecAction(
 	})
 }
 
+// randomExecActionIgnoreNode run a random action except all actions of the ignored node
 func randomExecActionIgnoreNode(
 	randObj *rand.Rand,
 	inputMap map[simulateActionKey]chan struct{},
@@ -121,7 +126,6 @@ func randomNetworkDisconnect(
 	numTimes *int,
 	maxNumTimes int,
 ) actionWithWeightInfo {
-
 	weight := len(activeConn)
 	if *numTimes >= maxNumTimes {
 		weight = 0
@@ -163,7 +167,7 @@ func randomSendCmdToLeader(
 	)
 }
 
-func randomChangLeader(
+func randomChangeLeader(
 	randObj *rand.Rand,
 	nodeMap map[NodeID]*simulateNodeState,
 	currentNumChange *int,
@@ -182,11 +186,12 @@ func randomChangLeader(
 		nodes[i], nodes[j] = nodes[j], nodes[i]
 	})
 
+	// random from 1 => 3 nodes
 	numNodes := randObj.Intn(3) + 1
 	randomNodes := nodes[:numNodes]
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	cancel() // TODO why need cancel?
 
 	return randomActionWeight(
 		cmdWeight,
