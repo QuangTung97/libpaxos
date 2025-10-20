@@ -2363,8 +2363,8 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 		{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 	}
 	assert.Equal(t, GetCommittedEntriesOutput{
-		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
+		Entries: []LogEntry{
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 		},
 		NextPos: 2,
 	}, output)
@@ -2383,11 +2383,11 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// get again
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
-		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd test 04")},
+		Entries: []LogEntry{
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
+			c.newInfLogEntry(4, "cmd test 04"),
 		},
 		NextPos: 5,
 	}, output)
@@ -2395,10 +2395,10 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// get again with limit
 	output = c.doGetCommitted(1, 3)
 	assert.Equal(t, GetCommittedEntriesOutput{
-		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
+		Entries: []LogEntry{
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
 		},
 		NextPos: 4,
 	}, output)
@@ -2406,9 +2406,9 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// get again with limit, in mem only
 	output = c.doGetCommitted(2, 2)
 	assert.Equal(t, GetCommittedEntriesOutput{
-		Entries: []PosLogEntry{
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
+		Entries: []LogEntry{
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
 		},
 		NextPos: 4,
 	}, output)
@@ -2427,11 +2427,11 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	// get full again
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
-		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
-			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
-			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd test 04")},
+		Entries: []LogEntry{
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			c.newInfLogEntry(2, "cmd test 02"),
+			c.newInfLogEntry(3, "cmd test 03"),
+			c.newInfLogEntry(4, "cmd test 04"),
 		},
 		NextPos: 5,
 	}, output)
@@ -2456,9 +2456,9 @@ func TestCoreLogic__Leader__GetEntriesWithWait__Waiting(t *testing.T) {
 		c.doHandleAccept(nodeID3, 2, 3)
 
 		assert.Equal(t, GetCommittedEntriesOutput{
-			Entries: []PosLogEntry{
-				{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
-				{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
+			Entries: []LogEntry{
+				c.newInfLogEntry(2, "cmd test 02"),
+				c.newInfLogEntry(3, "cmd test 03"),
 			},
 			NextPos: 4,
 		}, resultFn())

@@ -117,7 +117,13 @@ func (s *LogStorageFake) GetCommittedInfo() paxos.CommittedInfo {
 	}
 }
 
-func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLogEntry {
+// GetEntriesV1 TODO remove
+func (s *LogStorageFake) GetEntriesV1(from paxos.LogPos, limit int) []paxos.PosLogEntry {
+	entries := s.GetEntries(from, limit)
+	return paxos.NewPosLogEntryList(entries)
+}
+
+func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.LogEntry {
 	s.mut.Lock()
 	defer s.mut.Unlock()
 
@@ -130,15 +136,13 @@ func (s *LogStorageFake) GetEntries(from paxos.LogPos, limit int) []paxos.PosLog
 
 	maxPos = from + num - 1
 
-	result := make([]paxos.PosLogEntry, 0)
+	result := make([]paxos.LogEntry, 0)
 	for pos := from; pos <= maxPos; pos++ {
 		index := pos - 1
 		entry := s.logEntries[index]
 		entry.Pos = pos
-		result = append(result, paxos.PosLogEntry{
-			Pos:   pos,
-			Entry: entry,
-		})
+
+		result = append(result, entry)
 	}
 
 	return result

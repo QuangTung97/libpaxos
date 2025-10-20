@@ -112,7 +112,7 @@ type simulateNodeState struct {
 	cmdChan chan string
 
 	mut             sync.Mutex
-	stateMachineLog []PosLogEntry
+	stateMachineLog []LogEntry
 	stateLastPos    LogPos
 }
 
@@ -784,14 +784,11 @@ func (s *simulationTestCase) newInfLogEntry(pos LogPos, cmdStr string) LogEntry 
 
 func (s *simulationTestCase) newPosLogEntries(
 	from LogPos, entries ...LogEntry,
-) []PosLogEntry {
-	var result []PosLogEntry
+) []LogEntry {
+	var result []LogEntry
 	for _, entry := range entries {
 		AssertTrue(from == entry.Pos)
-		result = append(result, PosLogEntry{
-			Pos:   from,
-			Entry: entry,
-		})
+		result = append(result, entry)
 		from++
 	}
 	return result
@@ -826,7 +823,7 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 	t.Helper()
 
 	type logWithOrigin struct {
-		log     []PosLogEntry
+		log     []LogEntry
 		origin  NodeID
 		isState bool
 	}
@@ -860,14 +857,14 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 		a := allLog[i]
 		b := allLog[i+1]
 
-		isEqual := slices.EqualFunc(a.log, b.log[:len(a.log)], PosLogEntryEqual)
+		isEqual := slices.EqualFunc(a.log, b.log[:len(a.log)], LogEntryEqual)
 		if !isEqual {
 			t.Error("Replicated log entry should be equal")
 		}
 	}
 
 	for _, entry := range allLog[len(allLog)-1].log {
-		if entry.Entry.Term.IsFinite {
+		if entry.Term.IsFinite {
 			t.Fatal("Must not contain finite term log entry here")
 		}
 	}
@@ -900,8 +897,8 @@ func TestPaxos__Single_Node(t *testing.T) {
 		members := []MemberInfo{
 			{Nodes: []NodeID{nodeID1}, CreatedAt: 1},
 		}
-		assert.Equal(t, []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
+		assert.Equal(t, []LogEntry{
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 		}, s.nodeMap[nodeID1].stateMachineLog)
 		assert.Equal(t, LogPos(1), s.nodeMap[nodeID1].stateLastPos)
 

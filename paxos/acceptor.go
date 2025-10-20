@@ -116,7 +116,7 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 	for _, e := range entries {
 		voteEntries = append(voteEntries, VoteLogEntry{
 			IsFinal: false,
-			Entry:   e.Entry,
+			Entry:   e,
 		})
 	}
 
@@ -226,10 +226,10 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []Lo
 		var markCommitted []LogPos
 
 		for _, entry := range entries {
-			if entry.Entry.Type == LogTypeNull {
+			if entry.Type == LogTypeNull {
 				continue
 			}
-			if s.isSameTerm(entry.Entry.Term) {
+			if s.isSameTerm(entry.Term) {
 				markCommitted = append(markCommitted, entry.Pos)
 			}
 		}
@@ -284,18 +284,16 @@ StartLoop:
 	for pos := from; pos <= maxPos; pos++ {
 		index := int(pos - from)
 
-		var entry PosLogEntry
+		var entry LogEntry
 		if index < len(entries) {
 			entry = entries[index]
 		} else {
-			entry = PosLogEntry{
-				Pos: pos,
-			}
+			entry = NewNullEntry(pos)
 		}
 
-		if entry.Entry.Type == LogTypeNull {
+		if entry.Type == LogTypeNull {
 			posList = append(posList, entry.Pos)
-		} else if entry.Entry.Term.IsFinite {
+		} else if entry.Term.IsFinite {
 			posList = append(posList, entry.Pos)
 		}
 	}

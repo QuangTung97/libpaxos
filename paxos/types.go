@@ -121,6 +121,10 @@ func (e LogEntry) IsNull() bool {
 }
 
 func LogEntryEqual(a, b LogEntry) bool {
+	if a.Pos != b.Pos {
+		return false
+	}
+
 	if a.Type != b.Type {
 		return false
 	}

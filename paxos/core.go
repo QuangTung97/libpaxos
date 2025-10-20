@@ -1327,7 +1327,7 @@ StartFunction:
 	extra.diskMaxPos = memMinPos - 1
 
 	return GetCommittedEntriesOutput{
-		Entries: NewPosLogEntryList(memEntries),
+		Entries: memEntries,
 		NextPos: maxPos + 1,
 	}, nil
 }

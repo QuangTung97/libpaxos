@@ -6,8 +6,11 @@ import "context"
 type LeaderLogGetter interface {
 	GetCommittedInfo() CommittedInfo
 
+	// GetEntriesV1 TODO remove
+	GetEntriesV1(from LogPos, limit int) []PosLogEntry
+
 	// GetEntries does not wait when not found any entries from log pos
-	GetEntries(from LogPos, limit int) []PosLogEntry
+	GetEntries(from LogPos, limit int) []LogEntry
 
 	GetEntriesWithPos(posList ...LogPos) []PosLogEntry
 }
@@ -21,8 +24,9 @@ type StateMachineLogGetter interface {
 }
 
 type GetCommittedEntriesOutput struct {
-	Entries []PosLogEntry
-	NextPos LogPos
+	EntriesV1 []PosLogEntry
+	Entries   []LogEntry
+	NextPos   LogPos
 }
 
 type LogStorage interface {

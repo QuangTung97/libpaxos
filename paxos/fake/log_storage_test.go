@@ -8,6 +8,10 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos"
 )
 
+func newLogList(entries ...paxos.LogEntry) []paxos.LogEntry {
+	return entries
+}
+
 func TestLogStorageFake(t *testing.T) {
 	s := &LogStorageFake{}
 
@@ -185,27 +189,25 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	entry2.Term = paxos.InfiniteTerm{}
 	entry3.Term = paxos.InfiniteTerm{}
 
-	assert.Equal(t, []paxos.PosLogEntry{
-		{Pos: 1, Entry: entry3},
-		{Pos: 2, Entry: entry1},
-		{Pos: 3, Entry: entry4},
-		{Pos: 4, Entry: entry2},
-	}, entries)
+	assert.Equal(t, newLogList(
+		entry3, entry1,
+		entry4, entry2,
+	), entries)
 
 	// get entries, from 3
 	entries = s.GetEntries(3, 100)
-	assert.Equal(t, []paxos.PosLogEntry{
-		{Pos: 3, Entry: entry4},
-		{Pos: 4, Entry: entry2},
-	}, entries)
+	assert.Equal(t, newLogList(
+		entry4,
+		entry2,
+	), entries)
 
 	// get entries, with limit
 	entries = s.GetEntries(1, 3)
-	assert.Equal(t, []paxos.PosLogEntry{
-		{Pos: 1, Entry: entry3},
-		{Pos: 2, Entry: entry1},
-		{Pos: 3, Entry: entry4},
-	}, entries)
+	assert.Equal(t, newLogList(
+		entry3,
+		entry1,
+		entry4,
+	), entries)
 }
 
 func TestLogStorageFake_SetTerm(t *testing.T) {

@@ -86,6 +86,7 @@ func TestCompareInfiniteTerm(t *testing.T) {
 func TestLogEntryEqual(t *testing.T) {
 	t.Run("membership", func(t *testing.T) {
 		a := LogEntry{
+			Pos:  11,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    21,
@@ -97,6 +98,7 @@ func TestLogEntryEqual(t *testing.T) {
 		}
 
 		b := LogEntry{
+			Pos:  11,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    21,
@@ -127,6 +129,7 @@ func TestLogEntryEqual(t *testing.T) {
 
 	t.Run("cmd", func(t *testing.T) {
 		a := LogEntry{
+			Pos:  11,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    21,
@@ -135,6 +138,7 @@ func TestLogEntryEqual(t *testing.T) {
 			CmdData: []byte("cmd test 01"),
 		}
 		b := LogEntry{
+			Pos:  11,
 			Type: LogTypeMembership,
 			Term: TermNum{
 				Num:    21,
@@ -149,8 +153,35 @@ func TestLogEntryEqual(t *testing.T) {
 		assert.Equal(t, true, LogEntryEqual(b, b))
 	})
 
+	t.Run("cmd, pos not equal", func(t *testing.T) {
+		a := LogEntry{
+			Pos:  11,
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 01"),
+		}
+		b := LogEntry{
+			Pos:  12,
+			Type: LogTypeMembership,
+			Term: TermNum{
+				Num:    21,
+				NodeID: nodeID1,
+			}.ToInf(),
+			CmdData: []byte("cmd test 01"),
+		}
+
+		assert.Equal(t, true, LogEntryEqual(a, a))
+		assert.Equal(t, false, LogEntryEqual(a, b))
+		assert.Equal(t, false, LogEntryEqual(b, a))
+		assert.Equal(t, true, LogEntryEqual(b, b))
+	})
+
 	t.Run("term not equal", func(t *testing.T) {
 		a := LogEntry{
+			Pos:  11,
 			Type: LogTypeCmd,
 			Term: TermNum{
 				Num:    21,
@@ -159,6 +190,7 @@ func TestLogEntryEqual(t *testing.T) {
 			CmdData: []byte("cmd test 01"),
 		}
 		b := LogEntry{
+			Pos:  11,
 			Type: LogTypeCmd,
 			Term: TermNum{
 				Num:    22,
@@ -175,10 +207,12 @@ func TestLogEntryEqual(t *testing.T) {
 
 	t.Run("type not equal", func(t *testing.T) {
 		a := LogEntry{
+			Pos:     11,
 			Type:    LogTypeCmd,
 			CmdData: []byte("cmd test 01"),
 		}
 		b := LogEntry{
+			Pos:     11,
 			Type:    LogTypeMembership,
 			CmdData: []byte("cmd test 01"),
 		}
