@@ -22,7 +22,6 @@ type CoreLogic interface {
 		ctx context.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
-
 	GetAcceptEntriesRequestV1(
 		ctx context.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
