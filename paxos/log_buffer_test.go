@@ -10,7 +10,7 @@ import (
 
 func TestLogBuffer(t *testing.T) {
 	newCmd := func(pos LogPos, cmd string) LogEntry {
-		return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmd))
+		return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmd))
 	}
 
 	t.Run("normal", func(t *testing.T) {

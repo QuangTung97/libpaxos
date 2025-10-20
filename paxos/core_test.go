@@ -74,22 +74,18 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 	c.runner = &fake.NodeRunnerFake{}
 
 	// setup init members
-	initEntry := LogEntry{
-		Pos:  1,
-		Type: LogTypeMembership,
-		Term: InfiniteTerm{},
-		Members: []MemberInfo{
+	initEntry := NewMembershipLogEntry(
+		1,
+		InfiniteTerm{},
+		[]MemberInfo{
 			{
 				Nodes:     []NodeID{nodeID1, nodeID2, nodeID3},
 				CreatedAt: 1,
 			},
 		},
-	}
+	)
 	c.log.UpsertEntries([]PosLogEntry{
-		{
-			Pos:   1,
-			Entry: initEntry,
-		},
+		{Pos: 1, Entry: initEntry},
 	}, nil)
 
 	// setup current term
@@ -129,11 +125,11 @@ func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue
 }
 
 func (c *coreLogicTest) newInfLogEntry(pos LogPos, cmdStr string) LogEntry {
-	return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmdStr))
+	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmdStr))
 }
 
 func (c *coreLogicTest) newAcceptLogEntry(pos LogPos, cmdStr string) LogEntry {
-	return NewCmdLogEntryV2(pos, c.currentTerm.ToInf(), []byte(cmdStr))
+	return NewCmdLogEntry(pos, c.currentTerm.ToInf(), []byte(cmdStr))
 }
 
 func (c *coreLogicTest) doHandleVoteResp(
@@ -2398,7 +2394,7 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 		Entries: []PosLogEntry{
 			{
 				Pos: 1,
-				Entry: NewMembershipLogEntryV2(
+				Entry: NewMembershipLogEntry(
 					1,
 					InfiniteTerm{},
 					[]MemberInfo{
@@ -2442,7 +2438,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	}
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
 		},
 		NextPos: 2,
 	}, output)
@@ -2462,7 +2458,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
 			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
 			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
 			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd test 04")},
@@ -2474,7 +2470,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 3)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
 			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
 			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
 		},
@@ -2506,7 +2502,7 @@ func TestCoreLogic__Leader__GetEntriesWithWait(t *testing.T) {
 	output = c.doGetCommitted(1, 100)
 	assert.Equal(t, GetCommittedEntriesOutput{
 		Entries: []PosLogEntry{
-			{Pos: 1, Entry: NewMembershipLogEntryV2(1, InfiniteTerm{}, members)},
+			{Pos: 1, Entry: NewMembershipLogEntry(1, InfiniteTerm{}, members)},
 			{Pos: 2, Entry: c.newInfLogEntry(2, "cmd test 02")},
 			{Pos: 3, Entry: c.newInfLogEntry(3, "cmd test 03")},
 			{Pos: 4, Entry: c.newInfLogEntry(4, "cmd test 04")},
@@ -2590,7 +2586,7 @@ func TestCoreLogic__Leader__Change_Membership_Waiting(t *testing.T) {
 			Term:   c.currentTerm,
 			Entries: []PosLogEntry{
 				{Pos: 4, Entry: c.newAcceptLogEntry(4, "cmd test 04")},
-				{Pos: 5, Entry: NewMembershipLogEntryV2(5, c.currentTerm.ToInf(), members)},
+				{Pos: 5, Entry: NewMembershipLogEntry(5, c.currentTerm.ToInf(), members)},
 			},
 			NextPos:   6,
 			Committed: 3,
@@ -2862,7 +2858,7 @@ func TestCoreLogic__Candidate__Vote_Resp_Empty_Entry(t *testing.T) {
 
 	req := c.doGetAcceptReq(nodeID1, 0, 0)
 
-	noopEntry := NewNoOpLogEntryV2(2)
+	noopEntry := NewNoOpLogEntry(2)
 	noopEntry.Term = c.currentTerm.ToInf()
 	entry1.Term = c.currentTerm.ToInf()
 	assert.Equal(t, AcceptEntriesInput{

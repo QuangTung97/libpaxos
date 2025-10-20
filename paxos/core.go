@@ -435,7 +435,7 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 	}
 
 	if putEntry.IsNull() {
-		putEntry = NewNoOpLogEntry()
+		putEntry = NewNoOpLogEntry(pos)
 	}
 
 	oldEntry := c.leader.memLog.Get(pos)
@@ -938,16 +938,17 @@ func (c *coreLogicImpl) handleInsertSingleCmd(
 	pos := maxPos + 1
 
 	return c.waitForFreeSpace(ctx, c.persistent.GetNodeID(), pos, func() {
-		entry := LogEntry{
-			Type:    LogTypeCmd,
-			Term:    c.getCurrentTerm().ToInf(),
-			CmdData: cmd,
-		}
+		entry := NewCmdLogEntry(
+			pos,
+			c.getCurrentTerm().ToInf(),
+			cmd,
+		)
 		c.appendNewEntry(pos, entry)
 	})
 }
 
 func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {
+	// TODO remove pos
 	c.leader.memLog.Put(pos, entry)
 	c.broadcastAllAcceptors()
 }
@@ -1031,6 +1032,7 @@ StartFunction:
 
 	status, err := c.waitForFreeSpace(ctx, c.persistent.GetNodeID(), pos, func() {
 		entry := NewMembershipLogEntry(
+			pos,
 			c.getCurrentTerm().ToInf(),
 			newMembers,
 		)
@@ -1109,6 +1111,7 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 	newMembers[0].CreatedAt = 1
 
 	entry := NewMembershipLogEntry(
+		pos,
 		c.getCurrentTerm().ToInf(),
 		newMembers,
 	)

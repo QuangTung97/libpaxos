@@ -41,7 +41,7 @@ func newAcceptorLogicTest(t *testing.T) *acceptorLogicTest {
 }
 
 func (*acceptorLogicTest) initMemberLogEntry() LogEntry {
-	return NewMembershipLogEntryV2(
+	return NewMembershipLogEntry(
 		1,
 		InfiniteTerm{},
 		[]MemberInfo{
@@ -103,29 +103,16 @@ func newAcceptLogEntries(from LogPos, entries ...LogEntry) []PosLogEntry {
 	return result
 }
 
-// newCmdV1 TODO remove
-func (s *acceptorLogicTest) newCmdV1(cmd string) LogEntry {
-	return NewCmdLogEntry(s.currentTerm.ToInf(), []byte(cmd))
-}
-
 func (s *acceptorLogicTest) newCmd(pos LogPos, cmd string) LogEntry {
-	return NewCmdLogEntryV2(pos, s.currentTerm.ToInf(), []byte(cmd))
-}
-
-func (s *acceptorLogicTest) newCmdInfV1(cmd string) LogEntry {
-	return NewCmdLogEntry(InfiniteTerm{}, []byte(cmd))
+	return NewCmdLogEntry(pos, s.currentTerm.ToInf(), []byte(cmd))
 }
 
 func (s *acceptorLogicTest) newCmdInf(pos LogPos, cmd string) LogEntry {
-	return NewCmdLogEntryV2(pos, InfiniteTerm{}, []byte(cmd))
-}
-
-func (s *acceptorLogicTest) newCmdTermV1(term TermNum, cmd string) LogEntry {
-	return NewCmdLogEntry(term.ToInf(), []byte(cmd))
+	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmd))
 }
 
 func (s *acceptorLogicTest) newCmdTerm(pos LogPos, term TermNum, cmd string) LogEntry {
-	return NewCmdLogEntryV2(pos, term.ToInf(), []byte(cmd))
+	return NewCmdLogEntry(pos, term.ToInf(), []byte(cmd))
 }
 
 func (s *acceptorLogicTest) doAcceptEntries(

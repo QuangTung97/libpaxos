@@ -105,7 +105,7 @@ func newMembershipLog(pos paxos.LogPos, term paxos.TermNum, nodes ...paxos.NodeI
 	members := []paxos.MemberInfo{
 		{Nodes: nodes, CreatedAt: 1},
 	}
-	return paxos.NewMembershipLogEntryV2(
+	return paxos.NewMembershipLogEntry(
 		pos,
 		term.ToInf(),
 		members,

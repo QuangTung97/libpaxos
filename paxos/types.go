@@ -148,18 +148,7 @@ const (
 	LogTypeNoOp
 )
 
-// NewNoOpLogEntry TODO remove
-func NewNoOpLogEntry() LogEntry {
-	term := TermNum{
-		Num: -1,
-	}
-	return LogEntry{
-		Type: LogTypeNoOp,
-		Term: term.ToInf(),
-	}
-}
-
-func NewNoOpLogEntryV2(pos LogPos) LogEntry {
+func NewNoOpLogEntry(pos LogPos) LogEntry {
 	term := TermNum{
 		Num: -1,
 	}
@@ -170,16 +159,7 @@ func NewNoOpLogEntryV2(pos LogPos) LogEntry {
 	}
 }
 
-// NewCmdLogEntry TODO remove
-func NewCmdLogEntry(term InfiniteTerm, data []byte) LogEntry {
-	return LogEntry{
-		Type:    LogTypeCmd,
-		Term:    term,
-		CmdData: data,
-	}
-}
-
-func NewCmdLogEntryV2(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
+func NewCmdLogEntry(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
 	return LogEntry{
 		Pos:     pos,
 		Type:    LogTypeCmd,
@@ -188,19 +168,7 @@ func NewCmdLogEntryV2(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
 	}
 }
 
-// NewMembershipLogEntry TODO remove
 func NewMembershipLogEntry(
-	term InfiniteTerm,
-	members []MemberInfo,
-) LogEntry {
-	return LogEntry{
-		Type:    LogTypeMembership,
-		Term:    term,
-		Members: members,
-	}
-}
-
-func NewMembershipLogEntryV2(
 	pos LogPos,
 	term InfiniteTerm,
 	members []MemberInfo,
