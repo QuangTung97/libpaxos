@@ -26,15 +26,9 @@ func TestLogStorageFake(t *testing.T) {
 		[]byte("hello02"),
 	)
 
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{
-			Pos:   2,
-			Entry: entry1,
-		},
-		{
-			Pos:   4,
-			Entry: entry2,
-		},
+	s.UpsertEntries([]paxos.LogEntry{
+		entry1,
+		entry2,
 	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
@@ -81,10 +75,10 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		[]byte("hello02"),
 	)
 
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{Pos: 1, Entry: entry1},
-		{Pos: 2, Entry: entry2},
-		{Pos: 3, Entry: entry3},
+	s.UpsertEntries([]paxos.LogEntry{
+		entry1,
+		entry2,
+		entry3,
 	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
@@ -129,9 +123,9 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	entry1 := newCmdLog(2, term, "cmd test 01")
 	entry2 := newCmdLog(4, term, "cmd test 02")
 
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{Pos: 2, Entry: entry1},
-		{Pos: 4, Entry: entry2},
+	s.UpsertEntries([]paxos.LogEntry{
+		entry1,
+		entry2,
 	}, nil)
 
 	assert.Equal(t, []paxos.LogEntry{
@@ -148,9 +142,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	)
 
 	// upsert member log entry
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{Pos: 1, Entry: entry3},
-	}, nil)
+	s.UpsertEntries([]paxos.LogEntry{entry3}, nil)
 	assert.Equal(t, []paxos.LogEntry{
 		entry3,
 		entry1,
@@ -159,13 +151,13 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	}, s.logEntries)
 
 	// mark committed
-	s.UpsertEntriesV1(nil, []paxos.LogPos{1})
+	s.UpsertEntries(nil, []paxos.LogPos{1})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 1,
 		Members:         entry3.Members,
 	}, s.GetCommittedInfo())
 
-	s.UpsertEntriesV1(nil, []paxos.LogPos{2, 4})
+	s.UpsertEntries(nil, []paxos.LogPos{2, 4})
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 2,
 		Members:         entry3.Members,
@@ -174,9 +166,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 	// add committed entry
 	entry4 := newCmdLog(3, term, "cmd test 04")
 	entry4.Term = paxos.InfiniteTerm{}
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{Pos: 3, Entry: entry4},
-	}, nil)
+	s.UpsertEntries([]paxos.LogEntry{entry4}, nil)
 	assert.Equal(t, paxos.CommittedInfo{
 		FullyReplicated: 4,
 		Members:         entry3.Members,
@@ -233,10 +223,10 @@ func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
 	entry2 := newCmdLog(4, term, "cmd test 02")
 	entry3 := newCmdLog(5, term, "cmd test 03")
 
-	s.UpsertEntriesV1([]paxos.PosLogEntry{
-		{Pos: 2, Entry: entry1},
-		{Pos: 4, Entry: entry2},
-		{Pos: 5, Entry: entry3},
+	s.UpsertEntries([]paxos.LogEntry{
+		entry1,
+		entry2,
+		entry3,
 	}, nil)
 
 	entries := s.GetEntriesWithPos(2, 3, 4)
