@@ -8,6 +8,11 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos"
 )
 
+var testCreatedTerm = paxos.TermNum{
+	Num:    17,
+	NodeID: nodeID3,
+}
+
 func newLogList(entries ...paxos.LogEntry) []paxos.LogEntry {
 	return entries
 }
@@ -15,15 +20,17 @@ func newLogList(entries ...paxos.LogEntry) []paxos.LogEntry {
 func TestLogStorageFake(t *testing.T) {
 	s := &LogStorageFake{}
 
-	entry1 := paxos.NewCmdLogEntryV1(
+	entry1 := paxos.NewCmdLogEntry(
 		2,
 		paxos.InfiniteTerm{},
 		[]byte("hello01"),
+		testCreatedTerm,
 	)
-	entry2 := paxos.NewCmdLogEntryV1(
+	entry2 := paxos.NewCmdLogEntry(
 		4,
 		paxos.InfiniteTerm{},
 		[]byte("hello02"),
+		testCreatedTerm,
 	)
 
 	s.UpsertEntries([]paxos.LogEntry{
@@ -60,19 +67,21 @@ func TestLogStorageFake_Membership(t *testing.T) {
 		members,
 	)
 
-	entry2 := paxos.NewCmdLogEntryV1(
+	entry2 := paxos.NewCmdLogEntry(
 		2,
 		paxos.InfiniteTerm{},
 		[]byte("hello01"),
+		testCreatedTerm,
 	)
 
-	entry3 := paxos.NewCmdLogEntryV1(
+	entry3 := paxos.NewCmdLogEntry(
 		3,
 		paxos.TermNum{
 			Num:    41,
 			NodeID: NewNodeID(2),
 		}.ToInf(),
 		[]byte("hello02"),
+		testCreatedTerm,
 	)
 
 	s.UpsertEntries([]paxos.LogEntry{
@@ -95,10 +104,11 @@ func TestLogStorageFake_Membership(t *testing.T) {
 }
 
 func newCmdLog(pos paxos.LogPos, term paxos.TermNum, cmd string) paxos.LogEntry {
-	return paxos.NewCmdLogEntryV1(
+	return paxos.NewCmdLogEntry(
 		pos,
 		term.ToInf(),
 		[]byte(cmd),
+		testCreatedTerm,
 	)
 }
 

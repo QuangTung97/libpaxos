@@ -1392,6 +1392,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			AssertTrue(entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
 			AssertTrue(entry.Pos == pos)
+			ValidateCreatedTerm(entry)
 		}
 
 		// check fully replicated always greater than or equal min buffer pos
@@ -1404,6 +1405,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			AssertTrue(pos == entry.Pos)
 			AssertTrue(!entry.Term.IsFinite)
 			AssertTrue(!entry.IsNull())
+			ValidateCreatedTerm(entry)
 		}
 	}
 

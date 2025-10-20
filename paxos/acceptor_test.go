@@ -98,15 +98,15 @@ func newAcceptLogEntries(from LogPos, entries ...LogEntry) []LogEntry {
 }
 
 func (s *acceptorLogicTest) newCmd(pos LogPos, cmd string) LogEntry {
-	return NewCmdLogEntryV1(pos, s.currentTerm.ToInf(), []byte(cmd))
+	return NewCmdLogEntry(pos, s.currentTerm.ToInf(), []byte(cmd), s.currentTerm)
 }
 
 func (s *acceptorLogicTest) newCmdInf(pos LogPos, cmd string) LogEntry {
-	return NewCmdLogEntryV1(pos, InfiniteTerm{}, []byte(cmd))
+	return NewCmdLogEntry(pos, InfiniteTerm{}, []byte(cmd), s.currentTerm)
 }
 
 func (s *acceptorLogicTest) newCmdTerm(pos LogPos, term TermNum, cmd string) LogEntry {
-	return NewCmdLogEntryV1(pos, term.ToInf(), []byte(cmd))
+	return NewCmdLogEntry(pos, term.ToInf(), []byte(cmd), term)
 }
 
 func (s *acceptorLogicTest) doAcceptEntries(

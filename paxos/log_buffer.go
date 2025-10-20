@@ -25,6 +25,8 @@ func (b *LogBuffer) computeRealIndex(queueIndex int) bufferRealIndex {
 }
 
 func (b *LogBuffer) Insert(entry LogEntry) {
+	ValidateCreatedTerm(entry)
+
 	if b.queueSize >= len(b.queueData) {
 		oldCap := bufferRealIndex(len(b.queueData))
 		newCap := oldCap << 1

@@ -27,6 +27,7 @@ var _ paxos.LogStorage = &LogStorageFake{}
 func (s *LogStorageFake) UpsertEntries(entries []paxos.LogEntry, markCommitted []paxos.LogPos) {
 	for _, e := range entries {
 		paxos.AssertTrue(e.Pos > 0)
+		paxos.ValidateCreatedTerm(e)
 	}
 
 	s.mut.Lock()

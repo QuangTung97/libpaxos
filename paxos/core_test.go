@@ -116,15 +116,15 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 }
 
 func (c *coreLogicTest) newLogEntry(pos LogPos, cmdStr string, termNum TermValue) LogEntry {
-	entry := NewCmdLogEntryV1(
+	entry := NewCmdLogEntry(
 		pos,
 		TermNum{
 			Num:    termNum,
 			NodeID: nodeID3,
 		}.ToInf(),
 		[]byte(cmdStr),
+		testCreatedTerm,
 	)
-	entry.CreatedTerm = testCreatedTerm
 	return entry
 }
 

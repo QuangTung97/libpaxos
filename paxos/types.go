@@ -186,16 +186,6 @@ func NewNoOpLogEntryWithTerm(pos LogPos, term InfiniteTerm) LogEntry {
 	}
 }
 
-// NewCmdLogEntryV1 TODO remove
-func NewCmdLogEntryV1(pos LogPos, term InfiniteTerm, data []byte) LogEntry {
-	return LogEntry{
-		Pos:     pos,
-		Type:    LogTypeCmd,
-		Term:    term,
-		CmdData: data,
-	}
-}
-
 func NewCmdLogEntry(pos LogPos, term InfiniteTerm, data []byte, createdTerm TermNum) LogEntry {
 	return LogEntry{
 		Pos:         pos,
