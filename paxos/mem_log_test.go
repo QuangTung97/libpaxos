@@ -33,9 +33,9 @@ func TestMemLog(t *testing.T) {
 		entry2 := newEntry(22, "cmd 02")
 		entry3 := newEntry(24, "cmd 03")
 
-		m.PutV2(entry1)
-		m.PutV2(entry2)
-		m.PutV2(entry3)
+		m.Put(entry1)
+		m.Put(entry2)
+		m.Put(entry3)
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
 		assert.Equal(t, 4, m.GetQueueSize())
@@ -70,9 +70,9 @@ func TestMemLog(t *testing.T) {
 		entry2 := newEntry(22, "cmd 02")
 		entry3 := newEntry(27, "cmd 03")
 
-		m.PutV2(entry1)
-		m.PutV2(entry2)
-		m.PutV2(entry3)
+		m.Put(entry1)
+		m.Put(entry2)
+		m.Put(entry3)
 
 		assert.Equal(t, LogPos(27), m.MaxLogPos())
 
@@ -99,8 +99,8 @@ func TestMemLog(t *testing.T) {
 		entry3 := newEntry(27, "cmd 03")
 		entry4 := newEntry(28, "cmd 04")
 
-		m.PutV2(entry1)
-		m.PutV2(entry2)
+		m.Put(entry1)
+		m.Put(entry2)
 		assert.Equal(t, 2, m.GetQueueSize())
 
 		popEntry := m.PopFront()
@@ -110,8 +110,8 @@ func TestMemLog(t *testing.T) {
 		assert.Equal(t, entry2, popEntry)
 		assert.Equal(t, 0, m.GetQueueSize())
 
-		m.PutV2(entry3)
-		m.PutV2(entry4)
+		m.Put(entry3)
+		m.Put(entry4)
 
 		assert.Equal(t, LogPos(22), lastCommitted)
 		assert.Equal(t, LogPos(28), m.MaxLogPos())
@@ -141,9 +141,9 @@ func TestMemLog(t *testing.T) {
 		entry2 := newEntry(22, "cmd 02")
 		entry3 := newEntry(24, "cmd 03")
 
-		m.PutV2(entry1)
-		m.PutV2(entry2)
-		m.PutV2(entry3)
+		m.Put(entry1)
+		m.Put(entry2)
+		m.Put(entry3)
 
 		assert.Equal(t, LogPos(24), m.MaxLogPos())
 
@@ -165,7 +165,7 @@ func TestMemLog(t *testing.T) {
 		addVote(22, node2)
 
 		entry1.Term = InfiniteTerm{}
-		m.PutV2(entry1)
+		m.Put(entry1)
 
 		assert.Equal(t, map[NodeID]struct{}{
 			node1: {},
@@ -196,15 +196,15 @@ func TestMemLog(t *testing.T) {
 		entry3 := newEntry(23, "cmd 03")
 		entry4 := newEntry(24, "cmd 04")
 
-		m.PutV2(entry1)
-		m.PutV2(entry2)
-		m.PutV2(entry3)
-		m.PutV2(entry4)
+		m.Put(entry1)
+		m.Put(entry2)
+		m.Put(entry3)
+		m.Put(entry4)
 
 		m.PopFront()
 
 		entry5 := newEntry(25, "cmd 05")
-		m.PutV2(entry5)
+		m.Put(entry5)
 
 		assert.Equal(t, entry5, m.Get(25))
 		assert.Equal(t, map[NodeID]struct{}{}, m.GetVoted(25))

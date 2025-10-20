@@ -23,12 +23,11 @@ func NewMemLog(lastCommitted *LogPos, sizeLog int) *MemLog {
 	}
 }
 
-func (m *MemLog) PutV2(entry LogEntry) {
-	m.Put(entry.Pos, entry)
-}
+func (m *MemLog) Put(entry LogEntry) {
+	AssertTrue(entry.Pos > 0) // TODO remove
 
-// Put TODO remove
-func (m *MemLog) Put(pos LogPos, entry LogEntry) {
+	pos := entry.Pos
+
 	newLen := m.queueLen
 	memPos := int(pos - *m.lastCommitted)
 
@@ -43,7 +42,6 @@ func (m *MemLog) Put(pos LogPos, entry LogEntry) {
 	}
 
 	index := m.getQueueIndex(memPos - 1)
-	entry.Pos = pos // TODO remove
 	m.queueData[index].entry = entry
 }
 

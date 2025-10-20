@@ -440,10 +440,10 @@ func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
 
 	oldEntry := c.leader.memLog.Get(pos)
 	if oldEntry.IsNull() {
-		c.leader.memLog.Put(pos, putEntry)
+		c.leader.memLog.Put(putEntry)
 	} else {
 		if CompareInfiniteTerm(oldEntry.Term, putEntry.Term) < 0 {
-			c.leader.memLog.Put(pos, putEntry)
+			c.leader.memLog.Put(putEntry)
 		}
 	}
 
@@ -491,7 +491,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 	c.candidate.acceptPos = pos
 	logEntry := c.leader.memLog.Get(pos)
 	logEntry.Term = c.getCurrentTerm().ToInf()
-	c.leader.memLog.Put(pos, logEntry)
+	c.leader.memLog.Put(logEntry)
 	c.broadcastAllAcceptors()
 
 	for nodeID, remainPos := range c.candidate.remainPosMap {
@@ -943,13 +943,12 @@ func (c *coreLogicImpl) handleInsertSingleCmd(
 			c.getCurrentTerm().ToInf(),
 			cmd,
 		)
-		c.appendNewEntry(pos, entry)
+		c.appendNewEntry(entry)
 	})
 }
 
-func (c *coreLogicImpl) appendNewEntry(pos LogPos, entry LogEntry) {
-	// TODO remove pos
-	c.leader.memLog.Put(pos, entry)
+func (c *coreLogicImpl) appendNewEntry(entry LogEntry) {
+	c.leader.memLog.Put(entry)
 	c.broadcastAllAcceptors()
 }
 
@@ -1036,7 +1035,7 @@ StartFunction:
 			c.getCurrentTerm().ToInf(),
 			newMembers,
 		)
-		c.appendNewEntry(pos, entry)
+		c.appendNewEntry(entry)
 	})
 	if err != nil {
 		return err
@@ -1115,7 +1114,7 @@ func (c *coreLogicImpl) finishMembershipChange() error {
 		c.getCurrentTerm().ToInf(),
 		newMembers,
 	)
-	c.appendNewEntry(pos, entry)
+	c.appendNewEntry(entry)
 
 	return c.updateLeaderMembers(newMembers, pos)
 }
