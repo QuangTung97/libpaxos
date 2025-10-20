@@ -90,7 +90,7 @@ func NewCoreLogic(
 
 type coreLogicImpl struct {
 	nowFunc      func() TimestampMilli
-	maxBufferLen LogPos
+	maxBufferLen LogPos // maximum total number of log entries in both memLog and logBuffer
 
 	mut   sync.Mutex
 	state State
@@ -173,7 +173,9 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 		return err
 	}
 
+	// current node is in current member list
 	if c.isInMemberList(c.persistent.GetNodeID()) {
+		// if OK => do nothing
 		return nil
 	}
 
@@ -181,7 +183,6 @@ func (c *coreLogicImpl) updateLeaderMembers(newMembers []MemberInfo, pos LogPos)
 		Valid: true,
 		Pos:   pos,
 	}
-
 	return c.stepDownWhenNotInMemberList()
 }
 
@@ -534,6 +535,7 @@ func (c *coreLogicImpl) stepDownWhenNotInMemberList() error {
 		return nil
 	}
 
+	// step down when the stepDownPos <= lastCommitted
 	if stepDownAt.Pos > c.leader.lastCommitted {
 		return nil
 	}
@@ -1417,6 +1419,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 
 		// check fully replicated always greater than or equal min buffer pos
 		AssertTrue(c.log.GetCommittedInfo().FullyReplicated+1 >= c.leader.logBuffer.GetFrontPos())
+		AssertTrue(c.leader.lastCommitted >= c.log.GetCommittedInfo().FullyReplicated)
 
 		// check log buffer fully replicated
 		for pos := c.leader.logBuffer.GetFrontPos(); pos <= c.leader.lastCommitted; pos++ {
@@ -1428,6 +1431,12 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			ValidateCreatedTerm(entry)
 			AssertImply(entry.PrevPointer != PreviousPointer{}, entry.Type.WithPreviousPointer())
 		}
+
+		// validate step down at
+		AssertEquivalent(
+			c.leader.leaderStepDownAt.Valid,
+			!c.isInMemberList(c.persistent.GetNodeID()),
+		)
 	}
 
 	// check disk log is not null & term is infinite before fully-replicated pos
@@ -1471,4 +1480,8 @@ func AssertTrue(b bool) {
 
 func AssertImply(a, b bool) {
 	AssertTrue(!a || b)
+}
+
+func AssertEquivalent(a, b bool) {
+	AssertTrue(a == b)
 }

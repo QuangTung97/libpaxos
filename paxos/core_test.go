@@ -2481,12 +2481,14 @@ func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
 	for i := range input1.Entries {
 		input1.Entries[i].Term = InfiniteTerm{}
 	}
-	c.log.UpsertEntries(input1.Entries, nil)
 
 	c.doHandleAccept(nodeID1, 2, 3, 4)
 	c.doHandleAccept(nodeID2, 2, 3, 4)
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
 	assert.Equal(t, LogPos(2), c.core.GetMinBufferLogPos())
+
+	// insert to local log storage
+	c.log.UpsertEntries(input1.Entries, nil)
 
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	assert.Equal(t, LogPos(3), c.core.GetMinBufferLogPos())
@@ -2973,23 +2975,39 @@ func TestCoreLogic__Leader__Finish_Membership__Increase_Last_Committed(t *testin
 	)
 
 	accReq := c.doGetAcceptReq(nodeID4, 1, 0)
+	assert.Equal(t, LogPos(5), accReq.NextPos)
 	memberEntry := accReq.Entries[0]
 	memberEntry.Term = InfiniteTerm{}
 
+	// accept on majority at pos = 2
 	c.doHandleAccept(nodeID1, 2)
 	c.doHandleAccept(nodeID2, 2)
 	c.doHandleAccept(nodeID4, 2, 3, 4)
 	assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 
+	// insert to local log storage
 	c.log.UpsertEntries(newLogList(memberEntry), nil)
 
+	// node1 fully replicated to pos = 2
 	c.doUpdateFullyReplicated(nodeID1, 2)
 	assert.Equal(t, LogPos(2), c.core.GetReplicatedPosTest(nodeID1))
 
+	// similar to node2 & node4
 	c.doUpdateFullyReplicated(nodeID2, 2)
 	c.doUpdateFullyReplicated(nodeID4, 2)
 	assert.Equal(t, LogPos(5), c.core.GetMaxLogPos())
 	assert.Equal(t, LogPos(4), c.core.GetLastCommitted())
+
+	// check pending log entries
+	accReq = c.doGetAcceptReq(nodeID4, 5, 0)
+	assert.Equal(t, newLogList(
+		NewMembershipLogEntry(
+			5, c.currentTerm.ToInf(),
+			[]MemberInfo{
+				{Nodes: []NodeID{nodeID4}, CreatedAt: 1},
+			},
+		),
+	), accReq.Entries)
 }
 
 func TestCoreLogic__Leader__Change_Membership__Duplicated(t *testing.T) {

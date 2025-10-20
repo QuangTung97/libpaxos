@@ -136,6 +136,7 @@ type LogEntry struct {
 	// CmdData valid only when Type = LogTypeCmd
 	CmdData []byte
 
+	// CreatedTerm & PrevPointer valid only when Type = LogTypeCmd
 	CreatedTerm TermNum
 	PrevPointer PreviousPointer
 }
@@ -154,10 +155,11 @@ func (t LogType) WithPreviousPointer() bool {
 }
 
 func ValidateCreatedTerm(entry LogEntry) {
-	if !entry.Type.WithPreviousPointer() {
-		return
+	if entry.Type.WithPreviousPointer() {
+		AssertTrue(entry.CreatedTerm != TermNum{})
+	} else {
+		AssertTrue(entry.CreatedTerm == TermNum{})
 	}
-	AssertTrue(entry.CreatedTerm != TermNum{})
 }
 
 func (e LogEntry) IsNull() bool {
