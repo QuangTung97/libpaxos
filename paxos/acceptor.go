@@ -114,7 +114,6 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 	voteEntries := make([]VoteLogEntry, 0, len(entries))
 	for _, e := range entries {
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     e.Pos,
 			IsFinal: false,
 			Entry:   e.Entry,
 		})
@@ -125,7 +124,6 @@ func (s *acceptorLogicImpl) buildVoteResponse(
 
 	if isFinal {
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     newFromPos,
 			IsFinal: true,
 			Entry:   NewNullEntry(newFromPos),
 		})

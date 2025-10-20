@@ -140,7 +140,6 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
 				{
-					Pos:     2,
 					IsFinal: true,
 					Entry:   NewNullEntry(2),
 				},
@@ -158,7 +157,6 @@ func TestAcceptorLogic_HandleRequestVote__No_Log_Entries(t *testing.T) {
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
 				{
-					Pos:     2,
 					IsFinal: true,
 					Entry:   NewNullEntry(2),
 				},
@@ -190,10 +188,10 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries(t *testing.T) {
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 2, Entry: s.newCmd(2, "cmd test 01")},
-				{Pos: 3, Entry: s.newCmd(3, "cmd test 02")},
-				{Pos: 4, Entry: s.newCmd(4, "cmd test 03")},
-				{Pos: 5, IsFinal: true, Entry: NewNullEntry(5)},
+				{Entry: s.newCmd(2, "cmd test 01")},
+				{Entry: s.newCmd(3, "cmd test 02")},
+				{Entry: s.newCmd(4, "cmd test 03")},
+				{IsFinal: true, Entry: NewNullEntry(5)},
 			},
 		},
 	}, outputs)
@@ -221,16 +219,16 @@ func TestAcceptorLogic_HandleRequestVote__With_Log_Entries__With_Limit(t *testin
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 2, Entry: s.newCmd(2, "cmd test 01")},
-				{Pos: 3, Entry: s.newCmd(3, "cmd test 02")},
+				{Entry: s.newCmd(2, "cmd test 01")},
+				{Entry: s.newCmd(3, "cmd test 02")},
 			},
 		},
 		{
 			Success: true,
 			Term:    s.currentTerm,
 			Entries: []VoteLogEntry{
-				{Pos: 4, Entry: s.newCmd(4, "cmd test 03")},
-				{Pos: 5, IsFinal: true, Entry: NewNullEntry(5)},
+				{Entry: s.newCmd(4, "cmd test 03")},
+				{IsFinal: true, Entry: NewNullEntry(5)},
 			},
 		},
 	}, outputs)

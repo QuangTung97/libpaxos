@@ -383,7 +383,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 		return handleStatusFailed, nil
 	}
 
-	pos := entry.Pos
+	pos := entry.Entry.Pos
 
 	if entry.IsFinal {
 		if pos > remainPos.Pos {
@@ -402,7 +402,7 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 		return handleStatusFailed, nil
 	}
 
-	return c.waitForFreeSpace(ctx, id, entry.Pos, func() {
+	return c.waitForFreeSpace(ctx, id, pos, func() {
 		c.candidatePutVoteEntry(id, entry)
 	})
 }
@@ -426,7 +426,7 @@ func (c *coreLogicImpl) waitForFreeSpace(
 }
 
 func (c *coreLogicImpl) candidatePutVoteEntry(id NodeID, entry VoteLogEntry) {
-	pos := entry.Pos
+	pos := entry.Entry.Pos
 
 	putEntry := entry.Entry
 	if !putEntry.Term.IsFinite {

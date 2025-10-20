@@ -146,9 +146,11 @@ func (c *coreLogicTest) doHandleVoteResp(
 	}
 
 	if withFinal {
+		pos := fromPos + LogPos(len(entries))
 		voteEntries = append(voteEntries, VoteLogEntry{
-			Pos:     fromPos + LogPos(len(entries)),
+			Pos:     pos,
 			IsFinal: true,
+			Entry:   NewNullEntry(pos),
 		})
 	}
 
@@ -278,6 +280,7 @@ func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
 			{
 				Pos:     2,
 				IsFinal: true,
+				Entry:   NewNullEntry(2),
 			},
 		},
 	}
