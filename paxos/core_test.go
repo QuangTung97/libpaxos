@@ -380,6 +380,7 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 
 	entry1 := c.newLogEntry(2, "cmd data 01", 19)
 	entry2 := c.newLogEntry(3, "cmd data 02", 19)
+	entry2.PrevPointer = entry1.NextPreviousPointer()
 	entry3 := c.newLogEntry(3, "cmd data 03", 18)
 
 	c.doHandleVoteResp(nodeID1, 2, false, entry1, entry2)
@@ -403,6 +404,12 @@ func TestCoreLogic_HandleVoteResponse__With_Prev_2_Entries__Stay_At_Candidate(t 
 		NextPos:   4,
 		Committed: 1,
 	}, acceptReq)
+
+	// check valid log
+	assert.Equal(t, []LogEntry{
+		entry1,
+		entry2,
+	}, c.core.GetValidLogEntries())
 }
 
 func TestCoreLogic_HandleVoteResponse__With_Prev_Both_Null_Entries(t *testing.T) {
@@ -897,7 +904,7 @@ func TestCoreLogic__Insert_Cmd__Accept_Response_2_Entries(t *testing.T) {
 
 	c.startAsLeader()
 
-	// insert 2 commands
+	// insert 3 commands
 	c.doInsertCmd(
 		"cmd data 01",
 		"cmd data 02",
@@ -1100,6 +1107,13 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Committed_Info__Previous_Pointer(t 
 		NextPos:   5,
 		Committed: 2,
 	}, accReq)
+
+	// check valid log
+	assert.Equal(t, []LogEntry{
+		entry2,
+		c.newAcceptLogEntryWithPrev(3, "cmd data 03", entry2.NextPreviousPointer()),
+		c.newAcceptLogEntry(4, "cmd data 04"),
+	}, c.core.GetValidLogEntries())
 }
 
 func TestCoreLogic__Candidate__Handle_Vote_Resp_With_Membership_Change(t *testing.T) {

@@ -49,6 +49,7 @@ type CoreLogic interface {
 	GetMinBufferLogPos() LogPos
 	GetMaxLogPos() LogPos
 	GetFollowerWakeUpAt() TimestampMilli
+	GetValidLogEntries() []LogEntry
 
 	// CheckInvariant for testing only
 	CheckInvariant()
@@ -1467,8 +1468,87 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.state == StateFollower)
 	}
 
+	// check prev pointer invariant
+	c.checkLogPrevPointerInvariant()
+
 	if updated, label := c.updateAllRunners(); updated {
 		panic("Invariant failed on label: " + label)
+	}
+}
+
+func (c *coreLogicImpl) GetValidLogEntries() []LogEntry {
+	c.mut.Lock()
+	defer c.mut.Unlock()
+
+	entries := c.getValidLogEntryList()
+	result := make([]LogEntry, 0)
+	for _, e := range entries {
+		if !e.isValid {
+			continue
+		}
+		result = append(result, e.entry)
+	}
+
+	return result
+}
+
+type validLogEntry struct {
+	entry   LogEntry
+	isValid bool
+}
+
+func (c *coreLogicImpl) getValidLogEntryList() []validLogEntry {
+	commitInfo := c.log.GetCommittedInfo()
+	replicatedPos := commitInfo.FullyReplicated
+
+	allEntries := c.log.GetEntries(1, int(replicatedPos))
+
+	if c.state != StateFollower {
+		var posList []LogPos
+		for pos := replicatedPos + 1; pos <= c.leader.lastCommitted; pos++ {
+			posList = append(posList, pos)
+		}
+		bufferEntries := c.leader.logBuffer.GetEntries(posList...)
+		allEntries = append(allEntries, bufferEntries...)
+
+		maxPos := c.getMaxValidLogPos()
+		for pos := c.leader.lastCommitted + 1; pos <= maxPos; pos++ {
+			entry := c.leader.memLog.Get(pos)
+			allEntries = append(allEntries, entry)
+		}
+
+		AssertTrue(len(allEntries) == int(maxPos))
+	} else {
+		AssertTrue(len(allEntries) == int(replicatedPos))
+	}
+
+	validList := make([]validLogEntry, 0, len(allEntries))
+	var prevPointer PreviousPointer
+	for _, entry := range allEntries {
+		isValid := entry.AcceptPrevPointer(prevPointer)
+		if isValid {
+			prevPointer = entry.NextPreviousPointer()
+		}
+		validList = append(validList, validLogEntry{
+			entry:   entry,
+			isValid: isValid,
+		})
+	}
+
+	return validList
+}
+
+func (c *coreLogicImpl) checkLogPrevPointerInvariant() {
+	validList := c.getValidLogEntryList()
+	for _, e := range validList {
+		if !e.isValid {
+			continue
+		}
+		prevPos := e.entry.PrevPointer.Pos
+		for pos := prevPos + 1; pos < e.entry.Pos; pos++ {
+			index := pos - 1
+			AssertTrue(!validList[index].isValid)
+		}
 	}
 }
 
