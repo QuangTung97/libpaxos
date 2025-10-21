@@ -992,8 +992,8 @@ func (c *coreLogicImpl) CheckTimeout() {
 	}
 
 	// for candidate & leader
-	for nodeID, weakUpAt := range c.leader.acceptorWakeUpAt {
-		if c.isExpired(weakUpAt) {
+	for nodeID, wakeUpAt := range c.leader.acceptorWakeUpAt {
+		if c.isExpired(wakeUpAt) {
 			delete(c.leader.acceptorWakeUpAt, nodeID)
 			c.leader.sendAcceptCond.Signal(nodeID)
 		}
