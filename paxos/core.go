@@ -367,7 +367,7 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
-	c.followDoCheckAcceptEntriesRequest(inputTerm)
+	c.followDoCheckLeaderRequestTermNum(inputTerm)
 }
 
 type handleStatus int
@@ -665,12 +665,12 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	ok := c.followDoCheckAcceptEntriesRequest(term)
+	ok := c.followDoCheckLeaderRequestTermNum(term)
 	c.checkInvariantIfEnabled()
 	return ok
 }
 
-func (c *coreLogicImpl) followDoCheckAcceptEntriesRequest(term TermNum) bool {
+func (c *coreLogicImpl) followDoCheckLeaderRequestTermNum(term TermNum) bool {
 	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
 		// current term >= term => do nothing
 		return false
@@ -796,8 +796,10 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
 		allCheckedNodes := slices.Collect(maps.Keys(c.follower.lastNodePos))
+
+		// sort in reversed order
 		slices.SortFunc(allCheckedNodes, func(a, b NodeID) int {
-			return slices.Compare(a[:], b[:])
+			return -CompareNodeID(a, b)
 		})
 
 		allMembers := GetAllMembers(c.follower.members)

@@ -54,11 +54,15 @@ type InfiniteTerm struct {
 	Term     TermNum
 }
 
+func CompareNodeID(a, b NodeID) int {
+	return slices.Compare(a[:], b[:])
+}
+
 func CompareTermNum(a, b TermNum) int {
 	if a.Num != b.Num {
 		return cmp.Compare(a.Num, b.Num)
 	}
-	return slices.Compare(a.NodeID[:], b.NodeID[:])
+	return CompareNodeID(a.NodeID, b.NodeID)
 }
 
 func CompareInfiniteTerm(a, b InfiniteTerm) int {

@@ -2319,7 +2319,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	assert.Equal(t, true, c.runner.ElectionStarted)
 	assert.Equal(t, TermValue(20), c.runner.ElectionTerm)
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
-	assert.Equal(t, nodeID1, c.runner.ElectionChosen)
+	assert.Equal(t, nodeID2, c.runner.ElectionChosen)
 }
 
 func TestCoreLogic__Candidate__Check_Start_Election_Runner(t *testing.T) {
@@ -2415,7 +2415,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_M
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, true, c.runner.ElectionStarted)
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
-	assert.Equal(t, nodeID4, c.runner.ElectionChosen)
+	assert.Equal(t, nodeID5, c.runner.ElectionChosen)
 }
 
 func TestCoreLogic__Retry__Handle_Leader_Info(t *testing.T) {
@@ -2935,7 +2935,7 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 
 	assert.Equal(t, true, c.runner.ElectionStarted)
 	assert.Equal(t, TermValue(21), c.runner.ElectionTerm)
-	assert.Equal(t, nodeID4, c.runner.ElectionChosen)
+	assert.Equal(t, nodeID5, c.runner.ElectionChosen)
 	assert.Equal(t, 2, c.runner.ElectionRetryCount)
 }
 

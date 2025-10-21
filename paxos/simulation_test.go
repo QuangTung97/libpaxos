@@ -945,12 +945,11 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
 
-		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
-		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID2)
 
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID3)
 
 		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
@@ -961,25 +960,33 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
 
 		// vote requests
-		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
-		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID2)
 
 		// shutdown voters
-		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
-		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID2)
-		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID3)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID3)
 
 		// rerun state machine
-		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+
+		// stop start election runner
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID2)
 
 		// check logs
 		members := []MemberInfo{
 			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 		}
 
+		// check logs
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 		), s.nodeMap[nodeID1].stateMachineLog)
+
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+		), s.nodeMap[nodeID2].stateMachineLog)
 
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
@@ -987,46 +994,46 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 
 		// insert commands
 		s.insertNewCommand(t,
-			nodeID1,
+			nodeID2,
 			"cmd test 02",
 			"cmd test 03",
 		)
-		assert.Equal(t, LogPos(1), s.nodeMap[nodeID1].core.GetLastCommitted())
+		assert.Equal(t, LogPos(1), s.nodeMap[nodeID2].core.GetLastCommitted())
 
 		// send accept to majority
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1) // because last committed is increased
-		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].core.GetLastCommitted())
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1) // because last committed is increased
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID2].core.GetLastCommitted())
 
 		// check logs of leader
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "cmd test 02"),
 			s.newInfLogEntry(3, "cmd test 03"),
-		), s.nodeMap[nodeID1].getMachineLog())
+		), s.nodeMap[nodeID2].getMachineLog())
 
-		// check logs of node 2
+		// check logs of node 1
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
-		), s.nodeMap[nodeID2].stateMachineLog)
-		assert.Equal(t, LogPos(3), s.nodeMap[nodeID2].log.GetFullyReplicated())
+		), s.nodeMap[nodeID1].stateMachineLog)
+		assert.Equal(t, LogPos(3), s.nodeMap[nodeID1].log.GetFullyReplicated())
 
-		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
 
-		// check logs after fully replicated to node 2
+		// check logs after fully replicated to node 1
 		assert.Equal(t, s.newPosLogEntries(1,
 			NewMembershipLogEntry(1, InfiniteTerm{}, members),
 			s.newInfLogEntry(2, "cmd test 02"),
 			s.newInfLogEntry(3, "cmd test 03"),
-		), s.nodeMap[nodeID2].getMachineLog())
+		), s.nodeMap[nodeID1].getMachineLog())
 
 		// restart state machine of node 3
 		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
 
 		// clear existing conn state
-		s.closeConn(t, simulateActionAcceptRequest, nodeID1, nodeID3)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+		s.closeConn(t, simulateActionAcceptRequest, nodeID2, nodeID3)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID3)
 
 		// check logs BEFORE fully replicated to node 3
 		assert.Equal(t, s.newPosLogEntries(1,
@@ -1036,8 +1043,8 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
 
 		// fully replicate
-		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID3)
-		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID2, nodeID3)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID2, nodeID3)
 
 		// check logs AFTER fully replicated to node 3
 		assert.Equal(t, s.newPosLogEntries(1,
@@ -1048,10 +1055,10 @@ func TestPaxos__Normal_Three_Nodes(t *testing.T) {
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].log.GetFullyReplicated())
 		assert.Equal(t, LogPos(3), s.nodeMap[nodeID3].acceptor.GetLastCommitted())
 
-		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID1, nodeID3)
+		s.runAction(t, simulateActionFullyReplicate, phaseHandleResponse, nodeID2, nodeID3)
 
-		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
-		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID2, nodeID2)
 
 		s.printAllWaiting()
 	})
@@ -1172,20 +1179,23 @@ func (s *simulationTestCase) setupLeaderForThreeNodes(t *testing.T) {
 	s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
 	s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
 
-	s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
-	s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+	s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID2)
 
-	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID1)
-	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID2)
-	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID1, nodeID3)
+	// start send 3 vote requests in parallel, to avoid node 3 has no chance to run
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID2, nodeID1)
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID2, nodeID2)
+	s.runAction(t, simulateActionVoteRequest, phaseBeforeRequest, nodeID2, nodeID3)
 
-	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
-	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID2)
-	s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID3)
+	// complete the rest of vote request actions
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID1)
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID2)
+	s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID3)
 
-	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
-	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID2)
-	s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID3)
+	s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID2)
+
+	s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID1)
+	s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID2)
+	s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID3)
 
 	s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
 	s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
@@ -1443,3 +1453,73 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 }
 
 // TODO add timeout tests (both normal test cases and property based tests)
+
+func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID2)
+
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
+
+		// TODO
+		//s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID2)
+
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID2)
+
+		// stop other followers
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID2, nodeID3)
+
+		// stop send vote threads
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID2, nodeID3)
+
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+
+		// insert commands
+		s.insertNewCommand(t,
+			nodeID2,
+			"cmd test 02",
+			"cmd test 03",
+			"cmd test 04",
+		)
+
+		core2 := s.nodeMap[nodeID2].core
+
+		// send accept requests
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1) // because last committed increased
+		assert.Equal(t, LogPos(4), core2.GetLastCommitted())
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID3)
+
+		// stop fetch follower of node3
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
+		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
+
+		s.now.Add(11_000) // add 11 seconds
+		core2.CheckTimeout()
+
+		// TODO checking
+
+		s.printAllWaiting()
+	})
+}
