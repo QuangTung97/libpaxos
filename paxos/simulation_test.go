@@ -1452,8 +1452,6 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 	})
 }
 
-// TODO add timeout tests (both normal test cases and property based tests)
-
 func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newSimulationTestCase(
@@ -1470,9 +1468,6 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
 		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
-
-		// TODO
-		//s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
 
 		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID1)
 		s.runFullPhases(t, simulateActionVoteRequest, nodeID2, nodeID2)
@@ -1515,11 +1510,45 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
 		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
 
+		// handle time out of leader
 		s.now.Add(11_000) // add 11 seconds
 		core2.CheckTimeout()
+		synctest.Wait()
 
-		// TODO checking
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID3)
+
+		members := []MemberInfo{
+			{Nodes: []NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
+		}
+
+		// check logs of node 2
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			s.newInfLogEntry(2, "cmd test 02"),
+			s.newInfLogEntry(3, "cmd test 03"),
+			s.newInfLogEntry(4, "cmd test 04"),
+		), s.nodeMap[nodeID2].getMachineLog())
+
+		// check logs of node 1
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			s.newInfLogEntry(2, "cmd test 02"),
+			s.newInfLogEntry(3, "cmd test 03"),
+			s.newInfLogEntry(4, "cmd test 04"),
+		), s.nodeMap[nodeID1].getMachineLog())
+
+		// handle time out of node1
+		// s.now.Add(11_000) // add 11 seconds
+		core1 := s.nodeMap[nodeID1].core
+		core1.CheckTimeout()
+		synctest.Wait()
+
+		// TODO check
 
 		s.printAllWaiting()
 	})
 }
+
+// TODO add timeout tests (both normal test cases and property based tests)

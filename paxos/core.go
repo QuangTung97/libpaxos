@@ -665,6 +665,8 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	// TODO Update Follower Wake Up At
+
 	ok := c.followDoCheckLeaderRequestTermNum(term)
 	c.checkInvariantIfEnabled()
 	return ok
