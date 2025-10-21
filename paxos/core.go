@@ -766,18 +766,19 @@ func (c *coreLogicImpl) updateStateMachineRunner() bool {
 	})
 }
 
-func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
+func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool) {
 	term := c.getCurrentTerm()
 
+	wrap := func(b bool) {
+		if b {
+			updatedResult = true
+		}
+	}
+
 	if c.state != StateFollower {
-		updated := false
-		if c.runner.StartFetchingFollowerInfoRunners(term, nil, 0) {
-			updated = true
-		}
-		if c.runner.StartElectionRunner(0, false, NodeID{}, 0) {
-			updated = true
-		}
-		return updated
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil, 0))
+		wrap(c.runner.StartElectionRunner(0, false, NodeID{}, 0))
+		return
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusRunning {
@@ -788,9 +789,9 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
 				delete(allMembers, id)
 			}
 		}
-		c.runner.StartFetchingFollowerInfoRunners(term, allMembers, c.followerRetryCount)
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, allMembers, c.followerRetryCount))
 	} else {
-		c.runner.StartFetchingFollowerInfoRunners(term, nil, 0)
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil, 0))
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
@@ -816,12 +817,14 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() bool {
 			}
 		}
 
-		return c.runner.StartElectionRunner(
+		wrap(c.runner.StartElectionRunner(
 			c.follower.lastTermVal, true, lastNode, c.followerRetryCount,
-		)
+		))
 	} else {
-		return c.runner.StartElectionRunner(0, false, NodeID{}, 0)
+		wrap(c.runner.StartElectionRunner(0, false, NodeID{}, 0))
 	}
+
+	return
 }
 
 func (c *coreLogicImpl) HandleAcceptEntriesResponse(
