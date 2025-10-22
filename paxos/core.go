@@ -666,8 +666,13 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	defer c.mut.Unlock()
 
 	ok := c.followDoCheckLeaderRequestTermNum(term, func() {
-		if c.state == StateFollower {
-			c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		if c.state != StateFollower {
+			return
+		}
+
+		c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		if c.follower.checkStatus != followerCheckOtherStatusLeaderIsActive {
+			c.updateFollowerCheckOtherStatus(true, false)
 		}
 	})
 
@@ -678,9 +683,11 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 func (c *coreLogicImpl) followDoCheckLeaderRequestTermNum(
 	term TermNum, onTermEqual func(),
 ) bool {
-	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
-		// current term >= term => do nothing
-		onTermEqual()
+	cmpValue := CompareTermNum(c.getCurrentTerm(), term)
+	if cmpValue >= 0 {
+		if cmpValue == 0 {
+			onTermEqual()
+		}
 		return false
 	}
 
@@ -698,8 +705,7 @@ func (c *coreLogicImpl) followDoCheckLeaderRequestTermNum(
 }
 
 func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
-	causedByAnotherLeader bool,
-	fastSwitchLeader bool,
+	causedByAnotherLeader bool, fastSwitchLeader bool,
 ) {
 	c.follower = &followerStateInfo{
 		wakeUpAt: c.computeNextWakeUp(2),

@@ -2401,6 +2401,46 @@ func TestCoreLogic__Follower__RecvTermNum__Same_Term__Increase_Wake_Up(t *testin
 	c.core.FollowerReceiveTermNum(term)
 
 	assert.Equal(t, TimestampMilli(28_000), c.core.GetFollowerWakeUpAt())
+
+	// follower fetch state leader is active
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, term, c.runner.FetchFollowerTerm)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
+
+	// recv the same term again
+	c.core.FollowerReceiveTermNum(term)
+
+	assert.Equal(t, TimestampMilli(28_000), c.core.GetFollowerWakeUpAt())
+
+	// follower fetch state leader is active
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, term, c.runner.FetchFollowerTerm)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
+}
+
+func TestCoreLogic__Follower__RecvTermNum__Smaller_Term__Do_Nothing(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	assert.Equal(t, int64(10_000), c.now.Load())
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+
+	// follower fetch state is running
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+
+	term := c.persistent.GetLastTerm()
+	assert.Equal(t, TermNum{Num: 20, NodeID: nodeID5}, term)
+
+	c.now.Add(8000) // move up 8 seconds
+
+	// recv the same term
+	smallTerm := term
+	smallTerm.Num--
+	c.core.FollowerReceiveTermNum(smallTerm)
+
+	// no change
+	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 }
 
 func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_Membership(t *testing.T) {
