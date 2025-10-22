@@ -1495,7 +1495,9 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 			"cmd test 04",
 		)
 
+		core1 := s.nodeMap[nodeID1].core
 		core2 := s.nodeMap[nodeID2].core
+		core3 := s.nodeMap[nodeID3].core
 
 		// send accept requests
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
@@ -1539,16 +1541,126 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 			s.newInfLogEntry(4, "cmd test 04"),
 		), s.nodeMap[nodeID1].getMachineLog())
 
-		// handle time out of node1
-		// s.now.Add(11_000) // add 11 seconds
-		core1 := s.nodeMap[nodeID1].core
+		// check logs of node 3
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+		), s.nodeMap[nodeID3].getMachineLog())
+
+		// handle time out of node1 & node3
+		s.now.Add(11_000) // add 11 seconds
 		core1.CheckTimeout()
+		core3.CheckTimeout()
 		synctest.Wait()
 
-		// TODO check
+		// node1 fetch other infos
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFetchFollower, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionStartElection, nodeID1, nodeID1)
+
+		// shutdown remaining
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID1, nodeID3)
+		s.runShutdown(t, simulateActionStartElection, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+
+		// run vote
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionVoteRequest, nodeID1, nodeID2)
+
+		// shutdown old leader
+		s.runShutdown(t, simulateActionAcceptRequest, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionAcceptRequest, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionAcceptRequest, nodeID2, nodeID3)
+		s.runShutdown(t, simulateActionFullyReplicate, nodeID2, nodeID1)
+		s.runShutdown(t, simulateActionFullyReplicate, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionFullyReplicate, nodeID2, nodeID3)
+
+		// shutdown voting of new leader
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID2)
+		s.runShutdown(t, simulateActionVoteRequest, nodeID1, nodeID3)
+
+		// send accept requests to all
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+
+		// shutdown node 3 fetch infos
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID1)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID2)
+		s.runShutdown(t, simulateActionFetchFollower, nodeID3, nodeID3)
+
+		// shutdown state machines
+		s.runShutdown(t, simulateActionStateMachine, nodeID1, nodeID1)
+		s.runShutdown(t, simulateActionStateMachine, nodeID2, nodeID2)
+		s.runShutdown(t, simulateActionStateMachine, nodeID3, nodeID3)
+
+		// check term
+		assert.Equal(t, TermNum{
+			Num:    22,
+			NodeID: nodeID1,
+		}, s.nodeMap[nodeID1].persistent.GetLastTerm())
+
+		// insert cmd
+		s.insertNewCommand(t, nodeID1,
+			"cmd new leader 05",
+			"cmd new leader 06",
+		)
+
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID2)
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID1) // because committed pos is increased
+
+		// check logs of node 2
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			s.newInfLogEntry(2, "cmd test 02"),
+			s.newInfLogEntry(3, "cmd test 03"),
+			s.newInfLogEntry(4, "cmd test 04"),
+			s.newInfLogEntry(5, "cmd new leader 05"),
+			s.newInfLogEntry(6, "cmd new leader 06"),
+		), s.nodeMap[nodeID2].getMachineLog())
+
+		// check logs of node 1
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			s.newInfLogEntry(2, "cmd test 02"),
+			s.newInfLogEntry(3, "cmd test 03"),
+			s.newInfLogEntry(4, "cmd test 04"),
+			s.newInfLogEntry(5, "cmd new leader 05"),
+			s.newInfLogEntry(6, "cmd new leader 06"),
+		), s.nodeMap[nodeID1].getMachineLog())
+
+		// replicate fully to node 3
+		s.runFullPhases(t, simulateActionAcceptRequest, nodeID1, nodeID3)
+
+		// replicate to node1 node2 do nothing
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID1)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID2)
+
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionReplicateAcceptRequest, nodeID1, nodeID3)
+		s.runFullPhases(t, simulateActionFullyReplicate, nodeID1, nodeID3)
+
+		// check logs of node 1
+		assert.Equal(t, s.newPosLogEntries(1,
+			NewMembershipLogEntry(1, InfiniteTerm{}, members),
+			s.newInfLogEntry(2, "cmd test 02"),
+			s.newInfLogEntry(3, "cmd test 03"),
+			s.newInfLogEntry(4, "cmd test 04"),
+			s.newInfLogEntry(5, "cmd new leader 05"),
+			s.newInfLogEntry(6, "cmd new leader 06"),
+		), s.nodeMap[nodeID3].getMachineLog())
+
+		// check term
+		assert.Equal(t, TermNum{
+			Num:    22,
+			NodeID: nodeID1,
+		}, s.nodeMap[nodeID3].persistent.GetLastTerm())
 
 		s.printAllWaiting()
 	})
 }
 
-// TODO add timeout tests (both normal test cases and property based tests)
+// TODO add timeout tests (property based tests)

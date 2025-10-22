@@ -367,7 +367,7 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
-	c.followDoCheckLeaderRequestTermNum(inputTerm)
+	c.followDoCheckLeaderRequestTermNum(inputTerm, func() {})
 }
 
 type handleStatus int
@@ -665,16 +665,22 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
-	// TODO Update Follower Wake Up At
+	ok := c.followDoCheckLeaderRequestTermNum(term, func() {
+		if c.state == StateFollower {
+			c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		}
+	})
 
-	ok := c.followDoCheckLeaderRequestTermNum(term)
 	c.checkInvariantIfEnabled()
 	return ok
 }
 
-func (c *coreLogicImpl) followDoCheckLeaderRequestTermNum(term TermNum) bool {
+func (c *coreLogicImpl) followDoCheckLeaderRequestTermNum(
+	term TermNum, onTermEqual func(),
+) bool {
 	if CompareTermNum(c.getCurrentTerm(), term) >= 0 {
 		// current term >= term => do nothing
+		onTermEqual()
 		return false
 	}
 
