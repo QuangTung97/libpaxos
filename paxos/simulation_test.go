@@ -1228,19 +1228,17 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 	var nextCmd int
 	var numConnDisconnect int
 
-	executeRandomAction := func(s *simulationTestCase) {
+	executeRandomAction := func(s *simulationTestCase) bool {
 		s.mut.Lock()
-
-		runRandomAction(
+		ok := runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 3),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
-
 		s.mut.Unlock()
-
 		synctest.Wait()
+		return ok
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -1253,8 +1251,10 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 
 		s.setupLeaderForThreeNodes(t)
 
-		for range 1000 {
-			executeRandomAction(s)
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
 		}
 
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
@@ -1280,20 +1280,18 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 	var nextCmd int
 	var numConnDisconnect int
 
-	executeRandomAction := func(s *simulationTestCase) {
+	executeRandomAction := func(s *simulationTestCase) bool {
 		s.mut.Lock()
-
-		runRandomAction(
+		ok := runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomExecAction(randObj, s.shutdownWaitMap),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
-
 		s.mut.Unlock()
-
 		synctest.Wait()
+		return ok
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -1302,8 +1300,10 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		for range 10000 {
-			executeRandomAction(s)
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
 		}
 
 		replPos1 := s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated
@@ -1341,19 +1341,17 @@ func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
 	var nextCmd int
 	var numConnDisconnect int
 
-	executeRandomAction := func(s *simulationTestCase) {
+	executeRandomAction := func(s *simulationTestCase) bool {
 		s.mut.Lock()
-
-		runRandomAction(
+		ok := runRandomAction(
 			randObj,
 			randomExecActionIgnoreNode(randObj, s.waitMap, nodeID3),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 3),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 		)
-
 		s.mut.Unlock()
-
 		synctest.Wait()
+		return ok
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -1366,8 +1364,10 @@ func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
 
 		s.setupLeaderForThreeNodes(t)
 
-		for range 1000 {
-			executeRandomAction(s)
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
 		}
 
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID1].log.GetCommittedInfo().FullyReplicated)
@@ -1393,10 +1393,9 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 	var numConnDisconnect int
 	var numChangeMember int
 
-	executeRandomAction := func(s *simulationTestCase) {
+	executeRandomAction := func(s *simulationTestCase) bool {
 		s.mut.Lock()
-
-		runRandomAction(
+		ok := runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomExecAction(randObj, s.shutdownWaitMap),
@@ -1404,10 +1403,9 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 3),
 		)
-
 		s.mut.Unlock()
-
 		synctest.Wait()
+		return ok
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -1418,8 +1416,10 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		for range 1000 {
-			executeRandomAction(s)
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
 		}
 
 		s.checkDiskLogMatch(t, -1)
@@ -1678,9 +1678,9 @@ func runTestThreeNodesWithTimeout(t *testing.T) {
 	var numConnDisconnect int
 	var numTimeout int
 
-	executeRandomAction := func(s *simulationTestCase) {
+	executeRandomAction := func(s *simulationTestCase) bool {
 		s.mut.Lock()
-		runRandomAction(
+		ok := runRandomAction(
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomExecAction(randObj, s.shutdownWaitMap),
@@ -1690,6 +1690,7 @@ func runTestThreeNodesWithTimeout(t *testing.T) {
 		)
 		s.mut.Unlock()
 		synctest.Wait()
+		return ok
 	}
 
 	synctest.Test(t, func(t *testing.T) {
@@ -1700,8 +1701,10 @@ func runTestThreeNodesWithTimeout(t *testing.T) {
 			defaultSimulationConfig(),
 		)
 
-		for range 1000 {
-			executeRandomAction(s)
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
 		}
 
 		s.checkDiskLogMatch(t, -1)
