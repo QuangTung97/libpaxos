@@ -45,12 +45,14 @@ func newRandomObject(initSeed int64) *rand.Rand {
 type actionWithWeightInfo struct {
 	fn     func()
 	weight int
+	name   string
 }
 
-func randomActionWeight(weight int, actionFn func()) actionWithWeightInfo {
+func randomActionWeight(name string, weight int, actionFn func()) actionWithWeightInfo {
 	return actionWithWeightInfo{
 		fn:     actionFn,
 		weight: weight,
+		name:   name,
 	}
 }
 
@@ -90,7 +92,7 @@ func randomExecAction(
 	randObj *rand.Rand,
 	inputMap map[simulateActionKey]chan struct{},
 ) actionWithWeightInfo {
-	return randomActionWeight(len(inputMap), func() {
+	return randomActionWeight("exec", len(inputMap), func() {
 		key, ok := getRandomActionKey(randObj, inputMap)
 		if ok {
 			waitCh := inputMap[key]
@@ -113,7 +115,7 @@ func randomExecActionIgnoreNode(
 		}
 	}
 
-	return randomActionWeight(len(checkMap), func() {
+	return randomActionWeight("exec_ignored", len(checkMap), func() {
 		key, ok := getRandomActionKey(randObj, checkMap)
 		if ok {
 			waitCh := inputMap[key]
@@ -134,7 +136,7 @@ func randomNetworkDisconnect(
 		weight = 0
 	}
 
-	return randomActionWeight(weight, func() {
+	return randomActionWeight("net_close", weight, func() {
 		*numTimes++
 		key, ok := getRandomActionKey(randObj, activeConn)
 		if ok {
@@ -151,11 +153,12 @@ func randomSendCmdToLeader(
 	maxCmdNum int,
 ) actionWithWeightInfo {
 	cmdWeight := 1
-	if *nextCmd >= maxCmdNum {
+	if *nextCmd >= maxCmdNum || !nodeMapHasALeader(nodeMap) {
 		cmdWeight = 0
 	}
 
 	return randomActionWeight(
+		"send_cmd",
 		cmdWeight,
 		func() {
 			for _, st := range nodeMap {
@@ -168,6 +171,16 @@ func randomSendCmdToLeader(
 			}
 		},
 	)
+}
+
+func nodeMapHasALeader(nodeMap map[NodeID]*simulateNodeState) bool {
+	for _, st := range nodeMap {
+		core := st.core
+		if core.GetState() == StateLeader {
+			return true
+		}
+	}
+	return false
 }
 
 func randomChangeLeader(
@@ -197,6 +210,7 @@ func randomChangeLeader(
 	cancel() // cancel to avoid blocking
 
 	return randomActionWeight(
+		"change_leader",
 		cmdWeight,
 		func() {
 			for _, st := range nodeMap {
@@ -239,6 +253,7 @@ func randomTimeout(
 	nodeID := idList[index]
 
 	return randomActionWeight(
+		"timeout",
 		cmdWeight,
 		func() {
 			*currentNumChange++
