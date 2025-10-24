@@ -6,6 +6,7 @@ import (
 	"maps"
 	"math/rand"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	. "github.com/QuangTung97/libpaxos/paxos"
@@ -191,7 +192,7 @@ func randomChangeLeader(
 	randomNodes := nodes[:numNodes]
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // TODO why need cancel?
+	cancel() // cancel to avoid blocking
 
 	return randomActionWeight(
 		cmdWeight,
@@ -208,6 +209,39 @@ func randomChangeLeader(
 				}
 				*currentNumChange++
 			}
+		},
+	)
+}
+
+func randomTimeout(
+	now *atomic.Int64,
+	randObj *rand.Rand,
+	nodeMap map[NodeID]*simulateNodeState,
+	currentNumChange *int,
+	maxNumChange int,
+) actionWithWeightInfo {
+	cmdWeight := 1
+	if *currentNumChange >= maxNumChange {
+		cmdWeight = 0
+	}
+
+	// get all ids
+	idList := make([]NodeID, 0, len(nodeMap))
+	for id := range nodeMap {
+		idList = append(idList, id)
+	}
+	slices.SortFunc(idList, CompareNodeID)
+
+	// get random node id
+	index := randObj.Intn(len(idList))
+	nodeID := idList[index]
+
+	return randomActionWeight(
+		cmdWeight,
+		func() {
+			*currentNumChange++
+			now.Add(11_000)
+			nodeMap[nodeID].core.CheckTimeout()
 		},
 	)
 }

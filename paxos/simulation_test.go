@@ -1388,7 +1388,7 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 }
 
 func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
-	randObj := newRandomObject(1756397677789332722)
+	randObj := newRandomObject(-1)
 	var nextCmd int
 	var numConnDisconnect int
 	var numChangeMember int
@@ -1663,4 +1663,48 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 	})
 }
 
-// TODO add timeout tests (property based tests)
+func TestPaxos__Normal_Three_Nodes__With_Timeout__Simulation_Test(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 100 {
+		runTestThreeNodesWithTimeout(t)
+	}
+}
+
+func runTestThreeNodesWithTimeout(t *testing.T) {
+	randObj := newRandomObject(-1)
+	var nextCmd int
+	var numConnDisconnect int
+	var numTimeout int
+
+	executeRandomAction := func(s *simulationTestCase) {
+		s.mut.Lock()
+		runRandomAction(
+			randObj,
+			randomExecAction(randObj, s.waitMap),
+			randomExecAction(randObj, s.shutdownWaitMap),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
+			randomTimeout(&s.now, randObj, s.nodeMap, &numTimeout, 3),
+		)
+		s.mut.Unlock()
+		synctest.Wait()
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		for range 1000 {
+			executeRandomAction(s)
+		}
+
+		s.checkDiskLogMatch(t, -1)
+		// s.stopRemainingRunners()
+	})
+}
