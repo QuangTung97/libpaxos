@@ -1402,7 +1402,7 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			randomExecAction(randObj, s.shutdownWaitMap),
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
-			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 2),
+			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 3),
 		)
 
 		s.mut.Unlock()
