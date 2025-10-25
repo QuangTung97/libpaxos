@@ -1530,20 +1530,24 @@ func (c *coreLogicImpl) getValidLogEntryList() []validLogEntry {
 	allEntries := c.log.GetEntries(1, int(replicatedPos))
 
 	if c.state != StateFollower {
+		fromPos := replicatedPos + 1
+
 		var posList []LogPos
-		for pos := replicatedPos + 1; pos <= c.leader.lastCommitted; pos++ {
+		for pos := fromPos; pos <= c.leader.lastCommitted; pos++ {
 			posList = append(posList, pos)
 		}
 		bufferEntries := c.leader.logBuffer.GetEntries(posList...)
 		allEntries = append(allEntries, bufferEntries...)
 
+		fromPos = max(fromPos, c.leader.lastCommitted+1)
 		maxPos := c.getMaxValidLogPos()
-		for pos := c.leader.lastCommitted + 1; pos <= maxPos; pos++ {
+		for pos := fromPos; pos <= maxPos; pos++ {
 			entry := c.leader.memLog.Get(pos)
 			allEntries = append(allEntries, entry)
 		}
 
-		AssertTrue(len(allEntries) == int(maxPos))
+		finalMaxPos := max(maxPos, replicatedPos) // because replicated can be > maxPos
+		AssertTrue(len(allEntries) == int(finalMaxPos))
 	} else {
 		AssertTrue(len(allEntries) == int(replicatedPos))
 	}
