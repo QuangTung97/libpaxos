@@ -1378,7 +1378,7 @@ func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
 	})
 }
 
-func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
+func TestPaxos__Normal_Three_Nodes__Membership_Change_Three_Times(t *testing.T) {
 	if isTestRace() {
 		return
 	}
@@ -1390,7 +1390,6 @@ func TestPaxos__Normal_Three_Nodes__Membership_Change_Two_Times(t *testing.T) {
 func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 	randObj := newRandomObject(-1)
 	var nextCmd int
-	var numConnDisconnect int
 	var numChangeMember int
 
 	executeRandomAction := func(s *simulationTestCase) bool {
@@ -1399,7 +1398,6 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			randObj,
 			randomExecAction(randObj, s.waitMap),
 			randomExecAction(randObj, s.shutdownWaitMap),
-			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
 			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 3),
 		)
@@ -1447,6 +1445,60 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			assert.Equal(t, committedPos, cmpPos)
 			assert.Equal(t, maxPos, cmpPos)
 		}
+
+		// check always has a leader
+		assert.Equal(t, true, nodeMapHasALeader(s.nodeMap))
+
+		s.stopRemainingRunners()
+	})
+}
+
+func TestPaxos__Normal_Three_Nodes__Membership_Change_Three_Times__With_Disconnect(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 100 {
+		runTestThreeNodesMembershipChangeThreeTimesWithDisconnect(t)
+	}
+}
+
+func runTestThreeNodesMembershipChangeThreeTimesWithDisconnect(t *testing.T) {
+	randObj := newRandomObject(-1)
+	var nextCmd int
+	var numConnDisconnect int
+	var numChangeMember int
+
+	executeRandomAction := func(s *simulationTestCase) bool {
+		s.mut.Lock()
+		ok := runRandomAction(
+			randObj,
+			randomExecAction(randObj, s.waitMap),
+			randomExecAction(randObj, s.shutdownWaitMap),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 20),
+			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 3),
+		)
+		s.mut.Unlock()
+		synctest.Wait()
+		return ok
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3, nodeID4, nodeID5, nodeID6},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
+		}
+
+		// validate log consistency
+		s.checkDiskLogMatch(t, -1)
 
 		s.stopRemainingRunners()
 	})
