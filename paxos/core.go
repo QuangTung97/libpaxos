@@ -515,7 +515,7 @@ func (c *coreLogicImpl) tryIncreaseAcceptPosAt(pos LogPos) (bool, error) {
 			continue
 		}
 		// update remain pos of all nodes
-		if remainPos.Pos < pos {
+		if remainPos.Pos <= pos {
 			remainPos.Pos = pos + 1
 			c.candidate.remainPosMap[nodeID] = remainPos
 		}
@@ -1481,6 +1481,11 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.candidate != nil)
 		AssertTrue(c.leader != nil)
 		AssertTrue(c.candidate.acceptPos <= c.leader.memLog.MaxLogPos())
+		for _, pos := range c.candidate.remainPosMap {
+			if pos.IsFinite {
+				AssertTrue(pos.Pos > c.candidate.acceptPos)
+			}
+		}
 
 	default:
 		AssertTrue(c.follower != nil)
