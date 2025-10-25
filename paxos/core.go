@@ -665,6 +665,11 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	if term.NodeID == c.persistent.GetNodeID() {
+		// ignore when come from same node id
+		return false
+	}
+
 	ok := c.followDoCheckLeaderRequestTermNum(term, func() {
 		if c.state != StateFollower {
 			return

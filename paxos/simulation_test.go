@@ -1500,6 +1500,33 @@ func runTestThreeNodesMembershipChangeThreeTimesWithDisconnect(t *testing.T) {
 		// validate log consistency
 		s.checkDiskLogMatch(t, -1)
 
+		maxPos := LogPos(0)
+		var finalMembers []MemberInfo
+		for _, st := range s.nodeMap {
+			info := st.log.GetCommittedInfo()
+			if info.FullyReplicated > maxPos {
+				maxPos = info.FullyReplicated
+				finalMembers = info.Members
+			}
+		}
+
+		assert.Equal(t, 1, len(finalMembers))
+		assert.Equal(t, LogPos(1), finalMembers[0].CreatedAt)
+
+		// check all logs
+		lastMemberNodes := finalMembers[0].Nodes
+
+		id1 := lastMemberNodes[0]
+		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
+		for _, id := range lastMemberNodes[1:] {
+			cmpPos := s.nodeMap[id].log.GetFullyReplicated()
+			assert.Equal(t, committedPos, cmpPos)
+			assert.Equal(t, maxPos, cmpPos)
+		}
+
+		// check always has a leader
+		assert.Equal(t, true, nodeMapHasALeader(s.nodeMap))
+
 		s.stopRemainingRunners()
 	})
 }

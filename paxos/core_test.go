@@ -2356,11 +2356,15 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	assert.Equal(t, 1, c.runner.ElectionRetryCount)
 	assert.Equal(t, nodeID2, c.runner.ElectionChosen)
 
-	c.core.FollowerReceiveTermNum(c.currentTerm)
+	newTerm := TermNum{
+		Num:    21,
+		NodeID: nodeID2,
+	}
+	c.core.FollowerReceiveTermNum(newTerm)
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
-	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, 0, c.runner.FetchRetryCount)
 
 	assert.Equal(t, false, c.runner.ElectionStarted)
@@ -2378,6 +2382,21 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	c.core.CheckTimeout()
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.runner.ElectionStarted)
+}
+
+func TestCoreLogic__Follower__Recv_Term_Num__Same_Node_ID__Do_Nothing(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	newTerm := TermNum{
+		Num:    21,
+		NodeID: c.persistent.GetNodeID(),
+	}
+	c.core.FollowerReceiveTermNum(newTerm)
+
+	// check runners
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, 1, c.runner.FetchRetryCount)
 }
 
 func TestCoreLogic__Follower__RecvTermNum__Same_Term__Increase_Wake_Up(t *testing.T) {
