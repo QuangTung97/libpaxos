@@ -190,7 +190,7 @@ func randomChangeLeader(
 	maxNumChange int,
 ) actionWithWeightInfo {
 	cmdWeight := 1
-	if *currentNumChange >= maxNumChange {
+	if *currentNumChange >= maxNumChange || !nodeMapHasALeader(nodeMap) {
 		cmdWeight = 0
 	}
 

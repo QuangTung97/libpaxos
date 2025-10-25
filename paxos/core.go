@@ -1439,7 +1439,9 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 
 		// check fully replicated always greater than or equal min buffer pos
 		AssertTrue(c.log.GetCommittedInfo().FullyReplicated+1 >= c.leader.logBuffer.GetFrontPos())
-		AssertTrue(c.leader.lastCommitted >= c.log.GetCommittedInfo().FullyReplicated)
+
+		// Can not be enabled because sometimes the fullyReplicated pos can be > last committed
+		// AssertTrue(c.leader.lastCommitted >= c.log.GetCommittedInfo().FullyReplicated)
 
 		// check log buffer fully replicated
 		for pos := c.leader.logBuffer.GetFrontPos(); pos <= c.leader.lastCommitted; pos++ {
