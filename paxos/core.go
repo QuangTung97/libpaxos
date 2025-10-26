@@ -283,7 +283,7 @@ func (c *coreLogicImpl) updateAcceptRunners() bool {
 	return c.runner.StartAcceptRequestRunners(c.getCurrentTerm(), allMembers)
 }
 
-func (c *coreLogicImpl) getMaxValidLogPos() LogPos {
+func (c *coreLogicImpl) getMaxValidAcceptLogPos() LogPos {
 	if c.state == StateCandidate {
 		return c.candidate.acceptPos
 	}
@@ -602,7 +602,7 @@ StartFunction:
 		return AcceptEntriesInput{}, err
 	}
 
-	maxLogPos := c.getMaxValidLogPos()
+	maxLogPos := c.getMaxValidAcceptLogPos()
 
 	afterCommit := c.leader.lastCommitted + 1
 	if fromPos < afterCommit {
@@ -917,7 +917,7 @@ func (c *coreLogicImpl) increaseLastCommitted() error {
 		popEntry.Term = InfiniteTerm{}
 		c.leader.logBuffer.Insert(popEntry)
 
-		c.removeFromLogBuffer() // TODO add tests
+		c.removeFromLogBuffer()
 	}
 
 	if needCheck {
@@ -1478,15 +1478,14 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.leader.acceptorWakeUpAt[c.persistent.GetNodeID()] == math.MaxInt64)
 
 		// Check fully replicated pos of leader
+		selfReplicatedPos := c.leader.acceptorFullyReplicated[c.persistent.GetNodeID()]
 		if c.leader.logBuffer.Size() > 0 {
 			// must be equal when non-empty
-			AssertTrue(c.leader.acceptorFullyReplicated[c.persistent.GetNodeID()]+1 == c.leader.logBuffer.GetFrontPos())
+			AssertTrue(selfReplicatedPos+1 == c.leader.logBuffer.GetFrontPos())
 		} else {
 			// front pos can be less than fully replicated pos when empty
-			AssertTrue(c.leader.acceptorFullyReplicated[c.persistent.GetNodeID()]+1 >= c.leader.logBuffer.GetFrontPos())
+			AssertTrue(selfReplicatedPos+1 >= c.leader.logBuffer.GetFrontPos())
 		}
-
-		// TODO validate max size of totalSizeMax
 
 		// validation on step down at
 		c.validateStepDownAt()
@@ -1571,7 +1570,7 @@ func (c *coreLogicImpl) getValidLogEntryList() []validLogEntry {
 		allEntries = append(allEntries, bufferEntries...)
 
 		fromPos = max(fromPos, c.leader.lastCommitted+1)
-		maxPos := c.getMaxValidLogPos()
+		maxPos := c.getMaxValidAcceptLogPos()
 		for pos := fromPos; pos <= maxPos; pos++ {
 			entry := c.leader.memLog.Get(pos)
 			allEntries = append(allEntries, entry)

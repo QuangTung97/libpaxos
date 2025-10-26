@@ -3138,3 +3138,39 @@ func TestCoreLogic__Candidate__Handle_Vote__Not_In_MemberList(t *testing.T) {
 	err := c.core.HandleVoteResponse(c.ctx, nodeID4, voteOutput)
 	assert.Equal(t, errors.New("node id '64040000000000000000000000000000' is not in current member list"), err)
 }
+
+func TestCoreLogic__Leader__Replicated_Pos__Higher_Than_Last_Committed(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	c.doStartElection()
+
+	c.log.UpsertEntries(
+		newLogList(
+			c.newInfLogEntryNoPrev(2, "prev cmd 02"),
+			c.newInfLogEntry(3, "prev cmd 03"),
+		),
+		nil,
+	)
+
+	// update replicated pos
+	c.doUpdateFullyReplicated(nodeID1, 3)
+	assert.Equal(t, LogPos(3), c.core.GetReplicatedPosTest(nodeID1))
+
+	entry2 := c.newLogEntry(2, "prev cmd 02", 19)
+	entry3 := c.newLogEntry(3, "prev cmd 03", 19)
+	entry3.PrevPointer = entry2.NextPreviousPointer()
+
+	// handle vote resp
+	c.doHandleVoteResp(
+		nodeID1, 2, true,
+		entry2, entry3,
+	)
+	c.doHandleVoteResp(
+		nodeID2, 2, true,
+		entry2, entry3,
+	)
+	assert.Equal(t, StateLeader, c.core.GetState())
+
+	c.doHandleAccept(nodeID1, 2, 3)
+	c.doHandleAccept(nodeID2, 2, 3)
+}

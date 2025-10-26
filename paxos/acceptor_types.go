@@ -41,7 +41,7 @@ type NeedReplicatedInput struct {
 	Term     TermNum
 	FromNode NodeID
 	PosList  []LogPos
-	NextPos  LogPos
+	NextPos  LogPos // only to determine the next listening pos
 
 	FullyReplicated LogPos
 }
