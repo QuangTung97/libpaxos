@@ -1288,6 +1288,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 	if IsQuorum(c.follower.members, c.follower.noActiveLeaderSet) {
 		c.follower.checkStatus = followerCheckOtherStatusStartingNewElection
 		c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		c.follower.fastSwitchLeader = false
 	}
 
 	c.updateFetchingFollowerInfoRunners()
@@ -1511,6 +1512,8 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.candidate != nil)
 		AssertTrue(c.leader != nil)
 		AssertTrue(c.candidate.acceptPos <= c.leader.memLog.MaxLogPos())
+
+		// validate remain pos map
 		for _, pos := range c.candidate.remainPosMap {
 			if pos.IsFinite {
 				AssertTrue(pos.Pos > c.candidate.acceptPos)
@@ -1522,6 +1525,25 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.candidate == nil)
 		AssertTrue(c.leader == nil)
 		AssertTrue(c.state == StateFollower)
+		AssertTrue(c.follower.checkStatus >= followerCheckOtherStatusRunning)
+		AssertTrue(c.follower.checkStatus <= followerCheckOtherStatusStartingNewElection)
+
+		AssertImply(
+			c.follower.fastSwitchLeader,
+			c.follower.checkStatus == followerCheckOtherStatusRunning,
+		)
+
+		// check last node pos map
+		for _, pos := range c.follower.lastNodePos {
+			AssertTrue(pos <= c.follower.lastMaxPos)
+		}
+
+		// check no active leader set is subset of all pos
+		for nodeID := range c.follower.noActiveLeaderSet {
+			_, ok := c.follower.lastNodePos[nodeID]
+			AssertTrue(ok)
+		}
+
 	}
 
 	// check prev pointer invariant
