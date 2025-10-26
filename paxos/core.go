@@ -1543,7 +1543,6 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			_, ok := c.follower.lastNodePos[nodeID]
 			AssertTrue(ok)
 		}
-
 	}
 
 	// check prev pointer invariant

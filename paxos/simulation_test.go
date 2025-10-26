@@ -1789,3 +1789,83 @@ func runTestThreeNodesWithTimeout(t *testing.T) {
 		// s.stopRemainingRunners()
 	})
 }
+
+func TestPaxos__Normal_Three_Nodes__Membership_Change_Four_Times__With_Timeout(t *testing.T) {
+	if isTestRace() {
+		return
+	}
+	for range 100 {
+		runTestThreeNodesMembershipChangeFourTimesWithTimeout(t)
+	}
+}
+
+func runTestThreeNodesMembershipChangeFourTimesWithTimeout(t *testing.T) {
+	randObj := newRandomObject(-1)
+	var nextCmd int
+	var numConnDisconnect int
+	var numChangeMember int
+	var numTimeout int
+
+	executeRandomAction := func(s *simulationTestCase) bool {
+		s.mut.Lock()
+		ok := runRandomAction(
+			randObj,
+			randomExecAction(randObj, s.waitMap),
+			randomExecAction(randObj, s.shutdownWaitMap),
+			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
+			randomSendCmdToLeader(s.nodeMap, &nextCmd, 10),
+			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 4),
+			randomTimeout(&s.now, randObj, s.nodeMap, &numTimeout, 4),
+		)
+		s.mut.Unlock()
+		synctest.Wait()
+		return ok
+	}
+
+	synctest.Test(t, func(t *testing.T) {
+		s := newSimulationTestCase(
+			t,
+			[]NodeID{nodeID1, nodeID2, nodeID3, nodeID4, nodeID5, nodeID6},
+			[]NodeID{nodeID1, nodeID2, nodeID3},
+			defaultSimulationConfig(),
+		)
+
+		for {
+			if !executeRandomAction(s) {
+				break
+			}
+		}
+
+		// validate log consistency
+		s.checkDiskLogMatch(t, -1)
+
+		maxPos := LogPos(0)
+		var finalMembers []MemberInfo
+		for _, st := range s.nodeMap {
+			info := st.log.GetCommittedInfo()
+			if info.FullyReplicated > maxPos {
+				maxPos = info.FullyReplicated
+				finalMembers = info.Members
+			}
+		}
+
+		assert.Equal(t, 1, len(finalMembers))
+		assert.Equal(t, LogPos(1), finalMembers[0].CreatedAt)
+
+		// check all logs
+		lastMemberNodes := finalMembers[0].Nodes
+
+		id1 := lastMemberNodes[0]
+		committedPos := s.nodeMap[id1].log.GetFullyReplicated()
+		for _, id := range lastMemberNodes[1:] {
+			cmpPos := s.nodeMap[id].log.GetFullyReplicated()
+			assert.Equal(t, committedPos, cmpPos)
+			assert.Equal(t, maxPos, cmpPos)
+		}
+
+		// check always has a leader
+		assert.Equal(t, true, nodeMapHasALeader(s.nodeMap))
+
+		s.stopRemainingRunners()
+	})
+}
