@@ -1597,7 +1597,6 @@ func TestPaxos__Normal_Three_Nodes__With_Timeout(t *testing.T) {
 		synctest.Wait()
 
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID1)
-		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID2)
 		s.runFullPhases(t, simulateActionAcceptRequest, nodeID2, nodeID3)
 
 		members := []MemberInfo{

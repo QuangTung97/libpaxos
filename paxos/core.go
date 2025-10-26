@@ -219,7 +219,9 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 		},
 		sendAcceptCond: NewNodeCond(&c.mut),
 
-		acceptorFullyReplicated: map[NodeID]LogPos{},
+		acceptorFullyReplicated: map[NodeID]LogPos{
+			c.persistent.GetNodeID(): commitInfo.FullyReplicated,
+		},
 	}
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
@@ -632,7 +634,9 @@ StartFunction:
 		acceptEntries = append(acceptEntries, c.leader.memLog.Get(pos))
 	}
 
-	c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp(1)
+	if toNode != c.persistent.GetNodeID() {
+		c.leader.acceptorWakeUpAt[toNode] = c.computeNextWakeUp(1)
+	}
 
 	c.checkInvariantIfEnabled()
 	return AcceptEntriesInput{
@@ -912,6 +916,8 @@ func (c *coreLogicImpl) increaseLastCommitted() error {
 		popEntry := memLog.PopFront()
 		popEntry.Term = InfiniteTerm{}
 		c.leader.logBuffer.Insert(popEntry)
+
+		c.removeFromLogBuffer() // TODO add tests
 	}
 
 	if needCheck {
@@ -1102,7 +1108,11 @@ func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPo
 	}
 
 	c.leader.acceptorFullyReplicated[nodeID] = pos
-	c.removeFromLogBuffer(nodeID, pos)
+
+	// remove from log buffer
+	if nodeID == c.persistent.GetNodeID() {
+		c.removeFromLogBuffer()
+	}
 
 	if err := c.finishMembershipChange(); err != nil {
 		return err
@@ -1110,10 +1120,9 @@ func (c *coreLogicImpl) doUpdateAcceptorFullyReplicated(nodeID NodeID, pos LogPo
 	return c.stepDownWhenNotInMemberList()
 }
 
-func (c *coreLogicImpl) removeFromLogBuffer(id NodeID, pos LogPos) {
-	if id != c.persistent.GetNodeID() {
-		return
-	}
+func (c *coreLogicImpl) removeFromLogBuffer() {
+	nodeID := c.persistent.GetNodeID()
+	pos := c.leader.acceptorFullyReplicated[nodeID]
 
 	for c.leader.logBuffer.Size() > 0 {
 		frontPos := c.leader.logBuffer.GetFrontPos()
@@ -1464,6 +1473,23 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 			c.leader.leaderStepDownAt.Valid,
 			!c.isInMemberList(c.persistent.GetNodeID()),
 		)
+
+		// Check acceptor wake up at of current node
+		AssertTrue(c.leader.acceptorWakeUpAt[c.persistent.GetNodeID()] == math.MaxInt64)
+
+		// Check fully replicated pos of leader
+		if c.leader.logBuffer.Size() > 0 {
+			// must be equal when non-empty
+			AssertTrue(c.leader.acceptorFullyReplicated[c.persistent.GetNodeID()]+1 == c.leader.logBuffer.GetFrontPos())
+		} else {
+			// front pos can be less than fully replicated pos when empty
+			AssertTrue(c.leader.acceptorFullyReplicated[c.persistent.GetNodeID()]+1 >= c.leader.logBuffer.GetFrontPos())
+		}
+
+		// TODO validate max size of totalSizeMax
+
+		// validation on step down at
+		c.validateStepDownAt()
 	}
 
 	// check disk log is not null & term is infinite before fully-replicated pos
@@ -1585,6 +1611,31 @@ func (c *coreLogicImpl) checkLogPrevPointerInvariant() {
 			AssertTrue(!validList[index].isValid)
 		}
 	}
+}
+
+func (c *coreLogicImpl) validateStepDownAt() {
+	stepDownAt := c.leader.leaderStepDownAt
+	if !stepDownAt.Valid {
+		return
+	}
+
+	// step down when the stepDownPos <= lastCommitted
+	if stepDownAt.Pos > c.leader.lastCommitted {
+		return
+	}
+
+	fullyReplicatedSet := map[NodeID]struct{}{}
+	for nodeID, replicatedPos := range c.leader.acceptorFullyReplicated {
+		if stepDownAt.Pos <= replicatedPos {
+			fullyReplicatedSet[nodeID] = struct{}{}
+		}
+	}
+
+	if !IsQuorum(c.leader.members, fullyReplicatedSet) {
+		return
+	}
+
+	AssertTrue(false)
 }
 
 func AssertTrue(b bool) {
