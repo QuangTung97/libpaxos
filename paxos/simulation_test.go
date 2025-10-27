@@ -443,14 +443,13 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionStartElection,
-			func(_ context.Context, req struct{}) (iter.Seq[struct{}], error) {
-				err := h.root.nodeMap[toNode].core.StartElection(termVal)
-				if err != nil {
-					return nil, err
-				}
-				return iterSingle(struct{}{}), nil
+			func(_ context.Context, req struct{}) (iter.Seq[TermNum], error) {
+				// ignore error
+				newTerm, _ := h.root.nodeMap[toNode].core.StartElection(termVal)
+				return iterSingle(newTerm), nil
 			},
-			func(resp struct{}) error {
+			func(newTerm TermNum) error {
+				h.state.core.FollowerReceiveTermNum(newTerm)
 				return nil
 			},
 		)

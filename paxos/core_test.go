@@ -203,7 +203,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 }
 
 func (c *coreLogicTest) startAsLeader() {
-	if err := c.core.StartElection(0); err != nil {
+	if _, err := c.core.StartElection(0); err != nil {
 		panic("Should be able to start election, but got error: " + err.Error())
 	}
 
@@ -255,8 +255,9 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	}, c.core.GetChoosingLeaderInfo())
 
 	// start election
-	err := c.core.StartElection(0)
+	newTerm, err := c.core.StartElection(0)
 	assert.Equal(t, nil, err)
+	assert.Equal(t, c.currentTerm, newTerm)
 	assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 
 	// check runners
@@ -1409,7 +1410,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 }
 
 func (c *coreLogicTest) doStartElection() {
-	if err := c.core.StartElection(0); err != nil {
+	if _, err := c.core.StartElection(0); err != nil {
 		panic("Should start election OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1814,7 +1815,7 @@ func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.startAsLeader()
 
-	err := c.core.StartElection(0)
+	_, err := c.core.StartElection(0)
 	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
 }
 
@@ -1831,7 +1832,7 @@ func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T)
 	)
 	c.log.UpsertEntries([]LogEntry{initEntry}, nil)
 
-	err := c.core.StartElection(0)
+	_, err := c.core.StartElection(0)
 	assert.Equal(t, errors.New("current node is not in its membership config"), err)
 }
 
@@ -1998,8 +1999,11 @@ func TestCoreLogic__Candidate__Update_Fully_Replicated__Finish_Member_Change(t *
 func TestCoreLogic__Start_Election__With_Max_Term_Value(t *testing.T) {
 	c := newCoreLogicTest(t)
 
-	err := c.core.StartElection(23)
+	newTerm, err := c.core.StartElection(23)
 	assert.Equal(t, nil, err)
+	assert.Equal(t, TermNum{
+		Num: 24, NodeID: nodeID1,
+	}, newTerm)
 
 	assert.Equal(t, TermNum{
 		Num:    24,

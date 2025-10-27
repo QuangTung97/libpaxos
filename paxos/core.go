@@ -15,7 +15,7 @@ import (
 type CoreLogic interface {
 	StateMachineLogGetter
 
-	StartElection(maxTermValue TermValue) error
+	StartElection(maxTermValue TermValue) (TermNum, error)
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(ctx context.Context, fromNode NodeID, output RequestVoteOutput) error
@@ -195,17 +195,17 @@ func (c *coreLogicImpl) checkInvariantIfEnabled() {
 	}
 }
 
-func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
+func (c *coreLogicImpl) StartElection(maxTermValue TermValue) (TermNum, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
 	if c.state != StateFollower {
-		return fmt.Errorf("expected state '%s', got: '%s'", StateFollower.String(), c.state.String())
+		return c.getCurrentTerm(), fmt.Errorf("expected state '%s', got: '%s'", StateFollower, c.state)
 	}
 
 	commitInfo := c.log.GetCommittedInfo()
 	if !IsNodeInMembers(commitInfo.Members, c.persistent.GetNodeID()) {
-		return fmt.Errorf("current node is not in its membership config")
+		return c.getCurrentTerm(), fmt.Errorf("current node is not in its membership config")
 	}
 
 	c.state = StateCandidate
@@ -241,12 +241,13 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) error {
 
 	newMembers := slices.Clone(commitInfo.Members)
 	if err := c.updateLeaderMembers(newMembers, commitInfo.FullyReplicated); err != nil {
-		return err
+		return c.getCurrentTerm(), err
 	}
 
 	c.updateAllRunners()
 	c.checkInvariantIfEnabled()
-	return nil
+
+	return c.getCurrentTerm(), nil
 }
 
 func (c *coreLogicImpl) updateVoteRunners() bool {
