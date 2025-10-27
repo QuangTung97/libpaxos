@@ -157,11 +157,18 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		}, nil
 	}
 
+	oldFullyReplicated := s.log.GetFullyReplicated()
+
 	posList := make([]LogPos, 0, len(input.Entries))
 	putEntries := make([]LogEntry, 0, len(input.Entries))
 	for _, entry := range input.Entries {
 		posList = append(posList, entry.Pos)
-		putEntries = append(putEntries, entry)
+
+		// TODO add tests
+		if entry.Pos > oldFullyReplicated {
+			// only update entries with pos > fully replicated
+			putEntries = append(putEntries, entry)
+		}
 	}
 
 	markCommitted := s.getNeedUpdateTermToInf(input.Committed)
@@ -171,10 +178,17 @@ func (s *acceptorLogicImpl) AcceptEntries(
 		s.updateTermToInf(&putEntries[i])
 	}
 
-	oldFullyReplicated := s.log.GetFullyReplicated()
 	s.log.UpsertEntries(putEntries, markCommitted)
 
-	if s.log.GetFullyReplicated() > oldFullyReplicated {
+	newReplicatedPos := s.log.GetFullyReplicated()
+
+	// set last committed if less than replicated pos
+	if s.lastCommitted < newReplicatedPos {
+		// TODO testing
+		s.lastCommitted = newReplicatedPos
+	}
+
+	if newReplicatedPos > oldFullyReplicated {
 		s.waitCond.Broadcast()
 	}
 

@@ -101,7 +101,9 @@ func (s *LogStorageFake) increaseFullyReplicated() {
 func (s *LogStorageFake) doMarkCommitted(posList []paxos.LogPos) {
 	for _, pos := range posList {
 		index := pos - 1
-		s.logEntries[index].Term = paxos.InfiniteTerm{}
+		entry := &s.logEntries[index]
+		paxos.AssertTrue(!entry.IsNull())
+		entry.Term = paxos.InfiniteTerm{}
 	}
 }
 

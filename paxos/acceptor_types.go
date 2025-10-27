@@ -21,7 +21,7 @@ type AcceptEntriesInput struct {
 	ToNode    NodeID
 	Term      TermNum
 	Entries   []LogEntry
-	NextPos   LogPos
+	NextPos   LogPos // only to determine the next listening pos
 	Committed LogPos
 }
 

@@ -537,6 +537,9 @@ func (h *simulationHandlers) handleAcceptEntriesRequest(
 	if err != nil {
 		return nil, err
 	}
+
+	toState.acceptor.CheckInvariant()
+
 	return iterSingle(output), nil
 }
 
