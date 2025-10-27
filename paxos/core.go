@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+// TODO add log truncation logic
+
 type CoreLogic interface {
 	StateMachineLogGetter
 

@@ -380,6 +380,115 @@ func TestAcceptorLogic_AcceptEntries__Increase_Committed_Pos(t *testing.T) {
 	}, s.log.UpsertList)
 }
 
+func TestAcceptorLogic_AcceptEntries__Do_Not_Update_Already_Fully_Replicated_Entries(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// increase committed to 5, missing entry 5
+	resp = s.doAcceptEntries(
+		5,
+		newAcceptLogEntries(6,
+			s.newCmd(6, "cmd test 04"),
+			s.newCmd(7, "cmd test 05"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// check fully replicated
+	assert.Equal(t, LogPos(4), s.log.GetFullyReplicated())
+	assert.Equal(t, LogPos(5), s.logic.GetLastCommitted())
+
+	// do accept entries again, pos <= replicated
+	resp = s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(3,
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// check fully replicated
+	assert.Equal(t, LogPos(4), s.log.GetFullyReplicated())
+	assert.Equal(t, LogPos(5), s.logic.GetLastCommitted())
+
+	// check logs
+	entry3 := s.newCmdInf(3, "cmd test 02")
+	entry4 := s.newCmdInf(4, "cmd test 03")
+	assert.Equal(t, []LogEntry{entry3, entry4}, s.log.GetEntriesWithPos(3, 4))
+
+	// check upsert actions
+	assert.Equal(t, []fake.UpsertInput{
+		{PutList: []LogPos{1}},
+		{PutList: []LogPos{2, 3, 4}},
+		{PutList: []LogPos{6, 7}, MarkList: []LogPos{2, 3, 4}},
+		{},
+	}, s.log.UpsertList)
+}
+
+func TestAcceptorLogic_AcceptEntries__More_Committed_Entries__Than_Last_Committed__Inc_Last_Committed(t *testing.T) {
+	s := newAcceptorLogicTest(t)
+
+	resp := s.doAcceptEntries(
+		1,
+		newAcceptLogEntries(2,
+			s.newCmd(2, "cmd test 01"),
+			s.newCmd(3, "cmd test 02"),
+			s.newCmd(4, "cmd test 03"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// increase committed to 5, missing entry 5
+	resp = s.doAcceptEntries(
+		5,
+		newAcceptLogEntries(6,
+			s.newCmd(6, "cmd test 04"),
+			s.newCmd(7, "cmd test 05"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// increase committed to 7
+	resp = s.doAcceptEntries(7)
+	assert.Equal(t, true, resp.Success)
+
+	// check fully replicated
+	assert.Equal(t, LogPos(4), s.log.GetFullyReplicated())
+	assert.Equal(t, LogPos(7), s.logic.GetLastCommitted())
+	s.logic.CheckInvariant()
+
+	// increase current term
+	s.currentTerm.Num++
+
+	// fill the missing hole 5
+	resp = s.doAcceptEntries(
+		4,
+		newAcceptLogEntries(5,
+			s.newCmd(5, "cmd test 04 new"),
+		)...,
+	)
+	assert.Equal(t, true, resp.Success)
+
+	// commit the hole 5
+	resp = s.doAcceptEntries(5)
+	assert.Equal(t, true, resp.Success)
+
+	// check fully replicated
+	assert.Equal(t, LogPos(7), s.log.GetFullyReplicated())
+	assert.Equal(t, LogPos(7), s.logic.GetLastCommitted())
+	s.logic.CheckInvariant()
+}
+
 func TestAcceptorLogic_AcceptEntries__Term_And_Committed_Change(t *testing.T) {
 	s := newAcceptorLogicTest(t)
 

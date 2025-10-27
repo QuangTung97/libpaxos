@@ -164,7 +164,6 @@ func (s *acceptorLogicImpl) AcceptEntries(
 	for _, entry := range input.Entries {
 		posList = append(posList, entry.Pos)
 
-		// TODO add tests
 		if entry.Pos > oldFullyReplicated {
 			// only update entries with pos > fully replicated
 			putEntries = append(putEntries, entry)
@@ -184,7 +183,6 @@ func (s *acceptorLogicImpl) AcceptEntries(
 
 	// set last committed if less than replicated pos
 	if s.lastCommitted < newReplicatedPos {
-		// TODO testing
 		s.lastCommitted = newReplicatedPos
 	}
 
@@ -341,7 +339,15 @@ StartFunction:
 func (s *acceptorLogicImpl) CheckInvariant() {
 	s.mut.Lock()
 	defer s.mut.Unlock()
+
 	AssertTrue(s.log.GetFullyReplicated() <= s.lastCommitted)
+
+	for pos := LogPos(1); pos <= s.log.GetFullyReplicated(); pos++ {
+		entry := s.log.GetEntriesWithPos(pos)[0]
+		AssertTrue(entry.Pos == pos)
+		AssertTrue(!entry.Term.IsFinite)
+		AssertTrue(!entry.IsNull())
+	}
 }
 
 func (s *acceptorLogicImpl) GetLastCommitted() LogPos {
