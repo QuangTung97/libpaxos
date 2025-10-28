@@ -828,9 +828,9 @@ func compareActionKey(a, b simulateActionKey) int {
 	return slices.Compare(a.toNode[:], b.toNode[:])
 }
 
-func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
-	t.Helper()
-
+func (s *simulationTestCase) checkDiskLogMatch(
+	t *testing.T, minLength int, checkEqualLen bool,
+) {
 	type logWithOrigin struct {
 		log     []LogEntry
 		origin  NodeID
@@ -857,6 +857,12 @@ func (s *simulationTestCase) checkDiskLogMatch(t *testing.T, minLength int) {
 	slices.SortFunc(allLog, func(a, b logWithOrigin) int {
 		return cmp.Compare(len(a.log), len(b.log))
 	})
+
+	if checkEqualLen {
+		first := allLog[0]
+		last := allLog[len(allLog)-1]
+		assert.Equal(t, len(first.log), len(last.log))
+	}
 
 	if minLength >= 0 {
 		assert.Equal(t, minLength, len(allLog[0].log))
@@ -1263,7 +1269,7 @@ func runTestThreeNodesInsertManyCommands(t *testing.T) {
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, 20, nextCmd)
-		s.checkDiskLogMatch(t, 21)
+		s.checkDiskLogMatch(t, 21, true)
 	})
 }
 
@@ -1315,7 +1321,7 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 		assert.Equal(t, replPos2, replPos3)
 		fmt.Println("Replicated Pos for Node ID 1:", replPos1)
 
-		s.checkDiskLogMatch(t, -1)
+		s.checkDiskLogMatch(t, -1, true)
 
 		s.stopRemainingRunners()
 	})
@@ -1376,7 +1382,7 @@ func runTestThreeNodesInsertManyCommandsOneNodeShutdown(t *testing.T) {
 		assert.Equal(t, LogPos(21), s.nodeMap[nodeID2].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, LogPos(1), s.nodeMap[nodeID3].log.GetCommittedInfo().FullyReplicated)
 		assert.Equal(t, 20, nextCmd)
-		s.checkDiskLogMatch(t, 1)
+		s.checkDiskLogMatch(t, 1, false)
 	})
 }
 
@@ -1422,7 +1428,7 @@ func runTestThreeNodesMembershipChangeThreeTimes(t *testing.T) {
 			}
 		}
 
-		s.checkDiskLogMatch(t, -1)
+		s.checkDiskLogMatch(t, -1, false)
 
 		maxPos := LogPos(0)
 		var finalMembers []MemberInfo
@@ -1500,7 +1506,7 @@ func runTestThreeNodesMembershipChangeThreeTimesWithDisconnect(t *testing.T) {
 		}
 
 		// validate log consistency
-		s.checkDiskLogMatch(t, -1)
+		s.checkDiskLogMatch(t, -1, false)
 
 		maxPos := LogPos(0)
 		var finalMembers []MemberInfo
@@ -1787,7 +1793,7 @@ func runTestThreeNodesWithTimeout(t *testing.T) {
 			}
 		}
 
-		s.checkDiskLogMatch(t, -1)
+		s.checkDiskLogMatch(t, -1, true)
 		// s.stopRemainingRunners()
 	})
 }
@@ -1839,7 +1845,7 @@ func runTestThreeNodesMembershipChangeFourTimesWithTimeout(t *testing.T) {
 		}
 
 		// validate log consistency
-		s.checkDiskLogMatch(t, -1)
+		s.checkDiskLogMatch(t, -1, false)
 
 		maxPos := LogPos(0)
 		var finalMembers []MemberInfo
