@@ -204,7 +204,7 @@ func (c *coreLogicTest) doHandleVoteResp(
 }
 
 func (c *coreLogicTest) startAsLeader() {
-	if _, err := c.core.StartElection(0); err != nil {
+	if _, err := c.core.StartElection(20); err != nil {
 		panic("Should be able to start election, but got error: " + err.Error())
 	}
 
@@ -256,7 +256,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	}, c.core.GetChoosingLeaderInfo())
 
 	// start election
-	newTerm, err := c.core.StartElection(0)
+	newTerm, err := c.core.StartElection(20)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, c.currentTerm, newTerm)
 	assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
@@ -299,6 +299,15 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 		ToNode:  nodeID1,
 		FromPos: 2,
 	}, voteReq)
+}
+
+func TestCoreLogic_StartElection__Max_Term_Value__Too_Small(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	// start election
+	newTerm, err := c.core.StartElection(19)
+	assert.Equal(t, errors.New("max term value '19' is smaller than current term '20'"), err)
+	assert.Equal(t, TermNum{Num: 20, NodeID: nodeID5}, newTerm)
 }
 
 func TestCoreLogic_StartElection__Then_HandleVoteResponse(t *testing.T) {
@@ -1411,7 +1420,7 @@ func TestCoreLogic__Leader__Wait_For_New_Committed_Pos(t *testing.T) {
 }
 
 func (c *coreLogicTest) doStartElection() {
-	if _, err := c.core.StartElection(0); err != nil {
+	if _, err := c.core.StartElection(20); err != nil {
 		panic("Should start election OK, but got: " + err.Error())
 	}
 	c.core.CheckInvariant()
@@ -1816,8 +1825,17 @@ func TestCoreLogic__Start_Election__When_Already_Leader(t *testing.T) {
 	c := newCoreLogicTest(t)
 	c.startAsLeader()
 
-	_, err := c.core.StartElection(0)
-	assert.Equal(t, errors.New("expected state 'Follower', got: 'Leader'"), err)
+	newTerm, err := c.core.StartElection(21)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, TermNum{Num: 22, NodeID: nodeID1}, newTerm)
+
+	c.core.CheckInvariant()
+
+	assert.Equal(t, StateCandidate, c.core.GetState())
+
+	// check follower runners
+	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, false, c.runner.ElectionStarted)
 }
 
 func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T) {
@@ -1833,7 +1851,7 @@ func TestCoreLogic__Start_Election__Current_Node_Not_In_MemberList(t *testing.T)
 	)
 	c.log.UpsertEntries([]LogEntry{initEntry}, nil)
 
-	_, err := c.core.StartElection(0)
+	_, err := c.core.StartElection(20)
 	assert.Equal(t, errors.New("current node is not in its membership config"), err)
 }
 

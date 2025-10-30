@@ -123,8 +123,8 @@ type followerStateInfo struct {
 	lastTermVal TermValue
 	lastMaxPos  LogPos
 
-	lastNodePos       map[NodeID]LogPos
-	noActiveLeaderSet map[NodeID]struct{}
+	lastNodePos       map[NodeID]LogPos   // set of all nodes with replicated pos
+	noActiveLeaderSet map[NodeID]struct{} // set of follower nodes with check other status = running
 }
 
 type followerCheckOtherStatus int
@@ -159,9 +159,8 @@ type leaderStateInfo struct {
 }
 
 func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
-	lastTerm := c.persistent.GetLastTerm()
 	newTerm := TermNum{
-		Num:    max(maxTermValue, lastTerm.Num) + 1,
+		Num:    maxTermValue + 1,
 		NodeID: c.persistent.GetNodeID(),
 	}
 	c.persistent.UpdateLastTerm(newTerm)
@@ -199,8 +198,16 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) (TermNum, error) {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
+	currentTerm := c.getCurrentTerm()
+	if currentTerm.Num > maxTermValue {
+		return c.getCurrentTerm(), fmt.Errorf(
+			"max term value '%d' is smaller than current term '%d'",
+			maxTermValue, currentTerm.Num,
+		)
+	}
+
 	if c.state != StateFollower {
-		return c.getCurrentTerm(), fmt.Errorf("expected state '%s', got: '%s'", StateFollower, c.state)
+		c.stepDownToFollower(false, false)
 	}
 
 	commitInfo := c.log.GetCommittedInfo()
