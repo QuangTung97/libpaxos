@@ -682,7 +682,7 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 			return
 		}
 
-		// a small optimization here, the if condition here is not necessary needed for correctly
+		// a small optimization, the if condition here is not necessary needed for correctness
 		if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
 			// TODO testing
 			c.follower.wakeUpAt = c.computeNextWakeUp(2)
