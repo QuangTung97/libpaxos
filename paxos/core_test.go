@@ -3,6 +3,7 @@ package paxos_test
 import (
 	"context"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -2288,7 +2289,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	assert.Equal(t, false, c.runner.ElectionStarted)
 	assert.Equal(t, TermValue(0), c.runner.ElectionTerm)
 
-	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	info := c.core.GetChoosingLeaderInfo()
 
@@ -2303,7 +2304,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	// first handle leader info
 	c.doHandleLeaderInfo(nodeID1, info)
-	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// check runners
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
@@ -2313,7 +2314,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	// second handle leader info
 	c.doHandleLeaderInfo(nodeID2, info)
-	assert.Equal(t, TimestampMilli(20_050), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
@@ -2408,7 +2409,7 @@ func TestCoreLogic__Follower__RecvTermNum__Same_Term__Increase_Wake_Up(t *testin
 
 	assert.Equal(t, int64(10_000), c.now.Load())
 	assert.Equal(t, StateFollower, c.core.GetState())
-	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// follower fetch state is running
 	assert.Equal(t, []NodeID{
@@ -2446,7 +2447,7 @@ func TestCoreLogic__Follower__RecvTermNum__Smaller_Term__Do_Nothing(t *testing.T
 
 	assert.Equal(t, int64(10_000), c.now.Load())
 	assert.Equal(t, StateFollower, c.core.GetState())
-	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// follower fetch state is running
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
@@ -2462,7 +2463,7 @@ func TestCoreLogic__Follower__RecvTermNum__Smaller_Term__Do_Nothing(t *testing.T
 	c.core.FollowerReceiveTermNum(smallTerm)
 
 	// no change
-	assert.Equal(t, TimestampMilli(20_000), c.core.GetFollowerWakeUpAt())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 }
 
@@ -2504,28 +2505,21 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_M
 	assert.Equal(t, nodeID5, c.runner.ElectionChosen)
 }
 
-func TestCoreLogic__Retry__Handle_Leader_Info(t *testing.T) {
+func TestCoreLogic__Handle_Leader_Info__Invalid_Check_Status(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	info := c.core.GetChoosingLeaderInfo()
-	c.doHandleLeaderInfo(nodeID1, info)
 
-	// then timeout
-	c.now.Add(10_100)
-	c.core.CheckTimeout()
+	c.doHandleLeaderInfo(nodeID1, info)
+	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, 1, c.runner.FetchRetryCount)
 
 	c.doHandleLeaderInfo(nodeID2, info)
-	assert.Equal(t, []NodeID{nodeID1, nodeID3}, c.runner.FetchFollowers)
-	assert.Equal(t, 2, c.runner.FetchRetryCount)
-
-	// final handle
-	c.doHandleLeaderInfo(nodeID3, info)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
-	assert.Equal(t, true, c.runner.ElectionStarted)
-	assert.Equal(t, 2, c.runner.ElectionRetryCount)
+	assert.Equal(t, 0, c.runner.FetchRetryCount)
 
 	// error
-	err := c.core.HandleChoosingLeaderInfo(nodeID1, c.persistent.GetLastTerm(), info)
+	err := c.core.HandleChoosingLeaderInfo(nodeID3, c.persistent.GetLastTerm(), info)
 	assert.Equal(t, errors.New("check status is not running, got: 2"), err)
 }
 

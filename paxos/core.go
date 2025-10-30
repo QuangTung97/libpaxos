@@ -682,8 +682,11 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 			return
 		}
 
-		c.follower.wakeUpAt = c.computeNextWakeUp(2)
-		if c.follower.checkStatus != followerCheckOtherStatusLeaderIsActive {
+		// a small optimization here, the if condition here is not necessary needed for correctly
+		if c.follower.checkStatus == followerCheckOtherStatusLeaderIsActive {
+			// TODO testing
+			c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		} else {
 			c.updateFollowerCheckOtherStatus(true, false)
 		}
 	})
@@ -720,11 +723,12 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
 	causedByAnotherLeader bool, fastSwitchLeader bool,
 ) {
 	c.follower = &followerStateInfo{
-		wakeUpAt: c.computeNextWakeUp(2),
+		wakeUpAt: math.MaxInt64,
 	}
 
 	if causedByAnotherLeader {
 		c.follower.checkStatus = followerCheckOtherStatusLeaderIsActive
+		c.follower.wakeUpAt = c.computeNextWakeUp(2)
 		c.updateFetchingFollowerInfoRunners()
 		return
 	}
@@ -1073,6 +1077,9 @@ func (c *coreLogicImpl) ChangeMembership(ctx context.Context, term TermNum, newN
 		inputSet[id] = struct{}{}
 	}
 
+	// sort node ids
+	slices.SortFunc(newNodes, CompareNodeID)
+
 StartFunction:
 	if err := c.isValidLeader(term); err != nil {
 		return err
@@ -1290,7 +1297,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	if IsQuorum(c.follower.members, c.follower.noActiveLeaderSet) {
 		c.follower.checkStatus = followerCheckOtherStatusStartingNewElection
-		c.follower.wakeUpAt = c.computeNextWakeUp(2)
+		c.follower.wakeUpAt = math.MaxInt64
 		c.follower.fastSwitchLeader = false
 	}
 
@@ -1531,9 +1538,16 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.follower.checkStatus >= followerCheckOtherStatusRunning)
 		AssertTrue(c.follower.checkStatus <= followerCheckOtherStatusStartingNewElection)
 
+		// check other status != running => fast switch leader = false
 		AssertImply(
 			c.follower.fastSwitchLeader,
 			c.follower.checkStatus == followerCheckOtherStatusRunning,
+		)
+
+		// follower check other state != leader is active <=> wake up is infinite
+		AssertEquivalent(
+			c.follower.checkStatus != followerCheckOtherStatusLeaderIsActive,
+			c.follower.wakeUpAt == math.MaxInt64,
 		)
 
 		// check last node pos map
