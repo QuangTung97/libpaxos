@@ -2467,6 +2467,28 @@ func TestCoreLogic__Follower__RecvTermNum__Smaller_Term__Do_Nothing(t *testing.T
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 }
 
+func TestCoreLogic__Follower__RecvTermNum__Same_Term__Reset_Timer(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	assert.Equal(t, int64(10_000), c.now.Load())
+	assert.Equal(t, StateFollower, c.core.GetState())
+	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
+
+	newTerm := TermNum{
+		Num:    c.persistent.GetLastTerm().Num + 1,
+		NodeID: nodeID3,
+	}
+	c.now.Add(5000)
+	// recv new term
+	c.core.FollowerReceiveTermNum(newTerm)
+	assert.Equal(t, TimestampMilli(25_000), c.core.GetFollowerWakeUpAt())
+
+	c.now.Add(3000)
+	// recv same term again
+	c.core.FollowerReceiveTermNum(newTerm)
+	assert.Equal(t, TimestampMilli(28_000), c.core.GetFollowerWakeUpAt())
+}
+
 func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_Membership(t *testing.T) {
 	c := newCoreLogicTest(t)
 

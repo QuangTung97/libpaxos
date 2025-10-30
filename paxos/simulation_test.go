@@ -1823,7 +1823,7 @@ func runTestThreeNodesMembershipChangeFourTimesWithTimeout(t *testing.T) {
 			randomNetworkDisconnect(randObj, s.activeConn, &numConnDisconnect, 6),
 			randomSendCmdToLeader(s.nodeMap, &nextCmd, 10),
 			randomChangeLeader(randObj, s.nodeMap, &numChangeMember, 4),
-			randomTimeout(&s.now, randObj, s.nodeMap, &numTimeout, 4),
+			randomTimeout(&s.now, randObj, s.nodeMap, &numTimeout, 6), // allow timeout 6 times
 		)
 		s.mut.Unlock()
 		synctest.Wait()
