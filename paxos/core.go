@@ -382,7 +382,7 @@ func (c *coreLogicImpl) stepDownWhenEncounterHigherTerm(inputTerm TermNum) {
 	c.followDoCheckLeaderRequestTermNum(inputTerm, func() {})
 }
 
-type handleStatus int
+type handleStatus int // TODO remove
 
 const (
 	handleStatusSuccess handleStatus = iota + 1
