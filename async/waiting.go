@@ -1,5 +1,11 @@
 package async
 
+import (
+	"sync"
+
+	"github.com/QuangTung97/libpaxos/cond"
+)
+
 type WaitStatus int
 
 const (
@@ -21,6 +27,49 @@ type KeyWaiter[T comparable] interface {
 // ================================================================
 // Real Waiter
 // ================================================================
+
+func NewKeyWaiter[T comparable](mut *sync.Mutex) KeyWaiter[T] {
+	return &realKeyWaiter[T]{
+		mut:  mut,
+		cond: cond.NewKeyCond[T](mut),
+	}
+}
+
+type realKeyWaiter[T comparable] struct {
+	mut  *sync.Mutex
+	cond *cond.KeyCond[T]
+}
+
+func (w *realKeyWaiter[T]) Run(
+	ctx Context, key T, callback func(ctx Context, err error) WaitStatus,
+) {
+	w.mut.Lock()
+	defer w.mut.Unlock()
+
+	var err error
+	for {
+		status := callback(ctx, err)
+		if err != nil {
+			return
+		}
+
+		if status == WaitStatusSuccess {
+			return
+		}
+
+		if err = w.cond.Wait(ctx.ToContext(), key); err != nil {
+			continue
+		}
+	}
+}
+
+func (w *realKeyWaiter[T]) Signal(key T) {
+	w.cond.Signal(key)
+}
+
+func (w *realKeyWaiter[T]) Broadcast() {
+	w.cond.Broadcast()
+}
 
 // ================================================================
 // Simulate Waiter

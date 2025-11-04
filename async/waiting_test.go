@@ -31,7 +31,7 @@ func runAllActions(rt *SimulateRuntime) {
 	rt.CheckInvariant()
 }
 
-func TestKeyWaiter(t *testing.T) {
+func TestSimulateKeyWaiter(t *testing.T) {
 	t.Run("simple success", func(t *testing.T) {
 		rt := NewSimulateRuntime()
 		t.Cleanup(rt.CheckInvariant)
@@ -170,4 +170,7 @@ func TestKeyWaiter(t *testing.T) {
 		runAllActions(rt)
 		assert.Equal(t, []string{"wait error: context canceled"}, actions.actions)
 	})
+}
+
+func TestRealKeyWaiter(t *testing.T) {
 }

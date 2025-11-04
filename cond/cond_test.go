@@ -6,7 +6,7 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/QuangTung97/libpaxos/paxos/testutil"
+	"github.com/QuangTung97/libpaxos/testutil"
 )
 
 const (

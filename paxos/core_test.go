@@ -12,7 +12,7 @@ import (
 
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
-	"github.com/QuangTung97/libpaxos/paxos/testutil"
+	"github.com/QuangTung97/libpaxos/testutil"
 )
 
 var (
