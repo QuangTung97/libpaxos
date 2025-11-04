@@ -37,7 +37,7 @@ func (w *simulateKeyWaiter[T]) Run(
 		}
 
 		w.waitMap[key] = append(w.waitMap[key], nextActionInfo{
-			ctx:      ctx,
+			ctx:      ctx.(*simulateContext),
 			callback: actionCallback,
 		})
 	}

@@ -21,7 +21,7 @@ func (a *actionListTest) add(format string, args ...any) {
 	a.actions = append(a.actions, fmt.Sprintf(format, args...))
 }
 
-func runAllActions(rt Runtime) {
+func runAllActions(rt *SimulateRuntime) {
 	for rt.RunNext() {
 	}
 }
@@ -130,4 +130,6 @@ func TestKeyWaiter(t *testing.T) {
 			"wait key01",
 		}, actions.actions)
 	})
+
+	// TODO add cancel
 }

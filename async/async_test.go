@@ -8,6 +8,7 @@ import (
 
 func TestSimulateRuntime(t *testing.T) {
 	rt := NewSimulateRuntime()
+	t.Cleanup(rt.CheckInvariant)
 
 	var actions []string
 	ctx := rt.NewThread(func(ctx Context) {
@@ -46,4 +47,44 @@ func TestSimulateRuntime(t *testing.T) {
 
 	// run no action
 	assert.False(t, rt.RunNext())
+}
+
+func TestSimulateRuntime__Restart_Thread(t *testing.T) {
+	rt := NewSimulateRuntime()
+	t.Cleanup(rt.CheckInvariant)
+
+	actions := newActionListTest()
+
+	ctx := rt.NewThread(func(ctx Context) {
+		actions.add("new thread 01")
+		rt.AddNext(ctx, func(ctx Context) {
+			actions.add("action 01")
+		})
+	})
+
+	rt.NewThread(func(ctx Context) {
+		actions.add("new thread 02")
+		rt.AddNext(ctx, func(ctx Context) {
+			actions.add("action 02")
+		})
+	})
+	rt.CheckInvariant()
+
+	rt.RunNext()
+	rt.RunNext()
+	assert.Equal(t, []string{
+		"new thread 01",
+		"new thread 02",
+	}, actions.actions)
+
+	// restart
+	rt.RestartThread(ctx.GetThreadID())
+	rt.RunNext()
+	rt.RunNext()
+	assert.Equal(t, []string{
+		"new thread 01",
+		"new thread 02",
+		"action 02",
+		"new thread 01",
+	}, actions.actions)
 }

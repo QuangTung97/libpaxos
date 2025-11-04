@@ -8,11 +8,16 @@ type Context interface {
 }
 
 type simulateContext struct {
-	tid ThreadID
+	tid           ThreadID
+	startCallback func(ctx Context)
+	refCount      int
 }
 
-func NewSimulateContext(tid ThreadID) Context {
-	return &simulateContext{tid: tid}
+func newSimulateContext(tid ThreadID) *simulateContext {
+	return &simulateContext{
+		tid:      tid,
+		refCount: 0,
+	}
 }
 
 var _ Context = &simulateContext{}
