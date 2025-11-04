@@ -3,7 +3,7 @@ package async
 type Runtime interface {
 	NewThread(callback func(ctx Context)) Context
 	AddNext(ctx Context, callback func(ctx Context))
-	RunNext()
+	RunNext() bool
 }
 
 func NewSimulateRuntime() *SimulateRuntime {
@@ -42,13 +42,14 @@ func (r *SimulateRuntime) AddNext(ctx Context, callback func(ctx Context)) {
 	})
 }
 
-func (r *SimulateRuntime) RunNext() {
+func (r *SimulateRuntime) RunNext() bool {
 	if len(r.activeQueue) == 0 {
-		return
+		return false
 	}
 
 	action := r.activeQueue[0]
 	r.activeQueue = r.activeQueue[1:]
 
 	action.callback(action.ctx)
+	return true
 }

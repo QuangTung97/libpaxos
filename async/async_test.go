@@ -26,21 +26,24 @@ func TestSimulateRuntime(t *testing.T) {
 	assert.Equal(t, []string(nil), actions)
 
 	// run
-	rt.RunNext()
+	assert.True(t, rt.RunNext())
 	assert.Equal(t, []string{"new-thread"}, actions)
 
 	// run
-	rt.RunNext()
+	assert.True(t, rt.RunNext())
 	assert.Equal(t, []string{
 		"new-thread",
 		"next-action",
 	}, actions)
 
 	// run
-	rt.RunNext()
+	assert.True(t, rt.RunNext())
 	assert.Equal(t, []string{
 		"new-thread",
 		"next-action",
 		"sub-action",
 	}, actions)
+
+	// run no action
+	assert.False(t, rt.RunNext())
 }
