@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"iter"
 	"sync"
+
+	"github.com/QuangTung97/libpaxos/cond"
 )
 
 type AcceptorLogic interface {
@@ -32,7 +34,7 @@ type acceptorLogicImpl struct {
 	mut           sync.Mutex
 	log           LogStorage
 	lastCommitted LogPos
-	waitCond      *NodeCond
+	waitCond      *cond.KeyCond[NodeID]
 }
 
 func NewAcceptorLogic(
@@ -47,7 +49,7 @@ func NewAcceptorLogic(
 		log:           log,
 		lastCommitted: log.GetFullyReplicated(),
 	}
-	s.waitCond = NewNodeCond(&s.mut)
+	s.waitCond = cond.NewKeyCond[NodeID](&s.mut)
 	return s
 }
 

@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"slices"
 	"sync"
+
+	"github.com/QuangTung97/libpaxos/cond"
 )
 
 // TODO add log truncation logic
@@ -150,12 +152,12 @@ type leaderStateInfo struct {
 	memLog *MemLog
 
 	acceptorWakeUpAt map[NodeID]TimestampMilli
-	sendAcceptCond   *NodeCond
+	sendAcceptCond   *cond.KeyCond[NodeID]
 
 	acceptorFullyReplicated map[NodeID]LogPos
 
 	logBuffer     *LogBuffer
-	bufferMaxCond *NodeCond
+	bufferMaxCond *cond.KeyCond[NodeID]
 }
 
 func (c *coreLogicImpl) generateNextProposeTerm(maxTermValue TermValue) {
@@ -226,7 +228,7 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) (TermNum, error) {
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{
 			c.persistent.GetNodeID(): math.MaxInt64, // current node never wake up
 		},
-		sendAcceptCond: NewNodeCond(&c.mut),
+		sendAcceptCond: cond.NewKeyCond[NodeID](&c.mut),
 
 		acceptorFullyReplicated: map[NodeID]LogPos{
 			c.persistent.GetNodeID(): commitInfo.FullyReplicated,
@@ -235,7 +237,7 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) (TermNum, error) {
 
 	c.leader.memLog = NewMemLog(&c.leader.lastCommitted, 10)
 	c.leader.logBuffer = NewLogBuffer(&c.leader.lastCommitted, 10)
-	c.leader.bufferMaxCond = NewNodeCond(&c.mut)
+	c.leader.bufferMaxCond = cond.NewKeyCond[NodeID](&c.mut)
 
 	// init candidate state
 	c.candidate = &candidateStateInfo{

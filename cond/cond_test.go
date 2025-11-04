@@ -1,4 +1,4 @@
-package paxos_test
+package cond
 
 import (
 	"context"
@@ -6,18 +6,28 @@ import (
 	"testing"
 	"testing/synctest"
 
-	. "github.com/QuangTung97/libpaxos/paxos"
-	"github.com/QuangTung97/libpaxos/paxos/fake"
 	"github.com/QuangTung97/libpaxos/paxos/testutil"
 )
 
-func TestNodeCond__Waiting(t *testing.T) {
+const (
+	key1 = "key01"
+	key2 = "key02"
+)
+
+func TestNoCopy(t *testing.T) {
+	var cond noCopy
+	var x int
+	cond.Lock()
+	x++
+	cond.Unlock()
+}
+
+func TestKeyCond__Waiting(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var mut sync.Mutex
 		var finished bool
 
-		cond := NewNodeCond(&mut)
-		node1 := fake.NewNodeID(1)
+		cond := NewKeyCond[string](&mut)
 
 		ct := testutil.NewConcurrentTest(t)
 
@@ -25,7 +35,7 @@ func TestNodeCond__Waiting(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node1); err != nil {
+				if err := cond.Wait(ctx, key1); err != nil {
 					return err
 				}
 			}
@@ -36,15 +46,12 @@ func TestNodeCond__Waiting(t *testing.T) {
 	})
 }
 
-func TestNodeCond__Multi_Nodes__Signal_One(t *testing.T) {
+func TestKeyCond__Multi_Keys__Signal_One(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var mut sync.Mutex
 		var finished bool
 
-		cond := NewNodeCond(&mut)
-
-		node1 := fake.NewNodeID(1)
-		node2 := fake.NewNodeID(2)
+		cond := NewKeyCond[string](&mut)
 
 		ct := testutil.NewConcurrentTest(t)
 
@@ -52,7 +59,7 @@ func TestNodeCond__Multi_Nodes__Signal_One(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node1); err != nil {
+				if err := cond.Wait(ctx, key1); err != nil {
 					return err
 				}
 			}
@@ -63,7 +70,7 @@ func TestNodeCond__Multi_Nodes__Signal_One(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node2); err != nil {
+				if err := cond.Wait(ctx, key2); err != nil {
 					return err
 				}
 			}
@@ -75,7 +82,7 @@ func TestNodeCond__Multi_Nodes__Signal_One(t *testing.T) {
 
 		mut.Lock()
 		finished = true
-		cond.Signal(node1)
+		cond.Signal(key1)
 		mut.Unlock()
 
 		synctest.Wait()
@@ -85,15 +92,12 @@ func TestNodeCond__Multi_Nodes__Signal_One(t *testing.T) {
 	})
 }
 
-func TestNodeCond__Multi_Nodes__Broadcast(t *testing.T) {
+func TestKeyCond__Multi_Nodes__Broadcast(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var mut sync.Mutex
 		var finished bool
 
-		cond := NewNodeCond(&mut)
-
-		node1 := fake.NewNodeID(1)
-		node2 := fake.NewNodeID(2)
+		cond := NewKeyCond[string](&mut)
 
 		ct := testutil.NewConcurrentTest(t)
 
@@ -101,7 +105,7 @@ func TestNodeCond__Multi_Nodes__Broadcast(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node1); err != nil {
+				if err := cond.Wait(ctx, key1); err != nil {
 					return err
 				}
 			}
@@ -112,7 +116,7 @@ func TestNodeCond__Multi_Nodes__Broadcast(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node2); err != nil {
+				if err := cond.Wait(ctx, key2); err != nil {
 					return err
 				}
 			}
@@ -134,25 +138,24 @@ func TestNodeCond__Multi_Nodes__Broadcast(t *testing.T) {
 
 		// signal again
 		mut.Lock()
-		cond.Signal(node1)
+		cond.Signal(key1)
 		mut.Unlock()
 	})
 }
 
-func TestNodeCond__Multi_Wait_Same_Node(t *testing.T) {
+func TestKeyCond__Multi_Wait_Same_Key(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var mut sync.Mutex
 		var finished bool
 
-		cond := NewNodeCond(&mut)
-		node1 := fake.NewNodeID(1)
+		cond := NewKeyCond[string](&mut)
 		ct := testutil.NewConcurrentTest(t)
 
 		fn1 := ct.Go(func(ctx context.Context) error {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node1); err != nil {
+				if err := cond.Wait(ctx, key1); err != nil {
 					return err
 				}
 			}
@@ -163,7 +166,7 @@ func TestNodeCond__Multi_Wait_Same_Node(t *testing.T) {
 			mut.Lock()
 			defer mut.Unlock()
 			for !finished {
-				if err := cond.Wait(ctx, node1); err != nil {
+				if err := cond.Wait(ctx, key1); err != nil {
 					return err
 				}
 			}
@@ -172,7 +175,7 @@ func TestNodeCond__Multi_Wait_Same_Node(t *testing.T) {
 
 		mut.Lock()
 		finished = true
-		cond.Signal(node1)
+		cond.Signal(key1)
 		mut.Unlock()
 
 		synctest.Wait()
