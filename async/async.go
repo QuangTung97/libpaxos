@@ -5,15 +5,12 @@ type Runtime interface {
 }
 
 func NewSimulateRuntime() *SimulateRuntime {
-	return &SimulateRuntime{
-		threadMap: map[ThreadID]*simulateContext{},
-	}
+	return &SimulateRuntime{}
 }
 
 type SimulateRuntime struct {
 	currentTid  ThreadID
 	activeQueue []nextActionInfo
-	threadMap   map[ThreadID]*simulateContext
 }
 
 var _ Runtime = &SimulateRuntime{}
@@ -31,7 +28,6 @@ func (r *SimulateRuntime) NewThread(callback func(ctx Context)) Context {
 	r.doAddNext(ctx, callback)
 
 	ctx.startCallback = callback
-	r.threadMap[tid] = ctx
 
 	return ctx
 }
@@ -41,19 +37,11 @@ func (r *SimulateRuntime) AddNext(ctx Context, callback func(ctx Context)) {
 }
 
 func (r *SimulateRuntime) doAddNext(ctx *simulateContext, callback func(ctx Context)) {
-	ctx.refCount++
 	action := nextActionInfo{
 		ctx:      ctx,
 		callback: callback,
 	}
 	r.activeQueue = append(r.activeQueue, action)
-}
-
-func (r *SimulateRuntime) decreaseRefCount(ctx *simulateContext) {
-	ctx.refCount--
-	if ctx.refCount <= 0 {
-		delete(r.threadMap, ctx.tid)
-	}
 }
 
 func (r *SimulateRuntime) RunNext() bool {
@@ -66,17 +54,11 @@ func (r *SimulateRuntime) RunNext() bool {
 
 	action.callback(action.ctx)
 
-	r.decreaseRefCount(action.ctx)
-
 	return true
 }
 
 func (r *SimulateRuntime) RestartThread(inputCtx Context) {
 	ctx := inputCtx.(*simulateContext)
-	if ctx.refCount <= 0 {
-		return
-	}
-
 	tid := ctx.tid
 
 	newActions := make([]nextActionInfo, 0, len(r.activeQueue))
@@ -88,27 +70,8 @@ func (r *SimulateRuntime) RestartThread(inputCtx Context) {
 	}
 	r.activeQueue = newActions
 
-	ctx.refCount = 0
 	r.AddNext(ctx, ctx.startCallback)
 }
 
 func (r *SimulateRuntime) CheckInvariant() {
-	allTidSet := map[ThreadID]int{}
-	for _, action := range r.activeQueue {
-		tid := action.ctx.tid
-		allTidSet[tid] = allTidSet[tid] + 1
-	}
-
-	AssertTrue(len(allTidSet) == len(r.threadMap))
-	for tid, refCount := range allTidSet {
-		ctx, ok := r.threadMap[tid]
-		AssertTrue(ok)
-		AssertTrue(refCount == ctx.refCount)
-	}
-}
-
-func AssertTrue(b bool) {
-	if !b {
-		panic("must be true here")
-	}
 }

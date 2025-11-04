@@ -7,13 +7,18 @@ const (
 	WaitStatusWaiting
 )
 
-type KeyWaiter[T comparable] interface {
-	Run(ctx Context, key T, callback func(ctx Context) WaitStatus)
-	Signal(key T)
+type Broadcaster interface {
 	Broadcast()
 }
 
-func NewSimulateKeyWaiter[T comparable](rt Runtime) KeyWaiter[T] {
+type KeyWaiter[T comparable] interface {
+	Broadcaster
+
+	Run(ctx Context, key T, callback func(ctx Context, err error) WaitStatus)
+	Signal(key T)
+}
+
+func NewSimulateKeyWaiter[T comparable](rt *SimulateRuntime) KeyWaiter[T] {
 	return &simulateKeyWaiter[T]{
 		rt:      rt,
 		waitMap: map[T][]nextActionInfo{},
@@ -21,25 +26,31 @@ func NewSimulateKeyWaiter[T comparable](rt Runtime) KeyWaiter[T] {
 }
 
 type simulateKeyWaiter[T comparable] struct {
-	rt      Runtime
+	rt      *SimulateRuntime
 	waitMap map[T][]nextActionInfo
 }
 
 func (w *simulateKeyWaiter[T]) Run(
-	ctx Context, key T, callback func(ctx Context) WaitStatus,
+	ctx Context, key T, callback func(ctx Context, err error) WaitStatus,
 ) {
 	var actionCallback func(ctx Context)
 
-	actionCallback = func(ctx Context) {
-		status := callback(ctx)
+	actionCallback = func(inputCtx Context) {
+		ctx := inputCtx.(*simulateContext)
+
+		status := callback(ctx, ctx.err)
+		if ctx.err != nil {
+			return
+		}
 		if status == WaitStatusSuccess {
 			return
 		}
 
 		w.waitMap[key] = append(w.waitMap[key], nextActionInfo{
-			ctx:      ctx.(*simulateContext),
+			ctx:      ctx,
 			callback: actionCallback,
 		})
+		ctx.broadcastSet[w] = struct{}{}
 	}
 
 	actionCallback(ctx)

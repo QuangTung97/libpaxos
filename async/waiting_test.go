@@ -42,7 +42,7 @@ func TestKeyWaiter(t *testing.T) {
 
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread")
-			w.Run(ctx, "key01", func(ctx Context) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
 				count++
 				actions.add("wait:%d", count)
 				return WaitStatusSuccess
@@ -74,7 +74,7 @@ func TestKeyWaiter(t *testing.T) {
 		count := 0
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread")
-			w.Run(ctx, "key01", func(ctx Context) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
 				count++
 				actions.add("wait:%d", count)
 				if count > 1 {
@@ -107,14 +107,14 @@ func TestKeyWaiter(t *testing.T) {
 		actions := newActionListTest()
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread01")
-			w.Run(ctx, "key01", func(ctx Context) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
 				actions.add("wait key01")
 				return WaitStatusWaiting
 			})
 		})
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread02")
-			w.Run(ctx, "key02", func(ctx Context) WaitStatus {
+			w.Run(ctx, "key02", func(ctx Context, err error) WaitStatus {
 				actions.add("wait key02")
 				return WaitStatusWaiting
 			})
@@ -139,5 +139,35 @@ func TestKeyWaiter(t *testing.T) {
 		}, actions.actions)
 	})
 
-	// TODO add cancel
+	t.Run("with cancel", func(t *testing.T) {
+		rt := NewSimulateRuntime()
+		t.Cleanup(rt.CheckInvariant)
+		w := NewSimulateKeyWaiter[string](rt)
+
+		actions := newActionListTest()
+		count := 0
+
+		ctx := rt.NewThread(func(ctx Context) {
+			actions.add("new-thread")
+			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
+				if err != nil {
+					actions.add("wait error: %v", err)
+					return WaitStatusSuccess
+				}
+
+				count++
+				actions.add("wait:%d", count)
+				return WaitStatusWaiting
+			})
+		})
+		runAllActions(rt)
+		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+
+		// cancel context
+		ctx.Cancel()
+
+		actions.clear()
+		runAllActions(rt)
+		assert.Equal(t, []string{"wait error: context canceled"}, actions.actions)
+	})
 }

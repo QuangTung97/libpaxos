@@ -94,6 +94,12 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 		"action 01",
 	}, actions.actions)
 
-	// restart again, not found
+	// restart again
+	actions.clear()
 	rt.RestartThread(ctx)
+	runAllActions(rt)
+	assert.Equal(t, []string{
+		"new thread 01",
+		"action 01",
+	}, actions.actions)
 }
