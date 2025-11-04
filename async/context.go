@@ -5,8 +5,39 @@ import "context"
 type ThreadID int64
 
 type Context interface {
+	ToContext() context.Context
 	Cancel()
 }
+
+// ================================================================
+// Read Context
+// ================================================================
+
+func NewContext() Context {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	return &realContext{
+		ctx:      ctx,
+		cancelFn: cancel,
+	}
+}
+
+type realContext struct {
+	ctx      context.Context
+	cancelFn func()
+}
+
+func (c *realContext) ToContext() context.Context {
+	return c.ctx
+}
+
+func (c *realContext) Cancel() {
+	c.cancelFn()
+}
+
+// ================================================================
+// Simulate Context
+// ================================================================
 
 type simulateContext struct {
 	tid           ThreadID
@@ -30,4 +61,8 @@ func (c *simulateContext) Cancel() {
 		fn.Broadcast()
 	}
 	c.broadcastSet = map[Broadcaster]struct{}{}
+}
+
+func (c *simulateContext) ToContext() context.Context {
+	return nil
 }

@@ -1,9 +1,5 @@
 package async
 
-type Runtime interface {
-	AddNext(ctx Context, callback func(ctx Context))
-}
-
 func NewSimulateRuntime() *SimulateRuntime {
 	return &SimulateRuntime{}
 }
@@ -12,8 +8,6 @@ type SimulateRuntime struct {
 	currentTid  ThreadID
 	activeQueue []nextActionInfo
 }
-
-var _ Runtime = &SimulateRuntime{}
 
 type nextActionInfo struct {
 	ctx      *simulateContext

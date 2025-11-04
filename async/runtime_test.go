@@ -24,6 +24,7 @@ func TestSimulateRuntime(t *testing.T) {
 	})
 
 	assert.Equal(t, ThreadID(1), ctx.(*simulateContext).tid)
+	assert.Equal(t, nil, ctx.ToContext())
 	assert.Equal(t, []string(nil), actions)
 
 	// run

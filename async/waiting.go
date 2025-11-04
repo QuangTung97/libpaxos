@@ -18,6 +18,14 @@ type KeyWaiter[T comparable] interface {
 	Signal(key T)
 }
 
+// ================================================================
+// Real Waiter
+// ================================================================
+
+// ================================================================
+// Simulate Waiter
+// ================================================================
+
 func NewSimulateKeyWaiter[T comparable](rt *SimulateRuntime) KeyWaiter[T] {
 	return &simulateKeyWaiter[T]{
 		rt:      rt,
