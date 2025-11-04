@@ -1,25 +1,22 @@
 package async
 
-type Promise[T any] struct {
+type Runtime interface {
+	NewThread(callback func(ctx Context)) Context
+	AddNext(ctx Context, callback func(ctx Context))
 }
 
-func (p Promise[T]) Get() T {
-	var empty T
-	return empty
+func NewSimulateRuntime() *SimulateRuntime {
+	return &SimulateRuntime{}
 }
 
-type WaitStatus int
-
-const (
-	WaitStatusSuccess WaitStatus = iota + 1
-	WaitStatusWaiting
-)
-
-func RunWithWait[T any](
-	callback func() (T, WaitStatus, error),
-) Promise[T] {
-	return Promise[T]{}
+type SimulateRuntime struct {
 }
 
-func AndThen[A, B any](input Promise[A], handler func(input A) Promise[B]) {
+var _ Runtime = &SimulateRuntime{}
+
+func (r *SimulateRuntime) NewThread(callback func(ctx Context)) Context {
+	return nil
+}
+
+func (r *SimulateRuntime) AddNext(ctx Context, callback func(ctx Context)) {
 }
