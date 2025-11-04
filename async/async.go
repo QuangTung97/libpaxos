@@ -71,7 +71,14 @@ func (r *SimulateRuntime) RunNext() bool {
 	return true
 }
 
-func (r *SimulateRuntime) RestartThread(tid ThreadID) {
+func (r *SimulateRuntime) RestartThread(inputCtx Context) {
+	ctx := inputCtx.(*simulateContext)
+	if ctx.refCount <= 0 {
+		return
+	}
+
+	tid := ctx.tid
+
 	newActions := make([]nextActionInfo, 0, len(r.activeQueue))
 	for _, action := range r.activeQueue {
 		if action.ctx.tid == tid {
@@ -81,18 +88,23 @@ func (r *SimulateRuntime) RestartThread(tid ThreadID) {
 	}
 	r.activeQueue = newActions
 
-	ctx := r.threadMap[tid]
+	ctx.refCount = 0
 	r.AddNext(ctx, ctx.startCallback)
 }
 
 func (r *SimulateRuntime) CheckInvariant() {
-	allTidSet := map[ThreadID]struct{}{}
+	allTidSet := map[ThreadID]int{}
 	for _, action := range r.activeQueue {
 		tid := action.ctx.tid
-		allTidSet[tid] = struct{}{}
+		allTidSet[tid] = allTidSet[tid] + 1
 	}
 
 	AssertTrue(len(allTidSet) == len(r.threadMap))
+	for tid, refCount := range allTidSet {
+		ctx, ok := r.threadMap[tid]
+		AssertTrue(ok)
+		AssertTrue(refCount == ctx.refCount)
+	}
 }
 
 func AssertTrue(b bool) {

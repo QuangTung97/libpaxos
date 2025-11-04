@@ -21,14 +21,20 @@ func (a *actionListTest) add(format string, args ...any) {
 	a.actions = append(a.actions, fmt.Sprintf(format, args...))
 }
 
+func (a *actionListTest) clear() {
+	a.actions = a.actions[:0]
+}
+
 func runAllActions(rt *SimulateRuntime) {
 	for rt.RunNext() {
 	}
+	rt.CheckInvariant()
 }
 
 func TestKeyWaiter(t *testing.T) {
 	t.Run("simple success", func(t *testing.T) {
 		rt := NewSimulateRuntime()
+		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()
@@ -61,6 +67,7 @@ func TestKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting", func(t *testing.T) {
 		rt := NewSimulateRuntime()
+		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()
@@ -94,6 +101,7 @@ func TestKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting, 2 keys", func(t *testing.T) {
 		rt := NewSimulateRuntime()
+		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()

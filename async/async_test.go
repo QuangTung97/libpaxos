@@ -23,7 +23,7 @@ func TestSimulateRuntime(t *testing.T) {
 		})
 	})
 
-	assert.Equal(t, ThreadID(1), ctx.GetThreadID())
+	assert.Equal(t, ThreadID(1), ctx.(*simulateContext).tid)
 	assert.Equal(t, []string(nil), actions)
 
 	// run
@@ -78,13 +78,22 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 	}, actions.actions)
 
 	// restart
-	rt.RestartThread(ctx.GetThreadID())
+	actions.clear()
+	rt.RestartThread(ctx)
 	rt.RunNext()
 	rt.RunNext()
 	assert.Equal(t, []string{
-		"new thread 01",
-		"new thread 02",
 		"action 02",
 		"new thread 01",
 	}, actions.actions)
+
+	// run all
+	actions.clear()
+	runAllActions(rt)
+	assert.Equal(t, []string{
+		"action 01",
+	}, actions.actions)
+
+	// restart again, not found
+	rt.RestartThread(ctx)
 }
