@@ -1,10 +1,15 @@
 package async
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"testing"
+	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/libpaxos/testutil"
 )
 
 type actionListTest struct {
@@ -172,5 +177,134 @@ func TestSimulateKeyWaiter(t *testing.T) {
 	})
 }
 
-func TestRealKeyWaiter(t *testing.T) {
+func TestRealKeyWaiter__Broadcast(t *testing.T) {
+	var mut sync.Mutex
+	finished := false
+
+	w := NewKeyWaiter[string](&mut)
+	ctx := NewContext()
+
+	synctest.Test(t, func(t *testing.T) {
+		runFn := func(key string) bool {
+			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+				if err != nil {
+					return WaitStatusSuccess
+				}
+
+				if finished {
+					return WaitStatusSuccess
+				}
+				return WaitStatusWaiting
+			})
+			return true
+		}
+
+		returnFn1, assertNotFinish1 := testutil.RunAsync(t, func() bool {
+			return runFn("key01")
+		})
+		assertNotFinish1()
+
+		returnFn2, assertNotFinish2 := testutil.RunAsync(t, func() bool {
+			return runFn("key02")
+		})
+		assertNotFinish2()
+
+		mut.Lock()
+		finished = true
+		w.Broadcast()
+		mut.Unlock()
+
+		assert.Equal(t, true, returnFn1())
+		assert.Equal(t, true, returnFn2())
+	})
+}
+
+func TestRealKeyWaiter__Signal(t *testing.T) {
+	var mut sync.Mutex
+	finished := false
+
+	w := NewKeyWaiter[string](&mut)
+	ctx := NewContext()
+
+	synctest.Test(t, func(t *testing.T) {
+		runFn := func(key string) bool {
+			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+				if err != nil {
+					return WaitStatusSuccess
+				}
+
+				if finished {
+					return WaitStatusSuccess
+				}
+				return WaitStatusWaiting
+			})
+			return true
+		}
+
+		returnFn1, assertNotFinish1 := testutil.RunAsync(t, func() bool {
+			return runFn("key01")
+		})
+		assertNotFinish1()
+
+		returnFn2, assertNotFinish2 := testutil.RunAsync(t, func() bool {
+			return runFn("key02")
+		})
+		assertNotFinish2()
+
+		mut.Lock()
+		finished = true
+		w.Signal("key01")
+		mut.Unlock()
+
+		assert.Equal(t, true, returnFn1())
+		assertNotFinish2()
+
+		mut.Lock()
+		w.Broadcast()
+		mut.Unlock()
+
+		assert.Equal(t, true, returnFn2())
+	})
+}
+
+func TestRealKeyWaiter__Context_Cancel(t *testing.T) {
+	var mut sync.Mutex
+	finished := false
+
+	w := NewKeyWaiter[string](&mut)
+	ctx := NewContext()
+
+	synctest.Test(t, func(t *testing.T) {
+		runFn := func(key string) error {
+			var outputErr error
+			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+				if err != nil {
+					outputErr = err
+					return WaitStatusSuccess
+				}
+
+				if finished {
+					return WaitStatusSuccess
+				}
+				return WaitStatusWaiting
+			})
+			return outputErr
+		}
+
+		returnFn1, assertNotFinish1 := testutil.RunAsync(t, func() error {
+			return runFn("key01")
+		})
+		assertNotFinish1()
+
+		returnFn2, assertNotFinish2 := testutil.RunAsync(t, func() error {
+			return runFn("key02")
+		})
+		assertNotFinish2()
+
+		ctx.Cancel()
+		synctest.Wait()
+
+		assert.Equal(t, context.Canceled, returnFn1())
+		assert.Equal(t, context.Canceled, returnFn2())
+	})
 }

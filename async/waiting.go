@@ -63,10 +63,12 @@ func (w *realKeyWaiter[T]) Run(
 	}
 }
 
+// Signal must be used in mutex
 func (w *realKeyWaiter[T]) Signal(key T) {
 	w.cond.Signal(key)
 }
 
+// Broadcast must be used in mutex
 func (w *realKeyWaiter[T]) Broadcast() {
 	w.cond.Broadcast()
 }
