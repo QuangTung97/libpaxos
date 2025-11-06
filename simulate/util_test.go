@@ -38,7 +38,7 @@ func (a *actionListTest) add(format string, args ...any) {
 
 func (a *actionListTest) getList() []string {
 	result := a.actions
-	a.actions = nil
+	a.actions = make([]string, 0)
 	return result
 }
 

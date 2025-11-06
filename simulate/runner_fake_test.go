@@ -10,6 +10,11 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos"
 )
 
+var newTestTerm01 = paxos.TermNum{
+	Num:    21,
+	NodeID: nodeID2,
+}
+
 func newNodeSet(nodes ...paxos.NodeID) map[paxos.NodeID]struct{} {
 	result := make(map[paxos.NodeID]struct{}, len(nodes))
 	for _, n := range nodes {
@@ -37,6 +42,7 @@ func newRunnerFakeTest() *runnerFakeTest {
 		r.voteFunc,
 		r.acceptorFunc,
 		r.fetchFollowerFunc,
+		r.stateMachineFunc,
 	)
 
 	return r
@@ -65,6 +71,16 @@ func (r *runnerFakeTest) fetchFollowerFunc(
 	r.actions.add("start-fetch-follower:%s,%d,retry=%d", nodeID.String()[:4], term.Num, retryCount)
 	r.rt.AddNext(ctx, func(ctx async.Context) {
 		r.actions.add("fetch-follower-action01:%s,%d", nodeID.String()[:4], term.Num)
+	})
+}
+
+func (r *runnerFakeTest) stateMachineFunc(
+	ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo,
+) {
+	r.ctxList = append(r.ctxList, ctx)
+	r.actions.add("start-state-machine:%d,running=%v", term.Num, info.Running)
+	r.rt.AddNext(ctx, func(ctx async.Context) {
+		r.actions.add("state-machine-action01:%d", term.Num)
 	})
 }
 
@@ -204,11 +220,54 @@ func TestRunnerFake_FetchingFollowerInfoRunners__Increase_Retry(t *testing.T) {
 func TestRunnerFake_StartStateMachine(t *testing.T) {
 	r := newRunnerFakeTest()
 
-	ok := r.runner.StartStateMachine(initTerm, paxos.StateMachineRunnerInfo{
+	info := paxos.StateMachineRunnerInfo{
 		Running:       true,
 		IsLeader:      true,
 		AcceptCommand: true,
-	})
-	// TODO
+	}
+
+	// start
+	ok := r.runner.StartStateMachine(initTerm, info)
+	assert.Equal(t, true, ok)
+	assert.Equal(t, []string{}, r.actions.getList())
+
+	r.rt.RunNext()
+	assert.Equal(t, []string{
+		"start-state-machine:20,running=true",
+	}, r.actions.getList())
+
+	// with same params
+	ok = r.runner.StartStateMachine(initTerm, info)
 	assert.Equal(t, false, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"state-machine-action01:20",
+	}, r.actions.getList())
+
+	// with different term
+	ok = r.runner.StartStateMachine(newTestTerm01, info)
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-state-machine:21,running=true",
+		"state-machine-action01:21",
+	}, r.actions.getList())
+
+	// with different info, stop
+	ok = r.runner.StartStateMachine(newTestTerm01, paxos.StateMachineRunnerInfo{})
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{}, r.actions.getList())
+	assert.Equal(t, 2, len(r.ctxList))
+	assert.Equal(t, context.Canceled, r.ctxList[0].Err())
+	assert.Equal(t, context.Canceled, r.ctxList[1].Err())
+
+	// start again
+	ok = r.runner.StartStateMachine(initTerm, info)
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-state-machine:20,running=true",
+		"state-machine-action01:20",
+	}, r.actions.getList())
 }

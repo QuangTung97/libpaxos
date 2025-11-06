@@ -13,10 +13,15 @@ type RunnerFake struct {
 	voteRunnerFunc          func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	acceptorRunnerFunc      func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int)
+	stateMachineFunc        func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo)
 
 	voteMap          map[paxos.NodeID]basicRunnerInfo
 	acceptorMap      map[paxos.NodeID]basicRunnerInfo
 	fetchFollowerMap map[paxos.NodeID]fetchFollowerInfo
+
+	stateMachineTerm paxos.TermNum
+	stateMachineInfo paxos.StateMachineRunnerInfo
+	stateMachineCtx  async.Context
 }
 
 type basicRunnerInfo struct {
@@ -37,6 +42,7 @@ func NewRunnerFake(
 	voteRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	acceptorRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int),
+	stateMachineFunc func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo),
 ) *RunnerFake {
 	return &RunnerFake{
 		rt: rt,
@@ -44,6 +50,7 @@ func NewRunnerFake(
 		voteRunnerFunc:          voteRunnerFunc,
 		acceptorRunnerFunc:      acceptorRunnerFunc,
 		fetchFollowerRunnerFunc: fetchFollowerRunnerFunc,
+		stateMachineFunc:        stateMachineFunc,
 
 		voteMap:          map[paxos.NodeID]basicRunnerInfo{},
 		acceptorMap:      map[paxos.NodeID]basicRunnerInfo{},
@@ -126,7 +133,34 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 func (r *RunnerFake) StartStateMachine(
 	term paxos.TermNum, info paxos.StateMachineRunnerInfo,
 ) bool {
-	return false
+	changed := false
+	if term != r.stateMachineTerm {
+		changed = true
+	} else if info != r.stateMachineInfo {
+		changed = true
+	}
+
+	if !changed {
+		return false
+	}
+
+	if r.stateMachineCtx != nil {
+		r.stateMachineCtx.Cancel()
+		r.stateMachineCtx = nil
+	}
+
+	r.stateMachineTerm = term
+	r.stateMachineInfo = info
+
+	if !info.Running {
+		return true
+	}
+
+	r.stateMachineCtx = r.rt.NewThread(func(ctx async.Context) {
+		r.stateMachineFunc(ctx, term, info)
+	})
+
+	return true
 }
 
 func (r *RunnerFake) StartFetchingFollowerInfoRunners(
