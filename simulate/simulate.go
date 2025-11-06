@@ -6,20 +6,6 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos/fake"
 )
 
-var (
-	nodeID1 = fake.NewNodeID(1)
-	nodeID2 = fake.NewNodeID(2)
-	nodeID3 = fake.NewNodeID(3)
-	nodeID4 = fake.NewNodeID(4)
-	nodeID5 = fake.NewNodeID(5)
-	nodeID6 = fake.NewNodeID(6)
-
-	initTerm = paxos.TermNum{
-		Num:    20,
-		NodeID: nodeID3,
-	}
-)
-
 type Simulation struct {
 }
 

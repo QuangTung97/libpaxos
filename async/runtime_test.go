@@ -23,8 +23,6 @@ func TestSimpleAddNextFunc(t *testing.T) {
 
 func TestSimulateRuntime(t *testing.T) {
 	rt := NewSimulateRuntime()
-	t.Cleanup(rt.CheckInvariant)
-
 	// check function signature
 	var _ AddNextFunc = rt.AddNext
 
@@ -69,8 +67,6 @@ func TestSimulateRuntime(t *testing.T) {
 
 func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 	rt := NewSimulateRuntime()
-	t.Cleanup(rt.CheckInvariant)
-
 	actions := newActionListTest()
 
 	ctx := rt.NewThread(func(ctx Context) {
@@ -86,7 +82,6 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 			actions.add("action 02")
 		})
 	})
-	rt.CheckInvariant()
 
 	rt.RunNext()
 	rt.RunNext()
@@ -124,8 +119,6 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 
 func TestSimulateRuntime_Sequence(t *testing.T) {
 	rt := NewSimulateRuntime()
-	t.Cleanup(rt.CheckInvariant)
-
 	actions := newActionListTest()
 
 	ctx := rt.NewThread(func(ctx Context) {
@@ -173,8 +166,6 @@ func TestSimulateRuntime_Sequence(t *testing.T) {
 
 func TestSimulateRuntime_Sequence__And_Restart_Thread(t *testing.T) {
 	rt := NewSimulateRuntime()
-	t.Cleanup(rt.CheckInvariant)
-
 	actions := newActionListTest()
 
 	ctx := rt.NewThread(func(ctx Context) {

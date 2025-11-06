@@ -34,13 +34,11 @@ func (a *actionListTest) clear() {
 func runAllActions(rt *SimulateRuntime) {
 	for rt.RunNext() {
 	}
-	rt.CheckInvariant()
 }
 
 func TestSimulateKeyWaiter(t *testing.T) {
 	t.Run("simple success", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()
@@ -73,7 +71,6 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()
@@ -107,7 +104,6 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting, 2 keys", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()
@@ -150,7 +146,6 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with cancel", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		t.Cleanup(rt.CheckInvariant)
 		w := NewSimulateKeyWaiter[string](rt)
 
 		actions := newActionListTest()

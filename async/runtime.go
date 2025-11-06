@@ -118,9 +118,6 @@ func (r *SimulateRuntime) NewSequence() SequenceID {
 	return r.lastSeqID
 }
 
-func (r *SimulateRuntime) CheckInvariant() {
-}
-
 func AssertTrue(b bool) {
 	if !b {
 		panic("must be true here")
