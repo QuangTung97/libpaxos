@@ -2251,11 +2251,13 @@ func TestCoreLogic__Leader__Insert_Cmd__With_Waiting(t *testing.T) {
 			return true
 		})
 
+		// increase last committed
 		c.doHandleAccept(nodeID1, 2)
 		c.doHandleAccept(nodeID2, 2)
 		assert.Equal(t, LogPos(2), c.core.GetLastCommitted())
 		assertNotFinish()
 
+		// increase fully replicated for node 1
 		c.insertToDiskLog(2, c.newAcceptLogEntryNoPrev(2, "cmd test 01"))
 		c.doUpdateFullyReplicated(nodeID1, 2)
 		assert.Equal(t, true, finishFn())

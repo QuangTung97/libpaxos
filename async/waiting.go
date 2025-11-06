@@ -9,7 +9,7 @@ import (
 type WaitStatus int
 
 const (
-	WaitStatusSuccess WaitStatus = iota + 1
+	WaitStatusSuccess WaitStatus = iota
 	WaitStatusWaiting
 )
 
