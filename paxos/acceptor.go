@@ -19,6 +19,13 @@ type AcceptorLogic interface {
 		lastFullyReplicated LogPos,
 	) (NeedReplicatedInput, error)
 
+	GetNeedReplicatedPosAsync(
+		ctx async.Context,
+		term TermNum, from LogPos,
+		lastFullyReplicated LogPos,
+		callback func(input NeedReplicatedInput, err error),
+	)
+
 	// CheckInvariant for testing only
 	CheckInvariant()
 
@@ -352,25 +359,45 @@ func (s *acceptorLogicImpl) GetCommittedEntriesWithWait(
 	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 ) (GetCommittedEntriesOutput, error) {
-	var output GetCommittedEntriesOutput
-	var outputErr error
+	var resultOutput GetCommittedEntriesOutput
+	var resultErr error
 
+	s.GetCommittedEntriesWithWaitAsync(
+		ctx, term, fromPos, limit,
+		func(output GetCommittedEntriesOutput, err error) {
+			resultOutput = output
+			resultErr = err
+		},
+	)
+
+	return resultOutput, resultErr
+}
+
+func (s *acceptorLogicImpl) GetCommittedEntriesWithWaitAsync(
+	ctx async.Context, term TermNum,
+	fromPos LogPos, limit int,
+	callback func(GetCommittedEntriesOutput, error),
+) {
 	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
-			outputErr = err
+			callback(GetCommittedEntriesOutput{}, err)
 			return 0, err
 		}
 
+		var output GetCommittedEntriesOutput
 		status, err := s.doGetCommittedEntriesWithWaitCallback(term, fromPos, limit, &output)
 		if err != nil {
-			outputErr = err
+			callback(GetCommittedEntriesOutput{}, err)
 			return 0, err
 		}
 
-		return status, nil
-	})
+		if status != async.WaitStatusSuccess {
+			return status, nil
+		}
 
-	return output, outputErr
+		callback(output, nil)
+		return async.WaitStatusSuccess, nil
+	})
 }
 
 func (s *acceptorLogicImpl) doGetCommittedEntriesWithWaitCallback(

@@ -26,6 +26,12 @@ type CoreLogic interface {
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
+	GetAcceptEntriesRequestAsync(
+		ctx async.Context, term TermNum, toNode NodeID,
+		fromPos LogPos, lastCommittedSent LogPos,
+		callback func(input AcceptEntriesInput, err error),
+	)
+
 	FollowerReceiveTermNum(term TermNum) bool
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
@@ -347,6 +353,7 @@ func (c *coreLogicImpl) HandleVoteResponse(
 		ctx, id,
 		func(ctx async.Context, err error) (async.WaitStatus, error) {
 			if err != nil {
+				// TODO testing
 				outputErr = err
 				return 0, err
 			}
@@ -429,9 +436,6 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 	}
 
 	if remainPos.Pos != pos {
-		return async.WaitStatusSuccess
-	}
-	if pos <= c.candidate.acceptPos {
 		return async.WaitStatusSuccess
 	}
 

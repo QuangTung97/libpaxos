@@ -20,6 +20,12 @@ type StateMachineLogGetter interface {
 		ctx async.Context, term TermNum,
 		fromPos LogPos, limit int,
 	) (GetCommittedEntriesOutput, error)
+
+	GetCommittedEntriesWithWaitAsync(
+		ctx async.Context, term TermNum,
+		fromPos LogPos, limit int,
+		callback func(GetCommittedEntriesOutput, error),
+	)
 }
 
 type GetCommittedEntriesOutput struct {
