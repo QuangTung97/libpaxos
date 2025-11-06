@@ -250,25 +250,46 @@ func (s *acceptorLogicImpl) GetNeedReplicatedPos(
 	term TermNum, from LogPos,
 	lastFullyReplicated LogPos,
 ) (NeedReplicatedInput, error) {
-	var output NeedReplicatedInput
-	var outputErr error
+	var resultInput NeedReplicatedInput
+	var resultErr error
 
+	s.GetNeedReplicatedPosAsync(
+		ctx, term, from, lastFullyReplicated,
+		func(input NeedReplicatedInput, err error) {
+			resultInput = input
+			resultErr = err
+		},
+	)
+
+	return resultInput, resultErr
+}
+
+func (s *acceptorLogicImpl) GetNeedReplicatedPosAsync(
+	ctx async.Context,
+	term TermNum, from LogPos,
+	lastFullyReplicated LogPos,
+	callback func(input NeedReplicatedInput, err error),
+) {
 	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
-			outputErr = err
+			callback(NeedReplicatedInput{}, err)
 			return 0, err
 		}
 
+		var output NeedReplicatedInput
 		status, err := s.doGetNeedReplicatedPosCallback(term, from, lastFullyReplicated, &output)
 		if err != nil {
-			outputErr = err
+			callback(NeedReplicatedInput{}, err)
 			return 0, err
 		}
 
-		return status, nil
-	})
+		if status != async.WaitStatusSuccess {
+			return status, nil
+		}
 
-	return output, outputErr
+		callback(output, nil)
+		return async.WaitStatusSuccess, nil
+	})
 }
 
 func (s *acceptorLogicImpl) doGetNeedReplicatedPosCallback(
