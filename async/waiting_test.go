@@ -174,6 +174,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		// cancel context
 		ctx.Cancel()
+		assert.Equal(t, context.Canceled, ctx.Err())
 
 		actions.clear()
 		runAllActions(rt)

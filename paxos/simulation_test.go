@@ -236,6 +236,7 @@ func (s *simulationTestCase) initNodeState(
 		func() TimestampMilli {
 			return TimestampMilli(s.now.Load())
 		},
+		async.SimpleAddNextFunc,
 		LogPos(conf.maxBufferLen),
 		true,
 		5000, // 5 seconds

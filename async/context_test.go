@@ -15,4 +15,5 @@ func TestRealContext(t *testing.T) {
 
 	ctx.Cancel()
 	assert.Equal(t, context.Canceled, realCtx.Err())
+	assert.Equal(t, context.Canceled, ctx.Err())
 }

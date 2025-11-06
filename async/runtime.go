@@ -1,5 +1,11 @@
 package async
 
+type AddNextFunc func(ctx Context, callback func(ctx Context))
+
+func SimpleAddNextFunc(ctx Context, callback func(ctx Context)) {
+	callback(ctx)
+}
+
 func NewSimulateRuntime() *SimulateRuntime {
 	return &SimulateRuntime{}
 }

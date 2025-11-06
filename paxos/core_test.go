@@ -105,6 +105,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 		func() TimestampMilli {
 			return TimestampMilli(c.now.Load())
 		},
+		async.SimpleAddNextFunc,
 		config.maxBufferLen,
 		true,
 		5000, // 5 seconds

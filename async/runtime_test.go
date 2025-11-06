@@ -6,9 +6,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSimpleAddNextFunc(t *testing.T) {
+	ctx := NewContext()
+	var calls int
+	SimpleAddNextFunc(ctx, func(ctx Context) {
+		calls++
+	})
+	assert.Equal(t, 1, calls)
+}
+
 func TestSimulateRuntime(t *testing.T) {
 	rt := NewSimulateRuntime()
 	t.Cleanup(rt.CheckInvariant)
+
+	// check function signature
+	var _ AddNextFunc = rt.AddNext
 
 	var actions []string
 	ctx := rt.NewThread(func(ctx Context) {

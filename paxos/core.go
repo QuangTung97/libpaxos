@@ -66,6 +66,7 @@ func NewCoreLogic(
 	log LeaderLogGetter,
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
+	addNextFunc async.AddNextFunc,
 	maxBufferLen LogPos,
 	withCheckInv bool,
 	timeoutTickDuration TimestampMilli,
@@ -73,6 +74,7 @@ func NewCoreLogic(
 ) CoreLogic {
 	c := &coreLogicImpl{
 		nowFunc:      nowFunc,
+		addNextFunc:  addNextFunc,
 		maxBufferLen: maxBufferLen,
 
 		state: StateFollower,
@@ -96,7 +98,9 @@ func NewCoreLogic(
 }
 
 type coreLogicImpl struct {
-	nowFunc      func() TimestampMilli
+	nowFunc     func() TimestampMilli
+	addNextFunc async.AddNextFunc
+
 	maxBufferLen LogPos // maximum total number of log entries in both memLog and logBuffer
 
 	mut   sync.Mutex
@@ -1363,20 +1367,49 @@ func (c *coreLogicImpl) GetCommittedEntriesWithWait(
 	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 ) (GetCommittedEntriesOutput, error) {
+	var output GetCommittedEntriesOutput
+	var outputErr error
+
+	c.GetCommittedEntriesWithWaitAsync(
+		ctx, term, fromPos, limit,
+		func(callbackOutput GetCommittedEntriesOutput, err error) {
+			output = callbackOutput
+			outputErr = err
+		},
+	)
+
+	return output, outputErr
+}
+
+func (c *coreLogicImpl) GetCommittedEntriesWithWaitAsync(
+	ctx async.Context, term TermNum,
+	fromPos LogPos, limit int,
+	callback func(GetCommittedEntriesOutput, error),
+) {
 	var extra getCommittedEntriesExtra
 
-	output, err := c.getCommittedEntriesWithWaitFromMem(ctx, term, fromPos, limit, &extra)
-	if err != nil {
-		return GetCommittedEntriesOutput{}, err
+	getRemainingFromDisk := func(output GetCommittedEntriesOutput) {
+		if extra.diskMinPos <= extra.diskMaxPos {
+			diskLimit := extra.diskMaxPos - extra.diskMinPos + 1
+			diskEntries := c.log.GetEntries(extra.diskMinPos, int(diskLimit))
+			output.Entries = append(diskEntries, output.Entries...)
+		}
+		callback(output, nil)
 	}
 
-	if extra.diskMinPos <= extra.diskMaxPos {
-		diskLimit := extra.diskMaxPos - extra.diskMinPos + 1
-		diskEntries := c.log.GetEntries(extra.diskMinPos, int(diskLimit))
-		output.Entries = append(diskEntries, output.Entries...)
-	}
+	c.getCommittedEntriesWithWaitFromMem(
+		ctx, term, fromPos, limit, &extra,
+		func(output GetCommittedEntriesOutput, err error) {
+			if err != nil {
+				callback(GetCommittedEntriesOutput{}, err)
+				return
+			}
 
-	return output, nil
+			c.addNextFunc(ctx, func(ctx async.Context) {
+				getRemainingFromDisk(output)
+			})
+		},
+	)
 }
 
 type getCommittedEntriesExtra struct {
@@ -1388,27 +1421,29 @@ func (c *coreLogicImpl) getCommittedEntriesWithWaitFromMem(
 	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 	extra *getCommittedEntriesExtra,
-) (GetCommittedEntriesOutput, error) {
-	var output GetCommittedEntriesOutput
-	var outputErr error
-
+	callback func(GetCommittedEntriesOutput, error),
+) {
 	nodeID := c.persistent.GetNodeID()
 	c.sendAcceptWaiter.Run(ctx, nodeID, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
-			outputErr = err
+			callback(GetCommittedEntriesOutput{}, err)
 			return 0, err
 		}
 
+		var output GetCommittedEntriesOutput
 		status, err := c.doGetCommittedEntriesWithWaitFromMemCallback(term, fromPos, limit, extra, &output)
 		if err != nil {
-			outputErr = err
+			callback(GetCommittedEntriesOutput{}, err)
 			return 0, err
 		}
 
-		return status, nil
-	})
+		if status != async.WaitStatusSuccess {
+			return status, nil
+		}
 
-	return output, outputErr
+		callback(output, nil)
+		return async.WaitStatusSuccess, nil
+	})
 }
 
 func (c *coreLogicImpl) doGetCommittedEntriesWithWaitFromMemCallback(
