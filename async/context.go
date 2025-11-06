@@ -2,8 +2,6 @@ package async
 
 import "context"
 
-type ThreadID int64
-
 type Context interface {
 	ToContext() context.Context
 	Cancel()
@@ -47,21 +45,34 @@ func (c *realContext) Err() error {
 // Simulate Context
 // ================================================================
 
+type threadGeneration int64
+
 type simulateContext struct {
-	tid           ThreadID
+	generation threadGeneration
+
 	startCallback func(ctx Context)
 	cancelErr     error
 	broadcastSet  map[Broadcaster]struct{}
+
+	internalSeqMap map[SequenceID]*sequenceActionState
 }
 
-func newSimulateContext(tid ThreadID) *simulateContext {
+func newSimulateContext(startCallback func(ctx Context)) *simulateContext {
 	return &simulateContext{
-		tid:          tid,
-		broadcastSet: map[Broadcaster]struct{}{},
+		generation:    1,
+		startCallback: startCallback,
+		broadcastSet:  map[Broadcaster]struct{}{},
 	}
 }
 
 var _ Context = &simulateContext{}
+
+func (c *simulateContext) getSequenceActionMap() map[SequenceID]*sequenceActionState {
+	if c.internalSeqMap == nil {
+		c.internalSeqMap = map[SequenceID]*sequenceActionState{}
+	}
+	return c.internalSeqMap
+}
 
 func (c *simulateContext) Cancel() {
 	c.cancelErr = context.Canceled

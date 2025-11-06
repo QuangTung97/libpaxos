@@ -740,6 +740,7 @@ func (c *coreLogicImpl) FollowerReceiveTermNum(term TermNum) bool {
 
 	ok := c.followDoCheckLeaderRequestTermNum(term, func() {
 		if c.state != StateFollower {
+			// TODO testing
 			return
 		}
 

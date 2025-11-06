@@ -111,10 +111,7 @@ func (w *simulateKeyWaiter[T]) Run(
 			return
 		}
 
-		w.waitMap[key] = append(w.waitMap[key], nextActionInfo{
-			ctx:      ctx,
-			callback: actionCallback,
-		})
+		w.waitMap[key] = append(w.waitMap[key], newNextActionInfo(ctx, actionCallback))
 		ctx.broadcastSet[w] = struct{}{}
 	}
 
