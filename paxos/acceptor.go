@@ -253,19 +253,19 @@ func (s *acceptorLogicImpl) GetNeedReplicatedPos(
 	var output NeedReplicatedInput
 	var outputErr error
 
-	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) async.WaitStatus {
+	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
 		status, err := s.doGetNeedReplicatedPosCallback(term, from, lastFullyReplicated, &output)
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
-		return status
+		return status, nil
 	})
 
 	return output, outputErr
@@ -334,19 +334,19 @@ func (s *acceptorLogicImpl) GetCommittedEntriesWithWait(
 	var output GetCommittedEntriesOutput
 	var outputErr error
 
-	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) async.WaitStatus {
+	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
 		status, err := s.doGetCommittedEntriesWithWaitCallback(term, fromPos, limit, &output)
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
-		return status
+		return status, nil
 	})
 
 	return output, outputErr

@@ -2,6 +2,7 @@ package async
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -47,10 +48,10 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread")
-			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
 				actions.add("wait:%d", count)
-				return WaitStatusSuccess
+				return WaitStatusSuccess, nil
 			})
 		})
 		assert.Equal(t, []string{}, actions.actions)
@@ -79,13 +80,13 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		count := 0
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread")
-			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
 				actions.add("wait:%d", count)
 				if count > 1 {
-					return WaitStatusSuccess
+					return WaitStatusSuccess, nil
 				}
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 		})
 		assert.Equal(t, []string{}, actions.actions)
@@ -112,16 +113,16 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		actions := newActionListTest()
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread01")
-			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				actions.add("wait key01")
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 		})
 		rt.NewThread(func(ctx Context) {
 			actions.add("new-thread02")
-			w.Run(ctx, "key02", func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, "key02", func(ctx Context, err error) (WaitStatus, error) {
 				actions.add("wait key02")
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 		})
 		runAllActions(rt)
@@ -157,15 +158,15 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		ctx := rt.NewThread(func(ctx Context) {
 			actions.add("new-thread")
-			w.Run(ctx, "key01", func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				if err != nil {
 					actions.add("wait error: %v", err)
-					return WaitStatusSuccess
+					return 0, err
 				}
 
 				count++
 				actions.add("wait:%d", count)
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 		})
 		runAllActions(rt)
@@ -189,15 +190,15 @@ func TestRealKeyWaiter__Broadcast(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		runFn := func(key string) bool {
-			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, key, func(ctx Context, err error) (WaitStatus, error) {
 				if err != nil {
-					return WaitStatusSuccess
+					return 0, err
 				}
 
 				if finished {
-					return WaitStatusSuccess
+					return WaitStatusSuccess, nil
 				}
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 			return true
 		}
@@ -228,6 +229,20 @@ func TestRealKeyWaiter__Broadcast(t *testing.T) {
 	})
 }
 
+func TestRealKeyWaiter__With_Callback_Error(t *testing.T) {
+	var mut sync.Mutex
+
+	w := NewKeyWaiter[string](&mut)
+	ctx := NewContext()
+
+	w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
+		if err != nil {
+			return 0, err
+		}
+		return 0, errors.New("custom error")
+	})
+}
+
 func TestRealKeyWaiter__Signal(t *testing.T) {
 	var mut sync.Mutex
 	finished := false
@@ -237,15 +252,15 @@ func TestRealKeyWaiter__Signal(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		runFn := func(key string) bool {
-			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, key, func(ctx Context, err error) (WaitStatus, error) {
 				if err != nil {
-					return WaitStatusSuccess
+					return 0, err
 				}
 
 				if finished {
-					return WaitStatusSuccess
+					return WaitStatusSuccess, nil
 				}
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 			return true
 		}
@@ -286,16 +301,16 @@ func TestRealKeyWaiter__Context_Cancel(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		runFn := func(key string) error {
 			var outputErr error
-			w.Run(ctx, key, func(ctx Context, err error) WaitStatus {
+			w.Run(ctx, key, func(ctx Context, err error) (WaitStatus, error) {
 				if err != nil {
 					outputErr = err
-					return WaitStatusSuccess
+					return 0, err
 				}
 
 				if finished {
-					return WaitStatusSuccess
+					return WaitStatusSuccess, nil
 				}
-				return WaitStatusWaiting
+				return WaitStatusWaiting, nil
 			})
 			return outputErr
 		}

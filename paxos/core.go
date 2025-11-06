@@ -625,25 +625,25 @@ func (c *coreLogicImpl) GetAcceptEntriesRequestAsync(
 	fromPos LogPos, lastCommittedSent LogPos,
 	callback func(input AcceptEntriesInput, err error),
 ) {
-	c.sendAcceptWaiter.Run(ctx, toNode, func(ctx async.Context, err error) async.WaitStatus {
+	c.sendAcceptWaiter.Run(ctx, toNode, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
 			callback(AcceptEntriesInput{}, err)
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
 		var output AcceptEntriesInput
 		status, err := c.doGetAcceptEntriesRequestCallback(term, toNode, fromPos, lastCommittedSent, &output)
 		if err != nil {
 			callback(AcceptEntriesInput{}, err)
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
 		if status != async.WaitStatusSuccess {
-			return status
+			return status, nil
 		}
 
 		callback(output, nil)
-		return async.WaitStatusSuccess
+		return async.WaitStatusSuccess, nil
 	})
 }
 
@@ -1393,19 +1393,19 @@ func (c *coreLogicImpl) getCommittedEntriesWithWaitFromMem(
 	var outputErr error
 
 	nodeID := c.persistent.GetNodeID()
-	c.sendAcceptWaiter.Run(ctx, nodeID, func(ctx async.Context, err error) async.WaitStatus {
+	c.sendAcceptWaiter.Run(ctx, nodeID, func(ctx async.Context, err error) (async.WaitStatus, error) {
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
 		status, err := c.doGetCommittedEntriesWithWaitFromMemCallback(term, fromPos, limit, extra, &output)
 		if err != nil {
 			outputErr = err
-			return async.WaitStatusSuccess
+			return 0, err
 		}
 
-		return status
+		return status, nil
 	})
 
 	return output, outputErr

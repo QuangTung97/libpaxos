@@ -20,7 +20,7 @@ type Broadcaster interface {
 type KeyWaiter[T comparable] interface {
 	Broadcaster
 
-	Run(ctx Context, key T, callback func(ctx Context, err error) WaitStatus)
+	Run(ctx Context, key T, callback func(ctx Context, err error) (WaitStatus, error))
 	Signal(key T)
 
 	NumWaitKeys() int
@@ -43,19 +43,23 @@ type realKeyWaiter[T comparable] struct {
 }
 
 func (w *realKeyWaiter[T]) Run(
-	ctx Context, key T, callback func(ctx Context, err error) WaitStatus,
+	ctx Context, key T, callback func(ctx Context, err error) (WaitStatus, error),
 ) {
 	w.mut.Lock()
 	defer w.mut.Unlock()
 
 	for {
-		status := callback(ctx, nil)
+		status, err := callback(ctx, nil)
+		if err != nil {
+			return
+		}
+
 		if status == WaitStatusSuccess {
 			return
 		}
 
 		if err := w.cond.Wait(ctx.ToContext(), key); err != nil {
-			callback(ctx, err)
+			_, _ = callback(ctx, err)
 			return
 		}
 	}
@@ -92,15 +96,15 @@ type simulateKeyWaiter[T comparable] struct {
 }
 
 func (w *simulateKeyWaiter[T]) Run(
-	ctx Context, key T, callback func(ctx Context, err error) WaitStatus,
+	ctx Context, key T, callback func(ctx Context, err error) (WaitStatus, error),
 ) {
 	var actionCallback func(ctx Context)
 
 	actionCallback = func(inputCtx Context) {
 		ctx := inputCtx.(*simulateContext)
 
-		status := callback(ctx, ctx.cancelErr)
-		if ctx.cancelErr != nil {
+		status, err := callback(ctx, ctx.cancelErr)
+		if err != nil {
 			return
 		}
 		if status == WaitStatusSuccess {
