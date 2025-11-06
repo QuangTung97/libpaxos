@@ -6,6 +6,8 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/QuangTung97/libpaxos/testutil"
 )
 
@@ -125,6 +127,12 @@ func TestKeyCond__Multi_Nodes__Broadcast(t *testing.T) {
 
 		fn1.AssertNotFinished(t)
 		fn2.AssertNotFinished(t)
+
+		// check num wait
+		mut.Lock()
+		numWait := cond.NumWaitKeys()
+		mut.Unlock()
+		assert.Equal(t, 2, numWait)
 
 		mut.Lock()
 		finished = true

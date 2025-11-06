@@ -56,6 +56,10 @@ func (c *KeyCond[T]) Broadcast() {
 	}
 }
 
+func (c *KeyCond[T]) NumWaitKeys() int {
+	return len(c.waitSet)
+}
+
 // -----------------------------------------------------
 
 type noCopy struct {

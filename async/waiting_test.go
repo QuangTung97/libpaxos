@@ -132,6 +132,9 @@ func TestSimulateKeyWaiter(t *testing.T) {
 			"wait key02",
 		}, actions.actions)
 
+		// check num waiting
+		assert.Equal(t, 2, w.NumWaitKeys())
+
 		// signal
 		w.Signal("key01")
 		runAllActions(rt)
@@ -208,6 +211,12 @@ func TestRealKeyWaiter__Broadcast(t *testing.T) {
 			return runFn("key02")
 		})
 		assertNotFinish2()
+
+		// check number of keys
+		mut.Lock()
+		numWait := w.NumWaitKeys()
+		mut.Unlock()
+		assert.Equal(t, 2, numWait)
 
 		mut.Lock()
 		finished = true

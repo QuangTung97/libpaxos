@@ -22,6 +22,8 @@ type KeyWaiter[T comparable] interface {
 
 	Run(ctx Context, key T, callback func(ctx Context, err error) WaitStatus)
 	Signal(key T)
+
+	NumWaitKeys() int
 }
 
 // ================================================================
@@ -71,6 +73,10 @@ func (w *realKeyWaiter[T]) Signal(key T) {
 // Broadcast must be used in mutex
 func (w *realKeyWaiter[T]) Broadcast() {
 	w.cond.Broadcast()
+}
+
+func (w *realKeyWaiter[T]) NumWaitKeys() int {
+	return w.cond.NumWaitKeys()
 }
 
 // ================================================================
@@ -127,4 +133,8 @@ func (w *simulateKeyWaiter[T]) Broadcast() {
 	for key := range w.waitMap {
 		w.Signal(key)
 	}
+}
+
+func (w *simulateKeyWaiter[T]) NumWaitKeys() int {
+	return len(w.waitMap)
 }
