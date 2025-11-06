@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
 	"github.com/QuangTung97/libpaxos/testutil"
@@ -31,8 +32,8 @@ var testCreatedTerm = TermNum{
 }
 
 type coreLogicTest struct {
-	ctx       context.Context
-	cancelCtx context.Context
+	ctx       async.Context
+	cancelCtx async.Context
 
 	now atomic.Int64
 
@@ -62,12 +63,11 @@ func newCoreLogicTest(t *testing.T) *coreLogicTest {
 func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreLogicTest {
 	c := &coreLogicTest{}
 
-	c.ctx = context.Background()
+	c.ctx = async.NewContext()
 	c.now.Store(10_000)
 
-	cancelCtx, cancel := context.WithCancel(context.Background())
-	cancel()
-	c.cancelCtx = cancelCtx
+	c.cancelCtx = async.NewContext()
+	c.cancelCtx.Cancel()
 
 	c.persistent = &fake.PersistentStateFake{
 		NodeID: nodeID1,

@@ -9,6 +9,8 @@ import (
 	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/QuangTung97/libpaxos/async"
 )
 
 type objectValue struct {
@@ -279,12 +281,12 @@ func TestKeyRunner_Public(t *testing.T) {
 
 		r := New(
 			objectValue.getKey,
-			func(ctx context.Context, val objectValue) {
+			func(ctx async.Context, val objectValue) {
 				runningMut.Lock()
 				runningSet[val.key] = val
 				runningMut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				runningMut.Lock()
 				delete(runningSet, val.key)

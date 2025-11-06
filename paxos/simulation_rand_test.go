@@ -1,7 +1,6 @@
 package paxos_test
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"math/rand"
@@ -9,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 )
 
@@ -206,8 +206,8 @@ func randomChangeLeader(
 	numNodes := randObj.Intn(3) + 1
 	randomNodes := nodes[:numNodes]
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel to avoid blocking
+	ctx := async.NewContext()
+	ctx.Cancel() // cancel to avoid blocking
 
 	return randomActionWeight(
 		"change_leader",

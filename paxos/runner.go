@@ -1,9 +1,9 @@
 package paxos
 
 import (
-	"context"
 	"time"
 
+	"github.com/QuangTung97/libpaxos/async"
 	"github.com/QuangTung97/libpaxos/paxos/key_runner"
 )
 
@@ -47,18 +47,18 @@ type nodeRunnerImpl struct {
 
 func NewNodeRunner(
 	currentNodeID NodeID,
-	voteRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	acceptorRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	replicateRunnerFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	stateMachineFunc func(ctx context.Context, term TermNum, info StateMachineRunnerInfo) error,
-	fetchFollowerInfoFunc func(ctx context.Context, nodeID NodeID, term TermNum) error,
-	startElectionFunc func(ctx context.Context, nodeID NodeID, maxTermVal TermValue) error,
+	voteRunnerFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
+	acceptorRunnerFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
+	replicateRunnerFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
+	stateMachineFunc func(ctx async.Context, term TermNum, info StateMachineRunnerInfo) error,
+	fetchFollowerInfoFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
+	startElectionFunc func(ctx async.Context, nodeID NodeID, maxTermVal TermValue) error,
 ) (NodeRunner, func()) {
 	r := &nodeRunnerImpl{
 		currentNodeID: currentNodeID,
 	}
 
-	loopWithSleep := func(ctx context.Context, callback func(ctx context.Context) error) {
+	loopWithSleep := func(ctx async.Context, callback func(ctx async.Context) error) {
 		for {
 			_ = callback(ctx)
 			sleepWithContext(ctx, 1000*time.Millisecond)
@@ -68,38 +68,38 @@ func NewNodeRunner(
 		}
 	}
 
-	r.voters = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.voters = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return voteRunnerFunc(ctx, val.nodeID, val.term)
 		})
 	})
 
-	r.acceptors = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.acceptors = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return acceptorRunnerFunc(ctx, val.nodeID, val.term)
 		})
 	})
 
-	r.replicators = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.replicators = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return replicateRunnerFunc(ctx, val.nodeID, val.term)
 		})
 	})
 
-	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.stateMachine = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return stateMachineFunc(ctx, val.term, val.info)
 		})
 	})
 
-	r.fetchFollower = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.fetchFollower = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return fetchFollowerInfoFunc(ctx, val.nodeID, val.term)
 		})
 	})
 
-	r.startElection = key_runner.New(nodeTermInfo.getNodeID, func(ctx context.Context, val nodeTermInfo) {
-		loopWithSleep(ctx, func(ctx context.Context) error {
+	r.startElection = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
+		loopWithSleep(ctx, func(ctx async.Context) error {
 			return startElectionFunc(ctx, val.nodeID, val.term.Num)
 		})
 	})
@@ -114,10 +114,10 @@ func NewNodeRunner(
 	}
 }
 
-func sleepWithContext(ctx context.Context, duration time.Duration) {
+func sleepWithContext(ctx async.Context, duration time.Duration) {
 	select {
 	case <-time.After(duration):
-	case <-ctx.Done():
+	case <-ctx.ToContext().Done():
 	}
 }
 

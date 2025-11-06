@@ -1,20 +1,20 @@
 package paxos_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"testing/synctest"
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
 	"github.com/QuangTung97/libpaxos/testutil"
 )
 
 type acceptorLogicTest struct {
-	ctx         context.Context
+	ctx         async.Context
 	log         *fake.LogStorageFake
 	logic       AcceptorLogic
 	currentTerm TermNum
@@ -22,7 +22,7 @@ type acceptorLogicTest struct {
 
 func newAcceptorLogicTest(t *testing.T) *acceptorLogicTest {
 	s := &acceptorLogicTest{}
-	s.ctx = context.Background()
+	s.ctx = async.NewContext()
 	s.log = &fake.LogStorageFake{}
 
 	s.currentTerm = TermNum{

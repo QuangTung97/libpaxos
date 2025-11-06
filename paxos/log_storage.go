@@ -1,6 +1,8 @@
 package paxos
 
-import "context"
+import (
+	"github.com/QuangTung97/libpaxos/async"
+)
 
 // LeaderLogGetter must be a thread safe object
 type LeaderLogGetter interface {
@@ -15,7 +17,7 @@ type LeaderLogGetter interface {
 // StateMachineLogGetter is implemented by both CoreLogic & AcceptorLogic
 type StateMachineLogGetter interface {
 	GetCommittedEntriesWithWait(
-		ctx context.Context, term TermNum,
+		ctx async.Context, term TermNum,
 		fromPos LogPos, limit int,
 	) (GetCommittedEntriesOutput, error)
 }

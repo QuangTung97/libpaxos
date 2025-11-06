@@ -48,19 +48,15 @@ func (w *realKeyWaiter[T]) Run(
 	w.mut.Lock()
 	defer w.mut.Unlock()
 
-	var err error
 	for {
-		status := callback(ctx, err)
-		if err != nil {
-			return
-		}
-
+		status := callback(ctx, nil)
 		if status == WaitStatusSuccess {
 			return
 		}
 
-		if err = w.cond.Wait(ctx.ToContext(), key); err != nil {
-			continue
+		if err := w.cond.Wait(ctx.ToContext(), key); err != nil {
+			callback(ctx, err)
+			return
 		}
 	}
 }
@@ -103,8 +99,8 @@ func (w *simulateKeyWaiter[T]) Run(
 	actionCallback = func(inputCtx Context) {
 		ctx := inputCtx.(*simulateContext)
 
-		status := callback(ctx, ctx.err)
-		if ctx.err != nil {
+		status := callback(ctx, ctx.cancelErr)
+		if ctx.cancelErr != nil {
 			return
 		}
 		if status == WaitStatusSuccess {

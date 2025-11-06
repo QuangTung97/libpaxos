@@ -1,9 +1,9 @@
 package key_runner
 
 import (
-	"context"
 	"sync"
 
+	"github.com/QuangTung97/libpaxos/async"
 	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
 
@@ -12,7 +12,7 @@ import (
 // When the value of a key is changed => the runner that is associated with that key will also be restarted.
 func New[K comparable, V comparable](
 	getKey func(V) K,
-	handler func(ctx context.Context, val V),
+	handler func(ctx async.Context, val V),
 ) *KeyRunner[K, V] {
 	return &KeyRunner[K, V]{
 		getKey:  getKey,
@@ -27,7 +27,7 @@ func New[K comparable, V comparable](
 
 type KeyRunner[K comparable, V comparable] struct {
 	getKey  func(V) K
-	handler func(ctx context.Context, val V)
+	handler func(ctx async.Context, val V)
 
 	mut        sync.Mutex
 	activeKeys map[K]struct{}      // expected set
@@ -83,7 +83,7 @@ type runThread[V comparable] struct {
 
 type startEntry[V comparable] struct {
 	val V
-	ctx context.Context
+	ctx async.Context
 }
 
 func (r *KeyRunner[K, V]) upsertInternal(values []V) ([]startEntry[V], bool) {
@@ -141,10 +141,10 @@ func (r *KeyRunner[K, V]) upsertInternal(values []V) ([]startEntry[V], bool) {
 		}
 
 		// do insert new
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx := async.NewContext()
 		r.running[key] = &runThread[V]{
 			val:    val,
-			cancel: cancel,
+			cancel: ctx.Cancel,
 		}
 
 		startList = append(startList, startEntry[V]{
@@ -168,8 +168,8 @@ func (r *KeyRunner[K, V]) finishInternal(key K) (startEntry[V], bool) {
 
 	thread := r.running[key]
 
-	ctx, cancel := context.WithCancel(context.Background())
-	thread.cancel = cancel
+	ctx := async.NewContext()
+	thread.cancel = ctx.Cancel
 
 	return startEntry[V]{
 		val: thread.val,

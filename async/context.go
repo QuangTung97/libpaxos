@@ -7,6 +7,7 @@ type ThreadID int64
 type Context interface {
 	ToContext() context.Context
 	Cancel()
+	Err() error
 }
 
 // ================================================================
@@ -14,8 +15,11 @@ type Context interface {
 // ================================================================
 
 func NewContext() Context {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	return NewContextFrom(context.Background())
+}
+
+func NewContextFrom(inputCtx context.Context) Context {
+	ctx, cancel := context.WithCancel(inputCtx)
 	return &realContext{
 		ctx:      ctx,
 		cancelFn: cancel,
@@ -35,6 +39,10 @@ func (c *realContext) Cancel() {
 	c.cancelFn()
 }
 
+func (c *realContext) Err() error {
+	return c.ctx.Err()
+}
+
 // ================================================================
 // Simulate Context
 // ================================================================
@@ -42,7 +50,7 @@ func (c *realContext) Cancel() {
 type simulateContext struct {
 	tid           ThreadID
 	startCallback func(ctx Context)
-	err           error
+	cancelErr     error
 	broadcastSet  map[Broadcaster]struct{}
 }
 
@@ -56,7 +64,7 @@ func newSimulateContext(tid ThreadID) *simulateContext {
 var _ Context = &simulateContext{}
 
 func (c *simulateContext) Cancel() {
-	c.err = context.Canceled
+	c.cancelErr = context.Canceled
 	for fn := range c.broadcastSet {
 		fn.Broadcast()
 	}
@@ -65,4 +73,8 @@ func (c *simulateContext) Cancel() {
 
 func (c *simulateContext) ToContext() context.Context {
 	return nil
+}
+
+func (c *simulateContext) Err() error {
+	return c.cancelErr
 }

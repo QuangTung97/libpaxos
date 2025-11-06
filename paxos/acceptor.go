@@ -1,12 +1,11 @@
 package paxos
 
 import (
-	"context"
 	"fmt"
 	"iter"
 	"sync"
 
-	"github.com/QuangTung97/libpaxos/cond"
+	"github.com/QuangTung97/libpaxos/async"
 )
 
 type AcceptorLogic interface {
@@ -16,7 +15,7 @@ type AcceptorLogic interface {
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
 
 	GetNeedReplicatedPos(
-		ctx context.Context, term TermNum, from LogPos,
+		ctx async.Context, term TermNum, from LogPos,
 		lastFullyReplicated LogPos,
 	) (NeedReplicatedInput, error)
 
@@ -34,7 +33,8 @@ type acceptorLogicImpl struct {
 	mut           sync.Mutex
 	log           LogStorage
 	lastCommitted LogPos
-	waitCond      *cond.KeyCond[NodeID]
+
+	waiter async.KeyWaiter[NodeID]
 }
 
 func NewAcceptorLogic(
@@ -49,7 +49,7 @@ func NewAcceptorLogic(
 		log:           log,
 		lastCommitted: log.GetFullyReplicated(),
 	}
-	s.waitCond = cond.NewKeyCond[NodeID](&s.mut)
+	s.waiter = async.NewKeyWaiter[NodeID](&s.mut)
 	return s
 }
 
@@ -93,7 +93,7 @@ func (s *acceptorLogicImpl) updateTermNum(inputTerm TermNum) bool {
 	if cmpVal > 0 {
 		s.log.SetTerm(inputTerm)
 		s.lastCommitted = s.log.GetFullyReplicated()
-		s.waitCond.Broadcast()
+		s.waiter.Broadcast()
 	}
 	return true
 }
@@ -189,7 +189,7 @@ func (s *acceptorLogicImpl) AcceptEntries(
 	}
 
 	if newReplicatedPos > oldFullyReplicated {
-		s.waitCond.Broadcast()
+		s.waiter.Broadcast()
 	}
 
 	return AcceptEntriesOutput{
@@ -233,7 +233,7 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []Lo
 		}
 
 		s.lastCommitted += LogPos(getLimit)
-		s.waitCond.Broadcast()
+		s.waiter.Broadcast()
 
 		if overLimit {
 			s.log.UpsertEntries(nil, markCommitted)
@@ -246,16 +246,38 @@ func (s *acceptorLogicImpl) getNeedUpdateTermToInf(newLastCommitted LogPos) []Lo
 }
 
 func (s *acceptorLogicImpl) GetNeedReplicatedPos(
-	ctx context.Context,
+	ctx async.Context,
 	term TermNum, from LogPos,
 	lastFullyReplicated LogPos,
 ) (NeedReplicatedInput, error) {
-	s.mut.Lock()
-	defer s.mut.Unlock()
+	var output NeedReplicatedInput
+	var outputErr error
 
-StartLoop:
+	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) async.WaitStatus {
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		status, err := s.doGetNeedReplicatedPosCallback(term, from, lastFullyReplicated, &output)
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		return status
+	})
+
+	return output, outputErr
+}
+
+func (s *acceptorLogicImpl) doGetNeedReplicatedPosCallback(
+	term TermNum, from LogPos,
+	lastFullyReplicated LogPos,
+	output *NeedReplicatedInput,
+) (async.WaitStatus, error) {
 	if !s.updateTermNum(term) {
-		return NeedReplicatedInput{}, fmt.Errorf("input term is less than actual term")
+		return 0, fmt.Errorf("input term is less than actual term")
 	}
 
 	afterFullyReplicated := s.log.GetFullyReplicated() + 1
@@ -264,10 +286,7 @@ StartLoop:
 	}
 
 	if s.lastCommitted < from && lastFullyReplicated >= s.log.GetFullyReplicated() {
-		if err := s.waitCond.Wait(ctx, s.currentNode); err != nil {
-			return NeedReplicatedInput{}, err
-		}
-		goto StartLoop
+		return async.WaitStatusWaiting, nil
 	}
 
 	maxPos := s.lastCommitted
@@ -296,33 +315,54 @@ StartLoop:
 		}
 	}
 
-	return NeedReplicatedInput{
+	*output = NeedReplicatedInput{
 		Term:     s.log.GetTerm(),
 		FromNode: s.currentNode,
 		PosList:  posList,
 		NextPos:  maxPos + 1,
 
 		FullyReplicated: s.log.GetFullyReplicated(),
-	}, nil
+	}
+
+	return async.WaitStatusSuccess, nil
 }
 
 func (s *acceptorLogicImpl) GetCommittedEntriesWithWait(
-	ctx context.Context, term TermNum,
+	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 ) (GetCommittedEntriesOutput, error) {
-	s.mut.Lock()
-	defer s.mut.Unlock()
+	var output GetCommittedEntriesOutput
+	var outputErr error
 
-StartFunction:
+	s.waiter.Run(ctx, s.currentNode, func(ctx async.Context, err error) async.WaitStatus {
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		status, err := s.doGetCommittedEntriesWithWaitCallback(term, fromPos, limit, &output)
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		return status
+	})
+
+	return output, outputErr
+}
+
+func (s *acceptorLogicImpl) doGetCommittedEntriesWithWaitCallback(
+	term TermNum,
+	fromPos LogPos, limit int,
+	output *GetCommittedEntriesOutput,
+) (async.WaitStatus, error) {
 	if !s.updateTermNum(term) {
-		return GetCommittedEntriesOutput{}, fmt.Errorf("input term is less than actual term")
+		return 0, fmt.Errorf("input term is less than actual term")
 	}
 
 	if fromPos > s.log.GetFullyReplicated() {
-		if err := s.waitCond.Wait(ctx, s.currentNode); err != nil {
-			return GetCommittedEntriesOutput{}, err
-		}
-		goto StartFunction
+		return async.WaitStatusWaiting, nil
 	}
 
 	maxPos := fromPos + LogPos(limit-1)
@@ -332,10 +372,12 @@ StartFunction:
 	newLimit := maxPos - fromPos + 1
 
 	entries := s.log.GetEntries(fromPos, int(newLimit))
-	return GetCommittedEntriesOutput{
+	*output = GetCommittedEntriesOutput{
 		Entries: entries,
 		NextPos: maxPos + 1,
-	}, nil
+	}
+
+	return async.WaitStatusSuccess, nil
 }
 
 func (s *acceptorLogicImpl) CheckInvariant() {

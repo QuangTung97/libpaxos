@@ -1,7 +1,6 @@
 package paxos
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"math"
@@ -9,6 +8,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/QuangTung97/libpaxos/async"
 	"github.com/QuangTung97/libpaxos/cond"
 )
 
@@ -20,10 +20,10 @@ type CoreLogic interface {
 	StartElection(maxTermValue TermValue) (TermNum, error)
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
-	HandleVoteResponse(ctx context.Context, fromNode NodeID, output RequestVoteOutput) error
+	HandleVoteResponse(ctx async.Context, fromNode NodeID, output RequestVoteOutput) error
 
 	GetAcceptEntriesRequest(
-		ctx context.Context, term TermNum, toNode NodeID,
+		ctx async.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
 
@@ -31,11 +31,11 @@ type CoreLogic interface {
 
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
-	InsertCommand(ctx context.Context, term TermNum, cmdDataList ...[]byte) error
+	InsertCommand(ctx async.Context, term TermNum, cmdDataList ...[]byte) error
 
 	CheckTimeout()
 
-	ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error
+	ChangeMembership(ctx async.Context, term TermNum, newNodes []NodeID) error
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
@@ -87,6 +87,8 @@ func NewCoreLogic(
 		tickRandomJitter:    tickRandomJitter,
 	}
 
+	c.sendAcceptWaiter = async.NewKeyWaiter[NodeID](&c.mut)
+
 	c.updateFollowerCheckOtherStatus(false, false)
 	c.updateAllRunners()
 
@@ -99,6 +101,8 @@ type coreLogicImpl struct {
 
 	mut   sync.Mutex
 	state State
+
+	sendAcceptWaiter async.KeyWaiter[NodeID] // TODO clear when leader is clear
 
 	alwaysCheckInv bool
 
@@ -152,7 +156,7 @@ type leaderStateInfo struct {
 	memLog *MemLog
 
 	acceptorWakeUpAt map[NodeID]TimestampMilli
-	sendAcceptCond   *cond.KeyCond[NodeID]
+	// sendAcceptCond   *cond.KeyCond[NodeID] TODO remove
 
 	acceptorFullyReplicated map[NodeID]LogPos
 
@@ -228,7 +232,6 @@ func (c *coreLogicImpl) StartElection(maxTermValue TermValue) (TermNum, error) {
 		acceptorWakeUpAt: map[NodeID]TimestampMilli{
 			c.persistent.GetNodeID(): math.MaxInt64, // current node never wake up
 		},
-		sendAcceptCond: cond.NewKeyCond[NodeID](&c.mut),
 
 		acceptorFullyReplicated: map[NodeID]LogPos{
 			c.persistent.GetNodeID(): commitInfo.FullyReplicated,
@@ -337,7 +340,7 @@ func (c *coreLogicImpl) GetVoteRequest(term TermNum, toNode NodeID) (RequestVote
 }
 
 func (c *coreLogicImpl) HandleVoteResponse(
-	ctx context.Context, id NodeID, output RequestVoteOutput,
+	ctx async.Context, id NodeID, output RequestVoteOutput,
 ) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -393,7 +396,7 @@ const (
 )
 
 func (c *coreLogicImpl) handleVoteResponseEntry(
-	ctx context.Context, id NodeID, entry VoteLogEntry,
+	ctx async.Context, id NodeID, entry VoteLogEntry,
 ) (handleStatus, error) {
 	AssertTrue(entry.Entry.Pos > 0)
 
@@ -428,14 +431,15 @@ func (c *coreLogicImpl) handleVoteResponseEntry(
 }
 
 func (c *coreLogicImpl) waitForFreeSpace(
-	ctx context.Context, id NodeID, pos LogPos,
+	ctx async.Context, id NodeID, pos LogPos,
 	callback func(),
 ) (handleStatus, error) {
 	frontPos := c.leader.logBuffer.GetFrontPos()
 	maxBufferPos := frontPos + c.maxBufferLen - 1
 
 	if pos > maxBufferPos {
-		if err := c.leader.bufferMaxCond.Wait(ctx, id); err != nil {
+		// TODO update
+		if err := c.leader.bufferMaxCond.Wait(ctx.ToContext(), id); err != nil {
 			return handleStatusFailed, err
 		}
 		return handleStatusNeedReCheck, nil
@@ -599,19 +603,61 @@ func (c *coreLogicImpl) switchFromCandidateToLeader() error {
 }
 
 func (c *coreLogicImpl) GetAcceptEntriesRequest(
-	ctx context.Context, term TermNum, toNode NodeID,
+	ctx async.Context, term TermNum, toNode NodeID,
 	fromPos LogPos, lastCommittedSent LogPos,
 ) (AcceptEntriesInput, error) {
-	c.mut.Lock()
-	defer c.mut.Unlock()
+	var output AcceptEntriesInput
+	var outputErr error
 
-StartFunction:
+	c.GetAcceptEntriesRequestAsync(
+		ctx, term, toNode, fromPos, lastCommittedSent,
+		func(input AcceptEntriesInput, err error) {
+			output = input
+			outputErr = err
+		},
+	)
+
+	return output, outputErr
+}
+
+func (c *coreLogicImpl) GetAcceptEntriesRequestAsync(
+	ctx async.Context, term TermNum, toNode NodeID,
+	fromPos LogPos, lastCommittedSent LogPos,
+	callback func(input AcceptEntriesInput, err error),
+) {
+	c.sendAcceptWaiter.Run(ctx, toNode, func(ctx async.Context, err error) async.WaitStatus {
+		if err != nil {
+			callback(AcceptEntriesInput{}, err)
+			return async.WaitStatusSuccess
+		}
+
+		var output AcceptEntriesInput
+		status, err := c.doGetAcceptEntriesRequestCallback(term, toNode, fromPos, lastCommittedSent, &output)
+		if err != nil {
+			callback(AcceptEntriesInput{}, err)
+			return async.WaitStatusSuccess
+		}
+
+		if status != async.WaitStatusSuccess {
+			return status
+		}
+
+		callback(output, nil)
+		return async.WaitStatusSuccess
+	})
+}
+
+func (c *coreLogicImpl) doGetAcceptEntriesRequestCallback(
+	term TermNum, toNode NodeID,
+	fromPos LogPos, lastCommittedSent LogPos,
+	output *AcceptEntriesInput,
+) (async.WaitStatus, error) {
 	if err := c.isCandidateOrLeader(term); err != nil {
-		return AcceptEntriesInput{}, err
+		return 0, err
 	}
 
 	if err := c.validateInMemberList(toNode); err != nil {
-		return AcceptEntriesInput{}, err
+		return 0, err
 	}
 
 	maxLogPos := c.getMaxValidAcceptLogPos()
@@ -635,10 +681,7 @@ StartFunction:
 	}
 
 	if waitCond() {
-		if err := c.leader.sendAcceptCond.Wait(ctx, toNode); err != nil {
-			return AcceptEntriesInput{}, err
-		}
-		goto StartFunction
+		return async.WaitStatusWaiting, nil
 	}
 
 	var acceptEntries []LogEntry
@@ -651,13 +694,15 @@ StartFunction:
 	}
 
 	c.checkInvariantIfEnabled()
-	return AcceptEntriesInput{
+
+	*output = AcceptEntriesInput{
 		ToNode:    toNode,
 		Term:      c.getCurrentTerm(),
 		Entries:   acceptEntries,
 		NextPos:   maxLogPos + 1,
 		Committed: c.leader.lastCommitted,
-	}, nil
+	}
+	return async.WaitStatusSuccess, nil
 }
 
 func (c *coreLogicImpl) isCandidateOrLeader(term TermNum) error {
@@ -962,7 +1007,7 @@ func (c *coreLogicImpl) isValidLeader(term TermNum) error {
 }
 
 func (c *coreLogicImpl) InsertCommand(
-	ctx context.Context, term TermNum, cmdList ...[]byte,
+	ctx async.Context, term TermNum, cmdList ...[]byte,
 ) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -991,7 +1036,7 @@ StartFunction:
 }
 
 func (c *coreLogicImpl) handleInsertSingleCmd(
-	ctx context.Context, cmd []byte,
+	ctx async.Context, cmd []byte,
 ) (handleStatus, error) {
 	maxPos := c.leader.memLog.MaxLogPos()
 	pos := maxPos + 1
@@ -1035,7 +1080,7 @@ func (c *coreLogicImpl) CheckTimeout() {
 	for nodeID, wakeUpAt := range c.leader.acceptorWakeUpAt {
 		if c.isExpired(wakeUpAt) {
 			delete(c.leader.acceptorWakeUpAt, nodeID)
-			c.leader.sendAcceptCond.Signal(nodeID)
+			c.sendAcceptWaiter.Signal(nodeID)
 		}
 	}
 
@@ -1065,10 +1110,10 @@ func (c *coreLogicImpl) checkStateEqual(term TermNum, expectedState State) error
 }
 
 func (c *coreLogicImpl) broadcastAllAcceptors() {
-	c.leader.sendAcceptCond.Broadcast()
+	c.sendAcceptWaiter.Broadcast()
 }
 
-func (c *coreLogicImpl) ChangeMembership(ctx context.Context, term TermNum, newNodes []NodeID) error {
+func (c *coreLogicImpl) ChangeMembership(ctx async.Context, term TermNum, newNodes []NodeID) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -1315,7 +1360,7 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 }
 
 func (c *coreLogicImpl) GetCommittedEntriesWithWait(
-	ctx context.Context, term TermNum,
+	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 ) (GetCommittedEntriesOutput, error) {
 	var extra getCommittedEntriesExtra
@@ -1340,23 +1385,44 @@ type getCommittedEntriesExtra struct {
 }
 
 func (c *coreLogicImpl) getCommittedEntriesWithWaitFromMem(
-	ctx context.Context, term TermNum,
+	ctx async.Context, term TermNum,
 	fromPos LogPos, limit int,
 	extra *getCommittedEntriesExtra,
 ) (GetCommittedEntriesOutput, error) {
-	c.mut.Lock()
-	defer c.mut.Unlock()
+	var output GetCommittedEntriesOutput
+	var outputErr error
 
-StartFunction:
+	nodeID := c.persistent.GetNodeID()
+	c.sendAcceptWaiter.Run(ctx, nodeID, func(ctx async.Context, err error) async.WaitStatus {
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		status, err := c.doGetCommittedEntriesWithWaitFromMemCallback(term, fromPos, limit, extra, &output)
+		if err != nil {
+			outputErr = err
+			return async.WaitStatusSuccess
+		}
+
+		return status
+	})
+
+	return output, outputErr
+}
+
+func (c *coreLogicImpl) doGetCommittedEntriesWithWaitFromMemCallback(
+	term TermNum,
+	fromPos LogPos, limit int,
+	extra *getCommittedEntriesExtra,
+	output *GetCommittedEntriesOutput,
+) (async.WaitStatus, error) {
 	if err := c.isCandidateOrLeader(term); err != nil {
-		return GetCommittedEntriesOutput{}, err
+		return 0, err
 	}
 
 	if c.leader.lastCommitted < fromPos {
-		if err := c.leader.sendAcceptCond.Wait(ctx, c.persistent.GetNodeID()); err != nil {
-			return GetCommittedEntriesOutput{}, err
-		}
-		goto StartFunction
+		return async.WaitStatusWaiting, nil
 	}
 
 	maxPos := fromPos + LogPos(limit-1)
@@ -1379,10 +1445,12 @@ StartFunction:
 	extra.diskMinPos = fromPos
 	extra.diskMaxPos = memMinPos - 1
 
-	return GetCommittedEntriesOutput{
+	*output = GetCommittedEntriesOutput{
 		Entries: memEntries,
 		NextPos: maxPos + 1,
-	}, nil
+	}
+
+	return async.WaitStatusSuccess, nil
 }
 
 func (c *coreLogicImpl) computeNextWakeUp(numTicks int) TimestampMilli {
@@ -1545,6 +1613,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 		AssertTrue(c.state == StateFollower)
 		AssertTrue(c.follower.checkStatus >= followerCheckOtherStatusRunning)
 		AssertTrue(c.follower.checkStatus <= followerCheckOtherStatusStartingNewElection)
+		AssertTrue(c.sendAcceptWaiter.NumWaitKeys() == 0)
 
 		// check other status != running => fast switch leader = false
 		AssertImply(

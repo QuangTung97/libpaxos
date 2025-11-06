@@ -1,10 +1,10 @@
 package paxos_test
 
 import (
-	"context"
 	"fmt"
 	"iter"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/waiting"
 )
@@ -12,7 +12,7 @@ import (
 type SimulationConn interface {
 	CloseConn()
 	Print()
-	GetContext() context.Context
+	GetContext() async.Context
 }
 
 type simulateConn[Req, Resp any] struct {
@@ -21,8 +21,7 @@ type simulateConn[Req, Resp any] struct {
 	fromNode   NodeID
 	toNode     NodeID
 
-	ctx    context.Context
-	cancel func()
+	ctx async.Context
 
 	sendChan chan Req
 	recvChan chan Resp
@@ -30,11 +29,11 @@ type simulateConn[Req, Resp any] struct {
 }
 
 func newSimulateConn[Req, Resp any](
-	ctx context.Context,
+	ctx async.Context,
 	handlerState *simulationHandlers,
 	toNode NodeID,
 	actionType simulateActionType,
-	requestHandler func(ctx context.Context, req Req) (iter.Seq[Resp], error),
+	requestHandler func(ctx async.Context, req Req) (iter.Seq[Resp], error),
 	responseHandler func(resp Resp) error,
 ) *simulateConn[Req, Resp] {
 	c := &simulateConn[Req, Resp]{
@@ -49,9 +48,8 @@ func newSimulateConn[Req, Resp any](
 		wg: waiting.NewWaitGroup(),
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx = async.NewContextFrom(ctx.ToContext())
 	c.ctx = ctx
-	c.cancel = cancel
 
 	key := c.computeActionKey()
 	c.root.mut.Lock()
@@ -59,7 +57,7 @@ func newSimulateConn[Req, Resp any](
 	c.root.mut.Unlock()
 
 	c.wg.Go(func() {
-		defer cancel()
+		defer ctx.Cancel()
 		for {
 			select {
 			case req := <-c.sendChan:
@@ -67,14 +65,14 @@ func newSimulateConn[Req, Resp any](
 				if err != nil {
 					return
 				}
-			case <-ctx.Done():
+			case <-ctx.ToContext().Done():
 				return
 			}
 		}
 	})
 
 	c.wg.Go(func() {
-		defer cancel()
+		defer ctx.Cancel()
 		for {
 			select {
 			case resp := <-c.recvChan:
@@ -82,7 +80,7 @@ func newSimulateConn[Req, Resp any](
 				if err != nil {
 					return
 				}
-			case <-ctx.Done():
+			case <-ctx.ToContext().Done():
 				return
 			}
 		}
@@ -92,9 +90,9 @@ func newSimulateConn[Req, Resp any](
 }
 
 func (c *simulateConn[Req, Resp]) doHandleRequest(
-	ctx context.Context,
+	ctx async.Context,
 	handlerState *simulationHandlers,
-	requestHandler func(ctx context.Context, req Req) (iter.Seq[Resp], error),
+	requestHandler func(ctx async.Context, req Req) (iter.Seq[Resp], error),
 	req Req,
 ) error {
 	if err := c.root.waitOnKey(ctx, c.actionType, phaseHandleRequest, handlerState.current, c.toNode); err != nil {
@@ -109,7 +107,7 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 	for resp := range respIter {
 		select {
 		case c.recvChan <- resp:
-		case <-ctx.Done():
+		case <-ctx.ToContext().Done():
 			return ctx.Err()
 		}
 	}
@@ -118,7 +116,7 @@ func (c *simulateConn[Req, Resp]) doHandleRequest(
 }
 
 func (c *simulateConn[Req, Resp]) doHandleResponse(
-	ctx context.Context,
+	ctx async.Context,
 	resp Resp,
 	handlerState *simulationHandlers,
 	responseHandler func(resp Resp) error,
@@ -129,7 +127,7 @@ func (c *simulateConn[Req, Resp]) doHandleResponse(
 	return responseHandler(resp)
 }
 
-func (c *simulateConn[Req, Resp]) WaitBeforeSend(ctx context.Context) error {
+func (c *simulateConn[Req, Resp]) WaitBeforeSend(ctx async.Context) error {
 	return c.root.waitOnKey(ctx, c.actionType, phaseBeforeRequest, c.fromNode, c.toNode)
 }
 
@@ -147,7 +145,7 @@ func (c *simulateConn[Req, Resp]) Shutdown() {
 }
 
 func (c *simulateConn[Req, Resp]) CloseConn() {
-	c.cancel()
+	c.ctx.Cancel()
 }
 
 func (c *simulateConn[Req, Resp]) Print() {
@@ -167,6 +165,6 @@ func (c *simulateConn[Req, Resp]) computeActionKey() simulateActionKey {
 	}
 }
 
-func (c *simulateConn[Req, Resp]) GetContext() context.Context {
+func (c *simulateConn[Req, Resp]) GetContext() async.Context {
 	return c.ctx
 }

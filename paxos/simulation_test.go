@@ -2,7 +2,6 @@ package paxos_test
 
 import (
 	"cmp"
-	"context"
 	"fmt"
 	"iter"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 	"github.com/QuangTung97/libpaxos/paxos/fake"
 	"github.com/QuangTung97/libpaxos/paxos/waiting"
@@ -261,7 +261,7 @@ func (s *simulationTestCase) newRunnerForNode(state *simulateNodeState, id NodeI
 	)
 }
 func (s *simulationTestCase) waitOnKey(
-	ctx context.Context, actionType simulateActionType,
+	ctx async.Context, actionType simulateActionType,
 	phase phaseType, fromNode NodeID, toNode NodeID,
 ) error {
 	key := simulateActionKey{
@@ -281,7 +281,7 @@ func (s *simulationTestCase) waitOnKey(
 	case <-waitCh:
 		return nil
 
-	case <-ctx.Done():
+	case <-ctx.ToContext().Done():
 		s.mut.Lock()
 		delete(s.waitMap, key)
 		s.mut.Unlock()
@@ -290,10 +290,10 @@ func (s *simulationTestCase) waitOnKey(
 }
 
 func (s *simulationTestCase) waitOnShutdown(
-	ctx context.Context,
+	ctx async.Context,
 	actionType simulateActionType,
 	fromNode NodeID, toNode NodeID,
-	fn func(ctx context.Context) error,
+	fn func(ctx async.Context) error,
 ) error {
 	for ctx.Err() == nil {
 		s.internalWaitOnShutdown(ctx, actionType, fromNode, toNode, fn)
@@ -302,17 +302,17 @@ func (s *simulationTestCase) waitOnShutdown(
 }
 
 func (s *simulationTestCase) internalWaitOnShutdown(
-	ctx context.Context,
+	ctx async.Context,
 	actionType simulateActionType,
 	fromNode NodeID, toNode NodeID,
-	fn func(ctx context.Context) error,
+	fn func(ctx async.Context) error,
 ) {
-	newCtx, cancel := context.WithCancel(context.Background())
+	newCtx := async.NewContext()
 
 	wg := waiting.NewWaitGroup()
 	wg.Go(func() {
-		defer cancel()
-		<-ctx.Done()
+		defer newCtx.Cancel()
+		<-ctx.ToContext().Done()
 
 		key := simulateActionKey{
 			actionType: actionType,
@@ -343,10 +343,10 @@ type simulationHandlers struct {
 }
 
 func (h *simulationHandlers) stateMachineHandler(
-	ctx context.Context, term TermNum, info StateMachineRunnerInfo,
+	ctx async.Context, term TermNum, info StateMachineRunnerInfo,
 ) error {
-	callback := func(ctx context.Context) error {
-		ctx, cancel := context.WithCancel(ctx)
+	callback := func(inputCtx async.Context) error {
+		ctx := async.NewContextFrom(inputCtx.ToContext())
 
 		var getter StateMachineLogGetter = h.state.acceptor
 		if info.IsLeader {
@@ -355,19 +355,19 @@ func (h *simulationHandlers) stateMachineHandler(
 
 		wg := waiting.NewWaitGroup()
 		wg.Go(func() {
-			defer cancel()
+			defer ctx.Cancel()
 
 			h.stateMachineConsumeEntries(ctx, term, getter)
 		})
 
 		if info.AcceptCommand {
 			wg.Go(func() {
-				defer cancel()
+				defer ctx.Cancel()
 
 				for {
 					var newCmd string
 					select {
-					case <-ctx.Done():
+					case <-ctx.ToContext().Done():
 						return
 					case newCmd = <-h.state.cmdChan:
 						if err := h.state.core.InsertCommand(ctx, term, []byte(newCmd)); err != nil {
@@ -389,7 +389,7 @@ func (h *simulationHandlers) stateMachineHandler(
 }
 
 func (h *simulationHandlers) stateMachineConsumeEntries(
-	ctx context.Context, term TermNum, getter StateMachineLogGetter,
+	ctx async.Context, term TermNum, getter StateMachineLogGetter,
 ) {
 	h.state.mut.Lock()
 	fromPos := h.state.stateLastPos + 1
@@ -416,12 +416,12 @@ func iterSingle[T any](value T) iter.Seq[T] {
 	}
 }
 
-func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	callback := func(ctx context.Context) error {
+func (h *simulationHandlers) fetchFollowerHandler(ctx async.Context, toNode NodeID, term TermNum) error {
+	callback := func(ctx async.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionFetchFollower,
-			func(_ context.Context, req struct{}) (iter.Seq[ChooseLeaderInfo], error) {
+			func(_ async.Context, req struct{}) (iter.Seq[ChooseLeaderInfo], error) {
 				info := h.root.nodeMap[toNode].core.GetChoosingLeaderInfo()
 				return iterSingle(info), nil
 			},
@@ -438,12 +438,12 @@ func (h *simulationHandlers) fetchFollowerHandler(ctx context.Context, toNode No
 	return h.root.waitOnShutdown(ctx, simulateActionFetchFollower, h.current, toNode, callback)
 }
 
-func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode NodeID, termVal TermValue) error {
-	return h.root.waitOnShutdown(ctx, simulateActionStartElection, h.current, toNode, func(ctx context.Context) error {
+func (h *simulationHandlers) startElectionHandler(ctx async.Context, toNode NodeID, termVal TermValue) error {
+	return h.root.waitOnShutdown(ctx, simulateActionStartElection, h.current, toNode, func(ctx async.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionStartElection,
-			func(_ context.Context, req struct{}) (iter.Seq[TermNum], error) {
+			func(_ async.Context, req struct{}) (iter.Seq[TermNum], error) {
 				// ignore error
 				newTerm, _ := h.root.nodeMap[toNode].core.StartElection(termVal)
 				return iterSingle(newTerm), nil
@@ -460,12 +460,12 @@ func (h *simulationHandlers) startElectionHandler(ctx context.Context, toNode No
 	})
 }
 
-func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	return h.root.waitOnShutdown(ctx, simulateActionVoteRequest, h.current, toNode, func(ctx context.Context) error {
+func (h *simulationHandlers) voteRequestHandler(ctx async.Context, toNode NodeID, term TermNum) error {
+	return h.root.waitOnShutdown(ctx, simulateActionVoteRequest, h.current, toNode, func(ctx async.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionVoteRequest,
-			func(_ context.Context, req RequestVoteInput) (iter.Seq[RequestVoteOutput], error) {
+			func(_ async.Context, req RequestVoteInput) (iter.Seq[RequestVoteOutput], error) {
 				toState := h.root.nodeMap[toNode]
 				toState.core.FollowerReceiveTermNum(req.Term)
 				return toState.acceptor.HandleRequestVote(req)
@@ -490,12 +490,12 @@ func (h *simulationHandlers) voteRequestHandler(ctx context.Context, toNode Node
 	})
 }
 
-func (h *simulationHandlers) acceptRequestHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	return h.root.waitOnShutdown(ctx, simulateActionAcceptRequest, h.current, toNode, func(ctx context.Context) error {
+func (h *simulationHandlers) acceptRequestHandler(ctx async.Context, toNode NodeID, term TermNum) error {
+	return h.root.waitOnShutdown(ctx, simulateActionAcceptRequest, h.current, toNode, func(ctx async.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionAcceptRequest,
-			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ async.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
@@ -542,12 +542,12 @@ func (h *simulationHandlers) handleAcceptEntriesRequest(
 	return iterSingle(output), nil
 }
 
-func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode NodeID, term TermNum) error {
-	callback := func(ctx context.Context) error {
+func (h *simulationHandlers) fullyReplicateHandler(ctx async.Context, toNode NodeID, term TermNum) error {
+	callback := func(ctx async.Context) error {
 		acceptConn := newSimulateConn(
 			ctx, h, toNode,
 			simulateActionReplicateAcceptRequest,
-			func(_ context.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
+			func(_ async.Context, req AcceptEntriesInput) (iter.Seq[AcceptEntriesOutput], error) {
 				return h.handleAcceptEntriesRequest(req, toNode)
 			},
 			func(resp AcceptEntriesOutput) error {
@@ -556,7 +556,7 @@ func (h *simulationHandlers) fullyReplicateHandler(ctx context.Context, toNode N
 			},
 		)
 
-		handleReqFunc := func(ctx context.Context, reqTerm TermNum) (iter.Seq[NeedReplicatedInput], error) {
+		handleReqFunc := func(ctx async.Context, reqTerm TermNum) (iter.Seq[NeedReplicatedInput], error) {
 			toState := h.root.nodeMap[toNode]
 			toState.core.FollowerReceiveTermNum(reqTerm)
 
@@ -1095,7 +1095,7 @@ func TestPaxos__Single_Node__Change_To_3_Nodes(t *testing.T) {
 		// change membership
 		leader := s.nodeMap[nodeID1]
 		err := leader.core.ChangeMembership(
-			context.Background(),
+			async.NewContext(),
 			leader.persistent.GetLastTerm(),
 			[]NodeID{nodeID1, nodeID2, nodeID3},
 		)

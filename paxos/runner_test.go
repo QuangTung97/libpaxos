@@ -1,7 +1,6 @@
 package paxos_test
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/QuangTung97/libpaxos/async"
 	. "github.com/QuangTung97/libpaxos/paxos"
 )
 
@@ -26,12 +26,12 @@ func TestNodeRunner__Voter_Runners(t *testing.T) {
 
 		r, finish := NewNodeRunner(
 			NodeID{},
-			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum) error {
 				mut.Lock()
 				runningSet[nodeID] = term
 				mut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(runningSet, nodeID)
@@ -77,7 +77,7 @@ func TestNodeRunner__Voter_Runners__With_Error(t *testing.T) {
 		var calls atomic.Int64
 		r, finish := NewNodeRunner(
 			NodeID{},
-			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum) error {
 				calls.Add(1)
 				return errors.New("test error")
 			},
@@ -119,12 +119,12 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 		r, finish := NewNodeRunner(
 			NodeID{},
 			nil,
-			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum) error {
 				mut.Lock()
 				runningSet[nodeID] = term
 				mut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(runningSet, nodeID)
@@ -132,12 +132,12 @@ func TestNodeRunner__Acceptor_Runners(t *testing.T) {
 
 				return nil
 			},
-			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum) error {
 				mut.Lock()
 				replicateSet[nodeID] = term
 				mut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(replicateSet, nodeID)
@@ -196,14 +196,14 @@ func TestNodeRunner__State_Machine(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, term TermNum, info StateMachineRunnerInfo) error {
+			func(ctx async.Context, term TermNum, info StateMachineRunnerInfo) error {
 				numActive.Add(1)
 				mut.Lock()
 				inputTerm = term
 				inputInfo = info
 				mut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				numActive.Add(-1)
 				return nil
@@ -258,12 +258,12 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum) error {
 				mut.Lock()
 				runningSet[nodeID] = term
 				mut.Unlock()
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(runningSet, nodeID)
@@ -308,14 +308,14 @@ func TestNodeRunner__Start_Election_Runner(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, nodeID NodeID, termVal TermValue) error {
+			func(ctx async.Context, nodeID NodeID, termVal TermValue) error {
 				mut.Lock()
 				runningSet[nodeID] = termVal
 				mut.Unlock()
 
 				runCount.Add(1)
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(runningSet, nodeID)
@@ -361,14 +361,14 @@ func TestNodeRunner__Start_Election_Runner__Start_Then_Stop(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx context.Context, nodeID NodeID, termVal TermValue) error {
+			func(ctx async.Context, nodeID NodeID, termVal TermValue) error {
 				mut.Lock()
 				runningSet[nodeID] = termVal
 				mut.Unlock()
 
 				runCount.Add(1)
 
-				<-ctx.Done()
+				<-ctx.ToContext().Done()
 
 				mut.Lock()
 				delete(runningSet, nodeID)
