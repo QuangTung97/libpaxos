@@ -1388,11 +1388,14 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 	}
 
 	if c.follower.checkStatus != followerCheckOtherStatusRunning {
-		return fmt.Errorf("check status is not running, got: %d", c.follower.checkStatus)
+		return fmt.Errorf("check status is not running, current: %d", c.follower.checkStatus)
 	}
 
 	if c.followerGeneration != generation {
-		return fmt.Errorf("mismatch generation number, input: %d, got: %d", generation, c.followerGeneration)
+		return fmt.Errorf(
+			"mismatch generation number, input: %d, current: %d",
+			generation, c.followerGeneration,
+		)
 	}
 
 	c.follower.lastTermVal = max(c.follower.lastTermVal, info.LastTermVal)

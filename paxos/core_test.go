@@ -2572,7 +2572,7 @@ func TestCoreLogic__Handle_Leader_Info__Invalid_Check_Status(t *testing.T) {
 
 	// error
 	err := c.core.HandleChoosingLeaderInfo(nodeID3, c.persistent.GetLastTerm(), 1, info)
-	assert.Equal(t, errors.New("check status is not running, got: 3"), err)
+	assert.Equal(t, errors.New("check status is not running, current: 3"), err)
 }
 
 func TestCoreLogic__Handle_Leader_Info__With_New_Members(t *testing.T) {
@@ -2625,7 +2625,7 @@ func TestCoreLogic__Handle_Leader_Info__Invalid_Generation(t *testing.T) {
 	term := c.persistent.GetLastTerm()
 
 	err := c.core.HandleChoosingLeaderInfo(nodeID1, term, 2, info)
-	assert.Equal(t, errors.New("mismatch generation number, input: 2, got: 1"), err)
+	assert.Equal(t, errors.New("mismatch generation number, input: 2, current: 1"), err)
 }
 
 func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
