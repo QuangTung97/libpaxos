@@ -46,7 +46,9 @@ type CoreLogic interface {
 
 	GetChoosingLeaderInfo() ChooseLeaderInfo
 
-	HandleChoosingLeaderInfo(fromNode NodeID, term TermNum, info ChooseLeaderInfo) error
+	HandleChoosingLeaderInfo(
+		fromNode NodeID, term TermNum, generation FollowerGeneration, info ChooseLeaderInfo,
+	) error
 
 	// -------------------------------------------------------
 	// Testing Utility Functions
@@ -117,6 +119,8 @@ type coreLogicImpl struct {
 
 	alwaysCheckInv bool
 
+	followerGeneration FollowerGeneration
+
 	follower  *followerStateInfo
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
@@ -130,8 +134,8 @@ type coreLogicImpl struct {
 }
 
 type followerStateInfo struct {
-	wakeUpAt         TimestampMilli
 	checkStatus      followerCheckOtherStatus
+	wakeUpAt         TimestampMilli
 	fastSwitchLeader bool
 
 	members     []MemberInfo
@@ -145,7 +149,7 @@ type followerStateInfo struct {
 type followerCheckOtherStatus int
 
 const (
-	followerCheckOtherStatusRunning followerCheckOtherStatus = iota
+	followerCheckOtherStatusRunning followerCheckOtherStatus = iota + 1
 	followerCheckOtherStatusLeaderIsActive
 	followerCheckOtherStatusStartingNewElection
 )
@@ -794,6 +798,7 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
 
 	c.follower.checkStatus = followerCheckOtherStatusRunning
 	c.follower.fastSwitchLeader = fastSwitchLeader
+	c.followerGeneration++
 
 	commitInfo := c.log.GetCommittedInfo()
 	c.follower.members = commitInfo.Members
@@ -864,7 +869,7 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 	}
 
 	if c.state != StateFollower {
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, 0, nil))
 		wrap(c.runner.StartElectionRunner(ElectionRunnerInfo{Term: term}))
 		return
 	}
@@ -877,9 +882,9 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 				delete(allMembers, id)
 			}
 		}
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, allMembers))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, c.followerGeneration, allMembers))
 	} else {
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, 0, nil))
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
@@ -909,6 +914,7 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 
 		electionInfo := ElectionRunnerInfo{
 			Term:         term,
+			Generation:   c.followerGeneration,
 			Started:      true,
 			MaxTermValue: c.follower.lastTermVal,
 			Chosen:       lastNode,
@@ -1372,7 +1378,7 @@ func (c *coreLogicImpl) GetChoosingLeaderInfo() ChooseLeaderInfo {
 }
 
 func (c *coreLogicImpl) HandleChoosingLeaderInfo(
-	fromNode NodeID, term TermNum, info ChooseLeaderInfo,
+	fromNode NodeID, term TermNum, generation FollowerGeneration, info ChooseLeaderInfo,
 ) error {
 	c.mut.Lock()
 	defer c.mut.Unlock()
@@ -1383,6 +1389,10 @@ func (c *coreLogicImpl) HandleChoosingLeaderInfo(
 
 	if c.follower.checkStatus != followerCheckOtherStatusRunning {
 		return fmt.Errorf("check status is not running, got: %d", c.follower.checkStatus)
+	}
+
+	if c.followerGeneration != generation {
+		return fmt.Errorf("mismatch generation number, input: %d, got: %d", generation, c.followerGeneration)
 	}
 
 	c.follower.lastTermVal = max(c.follower.lastTermVal, info.LastTermVal)

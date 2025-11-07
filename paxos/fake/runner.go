@@ -18,6 +18,7 @@ type NodeRunnerFake struct {
 
 	FetchFollowerTerm paxos.TermNum
 	FetchFollowers    []paxos.NodeID
+	FetchFollowerGen  paxos.FollowerGeneration
 
 	ElectionInfo paxos.ElectionRunnerInfo
 }
@@ -80,7 +81,7 @@ func (r *NodeRunnerFake) StartStateMachine(term paxos.TermNum, info paxos.StateM
 }
 
 func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
-	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+	term paxos.TermNum, generation paxos.FollowerGeneration, nodes map[paxos.NodeID]struct{},
 ) bool {
 	var updated bool
 
@@ -93,10 +94,14 @@ func (r *NodeRunnerFake) StartFetchingFollowerInfoRunners(
 		if r.FetchFollowerTerm != term {
 			updated = true
 		}
+		if r.FetchFollowerGen != generation {
+			updated = true
+		}
 	}
 
 	r.FetchFollowerTerm = term
 	r.FetchFollowers = newNodes
+	r.FetchFollowerGen = generation
 
 	return updated
 }

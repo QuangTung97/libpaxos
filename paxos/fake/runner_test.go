@@ -117,25 +117,32 @@ func TestNodeRunnerFake_StartFetchingFollowerInfoRunners(t *testing.T) {
 		nodeID3: {},
 	}
 
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, nodes))
+	// start
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, 2, nodes))
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(2), runner.FetchFollowerGen)
 	assert.Equal(t, term, runner.FetchFollowerTerm)
 
 	// new term
 	newTerm := term
 	newTerm.Num++
-
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, nodes))
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, 2, nodes))
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, runner.FetchFollowers)
 	assert.Equal(t, newTerm, runner.FetchFollowerTerm)
 
-	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, nodes))
+	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, 2, nodes))
+
+	// start with new generation
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, 3, nodes))
+	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(3), runner.FetchFollowerGen)
+	assert.Equal(t, term, runner.FetchFollowerTerm)
 
 	// stop
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, nil))
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, 0, nil))
 	assert.Equal(t, []NodeID{}, runner.FetchFollowers)
 	assert.Equal(t, newTerm, runner.FetchFollowerTerm)
-	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, nil))
+	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, 0, nil))
 }
 
 func TestNodeRunnerFake_StartElectionRunner(t *testing.T) {

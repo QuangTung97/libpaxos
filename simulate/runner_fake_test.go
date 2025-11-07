@@ -66,10 +66,10 @@ func (r *runnerFakeTest) acceptorFunc(ctx async.Context, nodeID paxos.NodeID, te
 }
 
 func (r *runnerFakeTest) fetchFollowerFunc(
-	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum,
+	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, gen paxos.FollowerGeneration,
 ) {
 	r.ctxList = append(r.ctxList, ctx)
-	r.actions.add("start-fetch-follower:%s,%d", nodeID.String()[:4], term.Num)
+	r.actions.add("start-fetch-follower:%s,term=%d,gen=%d", nodeID.String()[:4], term.Num, gen)
 	r.rt.AddNext(ctx, func(ctx async.Context) {
 		r.actions.add("fetch-follower-action01:%s,%d", nodeID.String()[:4], term.Num)
 	})
@@ -190,19 +190,19 @@ func TestRunnerFake_VoteRequestRunners(t *testing.T) {
 func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	r := newRunnerFakeTest()
 
-	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
+	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, 2, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []string{}, r.actions.getList())
 
 	r.rt.RunNext()
 	r.rt.RunNext()
 	assert.Equal(t, []string{
-		"start-fetch-follower:6401,20",
-		"start-fetch-follower:6402,20",
+		"start-fetch-follower:6401,term=20,gen=2",
+		"start-fetch-follower:6402,term=20,gen=2",
 	}, r.actions.getList())
 
 	// run again with same set of values
-	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
+	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, 2, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, false, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -211,7 +211,7 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	}, r.actions.getList())
 
 	// run again with empty nodes
-	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet())
+	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, 0, newNodeSet())
 	assert.Equal(t, true, ok)
 
 	assert.Equal(t, 2, len(r.ctxList))
@@ -219,29 +219,40 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	assert.Equal(t, context.Canceled, r.ctxList[1].Err())
 }
 
-func TestRunnerFake_FetchingFollowerInfoRunners__Increase_Retry(t *testing.T) {
+func TestRunnerFake_FetchingFollowerInfoRunners__Rerun_With_New_Params(t *testing.T) {
 	r := newRunnerFakeTest()
 
-	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
+	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, 2, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []string{}, r.actions.getList())
 
 	r.rt.RunNext()
 	r.rt.RunNext()
 	assert.Equal(t, []string{
-		"start-fetch-follower:6401,20",
-		"start-fetch-follower:6402,20",
+		"start-fetch-follower:6401,term=20,gen=2",
+		"start-fetch-follower:6402,term=20,gen=2",
 	}, r.actions.getList())
 
 	// run again with new term
-	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, newNodeSet(nodeID1, nodeID2))
+	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, 2, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
 		"fetch-follower-action01:6401,20",
 		"fetch-follower-action01:6402,20",
-		"start-fetch-follower:6401,21",
-		"start-fetch-follower:6402,21",
+		"start-fetch-follower:6401,term=21,gen=2",
+		"start-fetch-follower:6402,term=21,gen=2",
+		"fetch-follower-action01:6401,21",
+		"fetch-follower-action01:6402,21",
+	}, r.actions.getList())
+
+	// run again with new generation
+	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, 3, newNodeSet(nodeID1, nodeID2))
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-fetch-follower:6401,term=21,gen=3",
+		"start-fetch-follower:6402,term=21,gen=3",
 		"fetch-follower-action01:6401,21",
 		"fetch-follower-action01:6402,21",
 	}, r.actions.getList())

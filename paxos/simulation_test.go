@@ -417,7 +417,9 @@ func iterSingle[T any](value T) iter.Seq[T] {
 	}
 }
 
-func (h *simulationHandlers) fetchFollowerHandler(ctx async.Context, toNode NodeID, term TermNum) error {
+func (h *simulationHandlers) fetchFollowerHandler(
+	ctx async.Context, toNode NodeID, term TermNum, generation FollowerGeneration,
+) error {
 	callback := func(ctx async.Context) error {
 		conn := newSimulateConn(
 			ctx, h, toNode,
@@ -427,7 +429,7 @@ func (h *simulationHandlers) fetchFollowerHandler(ctx async.Context, toNode Node
 				return iterSingle(info), nil
 			},
 			func(info ChooseLeaderInfo) error {
-				return h.state.core.HandleChoosingLeaderInfo(toNode, term, info)
+				return h.state.core.HandleChoosingLeaderInfo(toNode, term, generation, info)
 			},
 		)
 		defer conn.Shutdown()
@@ -1331,7 +1333,7 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 func (s *simulationTestCase) stopRemainingRunners() {
 	for _, state := range s.nodeMap {
 		state.runner.StartVoteRequestRunners(TermNum{}, nil)
-		state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil)
+		state.runner.StartFetchingFollowerInfoRunners(TermNum{}, 0, nil)
 		state.runner.StartElectionRunner(ElectionRunnerInfo{})
 	}
 }

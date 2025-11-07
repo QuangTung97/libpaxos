@@ -12,9 +12,12 @@ type RunnerFake struct {
 
 	voteRunnerFunc          func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	acceptorRunnerFunc      func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
-	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
-	stateMachineFunc        func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo)
-	startElectionFunc       func(ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue)
+	fetchFollowerRunnerFunc func(
+		ctx async.Context, nodeID paxos.NodeID,
+		term paxos.TermNum, generation paxos.FollowerGeneration,
+	)
+	stateMachineFunc  func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo)
+	startElectionFunc func(ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue)
 
 	voteMap          map[paxos.NodeID]basicRunnerInfo
 	acceptorMap      map[paxos.NodeID]basicRunnerInfo
@@ -29,8 +32,9 @@ type RunnerFake struct {
 }
 
 type basicRunnerInfo struct {
-	ctx  async.Context
-	term paxos.TermNum
+	ctx        async.Context
+	term       paxos.TermNum
+	generation paxos.FollowerGeneration
 }
 
 var _ paxos.NodeRunner = &RunnerFake{}
@@ -39,7 +43,10 @@ func NewRunnerFake(
 	rt *async.SimulateRuntime,
 	voteRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	acceptorRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
-	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
+	fetchFollowerRunnerFunc func(
+		ctx async.Context, nodeID paxos.NodeID,
+		term paxos.TermNum, generation paxos.FollowerGeneration,
+	),
 	stateMachineFunc func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo),
 	startElectionFunc func(ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue),
 ) *RunnerFake {
@@ -157,7 +164,7 @@ func (r *RunnerFake) StartStateMachine(
 }
 
 func (r *RunnerFake) StartFetchingFollowerInfoRunners(
-	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
+	term paxos.TermNum, generation paxos.FollowerGeneration, nodes map[paxos.NodeID]struct{},
 ) bool {
 	var changed bool
 
@@ -174,17 +181,18 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 
 	for _, id := range nodesToSlice(nodes) {
 		oldState, ok := r.fetchFollowerMap[id]
-		if ok && oldState.term == term {
+		if ok && oldState.term == term && oldState.generation == generation {
 			continue
 		}
 
 		ctx := r.rt.NewThread(func(ctx async.Context) {
-			r.fetchFollowerRunnerFunc(ctx, id, term)
+			r.fetchFollowerRunnerFunc(ctx, id, term, generation)
 		})
 
 		r.fetchFollowerMap[id] = basicRunnerInfo{
-			ctx:  ctx,
-			term: term,
+			ctx:        ctx,
+			term:       term,
+			generation: generation,
 		}
 		changed = true
 	}

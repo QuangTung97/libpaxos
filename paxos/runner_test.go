@@ -258,7 +258,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			func(ctx async.Context, nodeID NodeID, term TermNum) error {
+			func(ctx async.Context, nodeID NodeID, term TermNum, generation FollowerGeneration) error {
 				mut.Lock()
 				runningSet[nodeID] = term
 				mut.Unlock()
@@ -279,7 +279,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 			nodeID2: {},
 			nodeID3: {},
 		}
-		r.StartFetchingFollowerInfoRunners(currentTerm, nodes)
+		r.StartFetchingFollowerInfoRunners(currentTerm, 3, nodes)
 
 		synctest.Wait()
 

@@ -249,6 +249,8 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	}, c.runner.StateMachineInfo)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(1), c.runner.FetchFollowerGen)
+
 	assert.Equal(t, ChooseLeaderInfo{
 		NoActiveLeader:  true,
 		Members:         c.log.GetCommittedInfo().Members,
@@ -276,6 +278,7 @@ func TestCoreLogic_StartElection__Then_GetRequestVote(t *testing.T) {
 	}, c.runner.StateMachineInfo)
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(0), c.runner.FetchFollowerGen)
 
 	// get vote request
 	voteReq, err := c.core.GetVoteRequest(c.currentTerm, nodeID2)
@@ -1473,6 +1476,7 @@ func TestCoreLogic__Candidate__Recv_Higher_Accept_Req_Term(t *testing.T) {
 
 		assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 		assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+		assert.Equal(t, FollowerGeneration(0), c.runner.FetchFollowerGen)
 	})
 }
 
@@ -1489,6 +1493,7 @@ func TestCoreLogic__Follower__Recv_Higher_Accept_Req_Term(t *testing.T) {
 	// check follower runner
 	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(0), c.runner.FetchFollowerGen)
 	assert.Equal(t, false, c.core.GetChoosingLeaderInfo().NoActiveLeader)
 }
 
@@ -1776,6 +1781,7 @@ func TestCoreLogic__Candidate__Change_Membership__Current_Leader_Not_In_MemberLi
 
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(2), c.runner.FetchFollowerGen)
 
 	// try to insert command
 	err = c.core.InsertCommand(c.ctx, c.currentTerm, []byte("data test 01"))
@@ -2294,8 +2300,8 @@ func TestCoreLogic__Leader__Insert_Cmd__Waiting__Context_Cancel(t *testing.T) {
 	assert.Equal(t, context.Canceled, err)
 }
 
-func (c *coreLogicTest) doHandleLeaderInfo(node NodeID, info ChooseLeaderInfo) {
-	err := c.core.HandleChoosingLeaderInfo(node, c.persistent.GetLastTerm(), info)
+func (c *coreLogicTest) doHandleLeaderInfo(node NodeID, info ChooseLeaderInfo, gen FollowerGeneration) {
+	err := c.core.HandleChoosingLeaderInfo(node, c.persistent.GetLastTerm(), gen, info)
 	if err != nil {
 		panic(err)
 	}
@@ -2306,6 +2312,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, FollowerGeneration(1), c.runner.FetchFollowerGen)
 
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.ElectionInfo.Term)
 	assert.Equal(t, false, c.runner.ElectionInfo.Started)
@@ -2324,16 +2331,17 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 	c.now.Add(50)
 
 	// first handle leader info
-	c.doHandleLeaderInfo(nodeID1, info)
+	c.doHandleLeaderInfo(nodeID1, info, 1)
 	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// check runners
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, FollowerGeneration(1), c.runner.FetchFollowerGen)
 	assert.Equal(t, false, c.runner.ElectionInfo.Started)
 
 	// second handle leader info
-	c.doHandleLeaderInfo(nodeID2, info)
+	c.doHandleLeaderInfo(nodeID2, info, 1)
 	assert.Equal(t, TimestampMilli(math.MaxInt64), c.core.GetFollowerWakeUpAt())
 
 	// check runners
@@ -2342,6 +2350,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo(t *testing.T) {
 
 	assert.Equal(t, ElectionRunnerInfo{
 		Term:         c.persistent.GetLastTerm(),
+		Generation:   1,
 		Started:      true,
 		MaxTermValue: 20,
 		Chosen:       nodeID2,
@@ -2366,17 +2375,19 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	info := c.core.GetChoosingLeaderInfo()
 
 	// first handle leader info
-	c.doHandleLeaderInfo(nodeID1, info)
+	c.doHandleLeaderInfo(nodeID1, info, 1)
 
 	// second handle leader info
 	info.FullyReplicated = 3
-	c.doHandleLeaderInfo(nodeID2, info)
+	c.doHandleLeaderInfo(nodeID2, info, 1)
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, FollowerGeneration(0), c.runner.FetchFollowerGen)
 	assert.Equal(t, ElectionRunnerInfo{
 		Term:         c.persistent.GetLastTerm(),
+		Generation:   1,
 		Started:      true,
 		MaxTermValue: 20,
 		Chosen:       nodeID2,
@@ -2391,6 +2402,8 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Choose_Highest_Replicate
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, newTerm, c.runner.FetchFollowerTerm)
+	assert.Equal(t, FollowerGeneration(0), c.runner.FetchFollowerGen)
+
 	assert.Equal(t, false, c.runner.ElectionInfo.Started)
 	assert.Equal(t, newTerm, c.runner.ElectionInfo.Term)
 
@@ -2418,6 +2431,7 @@ func TestCoreLogic__Follower__Recv_Term_Num__Same_Node_ID__Do_Nothing(t *testing
 	// check runners
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
 	assert.Equal(t, c.persistent.GetLastTerm(), c.runner.FetchFollowerTerm)
+	assert.Equal(t, FollowerGeneration(1), c.runner.FetchFollowerGen)
 }
 
 func TestCoreLogic__Follower__RecvTermNum__Same_Term__Increase_Wake_Up(t *testing.T) {
@@ -2507,7 +2521,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_M
 	c := newCoreLogicTest(t)
 
 	info1 := c.core.GetChoosingLeaderInfo()
-	c.doHandleLeaderInfo(nodeID1, info1)
+	c.doHandleLeaderInfo(nodeID1, info1, 1)
 
 	// second handle leader info
 	info2 := ChooseLeaderInfo{
@@ -2521,7 +2535,7 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_M
 		FullyReplicated: 5,
 		LastTermVal:     23,
 	}
-	c.doHandleLeaderInfo(nodeID2, info2)
+	c.doHandleLeaderInfo(nodeID2, info2, 1)
 
 	// check runners
 	assert.Equal(t, []NodeID{
@@ -2531,13 +2545,14 @@ func TestCoreLogic__Follower__HandleChoosingLeaderInfo__Not_Choose_Node_Not_In_M
 
 	info3 := info2
 	info3.FullyReplicated = 4
-	c.doHandleLeaderInfo(nodeID4, info3)
-	c.doHandleLeaderInfo(nodeID5, info3)
+	c.doHandleLeaderInfo(nodeID4, info3, 1)
+	c.doHandleLeaderInfo(nodeID5, info3, 1)
 
 	// check runners
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, ElectionRunnerInfo{
 		Term:         c.persistent.GetLastTerm(),
+		Generation:   1,
 		Started:      true,
 		MaxTermValue: 23,
 		Chosen:       nodeID5,
@@ -2549,22 +2564,22 @@ func TestCoreLogic__Handle_Leader_Info__Invalid_Check_Status(t *testing.T) {
 
 	info := c.core.GetChoosingLeaderInfo()
 
-	c.doHandleLeaderInfo(nodeID1, info)
+	c.doHandleLeaderInfo(nodeID1, info, 1)
 	assert.Equal(t, []NodeID{nodeID2, nodeID3}, c.runner.FetchFollowers)
 
-	c.doHandleLeaderInfo(nodeID2, info)
+	c.doHandleLeaderInfo(nodeID2, info, 1)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 
 	// error
-	err := c.core.HandleChoosingLeaderInfo(nodeID3, c.persistent.GetLastTerm(), info)
-	assert.Equal(t, errors.New("check status is not running, got: 2"), err)
+	err := c.core.HandleChoosingLeaderInfo(nodeID3, c.persistent.GetLastTerm(), 1, info)
+	assert.Equal(t, errors.New("check status is not running, got: 3"), err)
 }
 
 func TestCoreLogic__Handle_Leader_Info__With_New_Members(t *testing.T) {
 	c := newCoreLogicTest(t)
 
 	info := c.core.GetChoosingLeaderInfo()
-	c.doHandleLeaderInfo(nodeID1, info)
+	c.doHandleLeaderInfo(nodeID1, info, 1)
 
 	info2 := ChooseLeaderInfo{
 		NoActiveLeader:  true,
@@ -2574,17 +2589,18 @@ func TestCoreLogic__Handle_Leader_Info__With_New_Members(t *testing.T) {
 		},
 	}
 
-	c.doHandleLeaderInfo(nodeID3, info2)
+	c.doHandleLeaderInfo(nodeID3, info2, 1)
 	assert.Equal(t, []NodeID{nodeID4}, c.runner.FetchFollowers)
 	assert.Equal(t, false, c.runner.ElectionInfo.Started)
 
 	// finally can switch to starting new leader
 	info3 := info2
 	info3.FullyReplicated = 3
-	c.doHandleLeaderInfo(nodeID4, info3)
+	c.doHandleLeaderInfo(nodeID4, info3, 1)
 	assert.Equal(t, []NodeID{}, c.runner.FetchFollowers)
 	assert.Equal(t, ElectionRunnerInfo{
 		Term:         c.persistent.GetLastTerm(),
+		Generation:   1,
 		Started:      true,
 		MaxTermValue: 20,
 		Chosen:       nodeID4,
@@ -2598,8 +2614,18 @@ func TestCoreLogic__Handle_Leader_Info__Invalid_Term(t *testing.T) {
 
 	lowerTerm := c.persistent.GetLastTerm()
 	lowerTerm.Num--
-	err := c.core.HandleChoosingLeaderInfo(nodeID1, lowerTerm, info)
+	err := c.core.HandleChoosingLeaderInfo(nodeID1, lowerTerm, 1, info)
 	assert.Equal(t, ErrMismatchTerm(lowerTerm, c.persistent.GetLastTerm()), err)
+}
+
+func TestCoreLogic__Handle_Leader_Info__Invalid_Generation(t *testing.T) {
+	c := newCoreLogicTest(t)
+
+	info := c.core.GetChoosingLeaderInfo()
+	term := c.persistent.GetLastTerm()
+
+	err := c.core.HandleChoosingLeaderInfo(nodeID1, term, 2, info)
+	assert.Equal(t, errors.New("mismatch generation number, input: 2, got: 1"), err)
 }
 
 func TestCoreLogic__Leader__Get_Need_Replicated__From_Disk(t *testing.T) {
@@ -2926,6 +2952,7 @@ func TestCoreLogic__Candidate__Change_Membership_3_Nodes__Current_Leader_Not_In_
 
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(2), c.runner.FetchFollowerGen)
 }
 
 func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Replicated_First(t *testing.T) {
@@ -2994,6 +3021,7 @@ func TestCoreLogic__Candidate__Step_Down_When_No_Longer_In_Member_List__Recv_Rep
 
 	assert.Equal(t, c.currentTerm, c.runner.FetchFollowerTerm)
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, c.runner.FetchFollowers)
+	assert.Equal(t, FollowerGeneration(2), c.runner.FetchFollowerGen)
 }
 
 func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Switch(t *testing.T) {
@@ -3051,11 +3079,12 @@ func TestCoreLogic__Leader__Change_Membership__Current_Leader_Step_Down__Fast_Sw
 		FullyReplicated: 3,
 		LastTermVal:     21,
 	}
-	c.doHandleLeaderInfo(nodeID4, info2)
-	c.doHandleLeaderInfo(nodeID5, info2)
+	c.doHandleLeaderInfo(nodeID4, info2, 2)
+	c.doHandleLeaderInfo(nodeID5, info2, 2)
 
 	assert.Equal(t, ElectionRunnerInfo{
 		Term:         c.persistent.GetLastTerm(),
+		Generation:   2,
 		Started:      true,
 		MaxTermValue: 21,
 		Chosen:       nodeID5,
@@ -3071,8 +3100,8 @@ func TestCoreLogic__Follower__Handle_Info_With_Active_Leader(t *testing.T) {
 		FullyReplicated: 3,
 		LastTermVal:     23,
 	}
-	c.doHandleLeaderInfo(nodeID1, info)
-	c.doHandleLeaderInfo(nodeID2, info)
+	c.doHandleLeaderInfo(nodeID1, info, 1)
+	c.doHandleLeaderInfo(nodeID2, info, 1)
 
 	assert.Equal(t, false, c.runner.ElectionInfo.Started)
 }

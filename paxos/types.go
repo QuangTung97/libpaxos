@@ -315,3 +315,21 @@ type ChooseLeaderInfo struct {
 	FullyReplicated LogPos
 	LastTermVal     TermValue
 }
+
+type StateMachineRunnerInfo struct {
+	Running       bool
+	IsLeader      bool // if state = Candidate OR state = Leader
+	AcceptCommand bool // if state = Leader
+}
+
+type ElectionRunnerInfo struct {
+	Term         TermNum
+	Generation   FollowerGeneration
+	Started      bool
+	MaxTermValue TermValue
+	Chosen       NodeID
+}
+
+// ----------------------------------------------------------
+
+type FollowerGeneration int64

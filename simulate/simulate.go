@@ -62,7 +62,7 @@ func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, ter
 }
 
 func (s *NodeState) fetchFollowerRunnerFunc(
-	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum,
+	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, generation paxos.FollowerGeneration,
 ) {
 }
 

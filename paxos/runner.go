@@ -13,27 +13,15 @@ type NodeRunner interface {
 	StartStateMachine(term TermNum, info StateMachineRunnerInfo) bool
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
-	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}) bool
+	StartFetchingFollowerInfoRunners(term TermNum, generation FollowerGeneration, nodes map[NodeID]struct{}) bool
 	StartElectionRunner(info ElectionRunnerInfo) bool
-}
-
-type StateMachineRunnerInfo struct {
-	Running       bool
-	IsLeader      bool // when state = Candidate or state = Leader
-	AcceptCommand bool
-}
-
-type ElectionRunnerInfo struct {
-	Term         TermNum
-	Started      bool
-	MaxTermValue TermValue
-	Chosen       NodeID
 }
 
 type nodeTermInfo struct {
 	nodeID       NodeID
 	term         TermNum
 	info         StateMachineRunnerInfo
+	generation   FollowerGeneration
 	maxTermValue TermValue
 }
 
@@ -58,7 +46,7 @@ func NewNodeRunner(
 	acceptorRunnerFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
 	replicateRunnerFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
 	stateMachineFunc func(ctx async.Context, term TermNum, info StateMachineRunnerInfo) error,
-	fetchFollowerInfoFunc func(ctx async.Context, nodeID NodeID, term TermNum) error,
+	fetchFollowerInfoFunc func(ctx async.Context, nodeID NodeID, term TermNum, generation FollowerGeneration) error,
 	startElectionFunc func(ctx async.Context, nodeID NodeID, maxTermVal TermValue) error,
 ) (NodeRunner, func()) {
 	r := &nodeRunnerImpl{
@@ -101,7 +89,7 @@ func NewNodeRunner(
 
 	r.fetchFollower = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
 		loopWithSleep(ctx, func(ctx async.Context) error {
-			return fetchFollowerInfoFunc(ctx, val.nodeID, val.term)
+			return fetchFollowerInfoFunc(ctx, val.nodeID, val.term, val.generation)
 		})
 	})
 
@@ -168,13 +156,14 @@ func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunner
 }
 
 func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
-	term TermNum, nodes map[NodeID]struct{},
+	term TermNum, generation FollowerGeneration, nodes map[NodeID]struct{},
 ) bool {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
-			nodeID: id,
-			term:   term,
+			nodeID:     id,
+			term:       term,
+			generation: generation,
 		})
 	}
 	return r.fetchFollower.Upsert(infos)
