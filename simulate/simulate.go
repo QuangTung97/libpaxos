@@ -7,34 +7,45 @@ import (
 )
 
 type Simulation struct {
+	runtime *async.SimulateRuntime
+	now     paxos.TimestampMilli
 }
 
 type NodeState struct {
 	persistent *fake.PersistentStateFake
 	log        *fake.LogStorageFake
-	core       paxos.CoreLogic
-	now        paxos.TimestampMilli
+	runner     *RunnerFake
+
+	core     paxos.CoreLogic
+	acceptor paxos.AcceptorLogic
 }
 
-func NewNodeState(id paxos.NodeID) *NodeState {
-	s := &NodeState{
-		now: 180_000,
-	}
+func NewNodeState(sim *Simulation, id paxos.NodeID) *NodeState {
+	s := &NodeState{}
 
 	s.persistent = &fake.PersistentStateFake{
 		NodeID:   id,
 		LastTerm: initTerm,
 	}
-	s.log = &fake.LogStorageFake{}
+	s.log = fake.NewLogStorageFake()
+
+	s.runner = NewRunnerFake(
+		sim.runtime,
+		s.voteRunnerFunc,
+		s.acceptRunnerFunc,
+		s.fetchFollowerRunnerFunc,
+		s.stateMachineFunc,
+		s.startElectionFunc,
+	)
 
 	s.core = paxos.NewCoreLogic(
 		s.persistent,
 		s.log,
-		nil, // TODO
+		s.runner,
 		func() paxos.TimestampMilli {
-			return s.now
+			return sim.now
 		},
-		async.SimpleAddNextFunc,
+		sim.runtime.AddNext,
 		5,
 		true,
 		5000,
@@ -42,4 +53,25 @@ func NewNodeState(id paxos.NodeID) *NodeState {
 	)
 
 	return s
+}
+
+func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+}
+
+func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+}
+
+func (s *NodeState) fetchFollowerRunnerFunc(
+	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum,
+) {
+}
+
+func (s *NodeState) stateMachineFunc(
+	ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo,
+) {
+}
+
+func (s *NodeState) startElectionFunc(
+	ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID,
+) {
 }

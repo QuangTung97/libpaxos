@@ -23,7 +23,7 @@ type acceptorLogicTest struct {
 func newAcceptorLogicTest(t *testing.T) *acceptorLogicTest {
 	s := &acceptorLogicTest{}
 	s.ctx = async.NewContext()
-	s.log = &fake.LogStorageFake{}
+	s.log = fake.NewLogStorageFake()
 
 	s.currentTerm = TermNum{
 		Num:    21,

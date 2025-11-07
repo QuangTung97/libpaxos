@@ -23,6 +23,10 @@ type UpsertInput struct {
 	MarkList []paxos.LogPos
 }
 
+func NewLogStorageFake() *LogStorageFake {
+	return &LogStorageFake{}
+}
+
 var _ paxos.LogStorage = &LogStorageFake{}
 
 func (s *LogStorageFake) UpsertEntries(entries []paxos.LogEntry, markCommitted []paxos.LogPos) {

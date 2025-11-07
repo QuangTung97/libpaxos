@@ -12,9 +12,9 @@ type RunnerFake struct {
 
 	voteRunnerFunc          func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	acceptorRunnerFunc      func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
-	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int)
+	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	stateMachineFunc        func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo)
-	startElectionFunc       func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID, retryCount int)
+	startElectionFunc       func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID)
 
 	voteMap          map[paxos.NodeID]basicRunnerInfo
 	acceptorMap      map[paxos.NodeID]basicRunnerInfo
@@ -52,9 +52,9 @@ func NewRunnerFake(
 	rt *async.SimulateRuntime,
 	voteRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	acceptorRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
-	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int),
+	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	stateMachineFunc func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo),
-	startElectionFunc func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID, retryCount int),
+	startElectionFunc func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID),
 ) *RunnerFake {
 	return &RunnerFake{
 		rt: rt,
@@ -192,7 +192,7 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 		}
 
 		ctx := r.rt.NewThread(func(ctx async.Context) {
-			r.fetchFollowerRunnerFunc(ctx, id, term, retryCount)
+			r.fetchFollowerRunnerFunc(ctx, id, term)
 		})
 
 		r.fetchFollowerMap[id] = fetchFollowerInfo{
@@ -231,7 +231,7 @@ func (r *RunnerFake) StartElectionRunner(
 	}
 
 	r.electionCtx = r.rt.NewThread(func(ctx async.Context) {
-		r.startElectionFunc(ctx, termValue, chosen, retryCount)
+		r.startElectionFunc(ctx, termValue, chosen)
 	})
 
 	return true

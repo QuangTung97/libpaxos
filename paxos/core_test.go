@@ -76,7 +76,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 			NodeID: nodeID5,
 		},
 	}
-	c.log = &fake.LogStorageFake{}
+	c.log = fake.NewLogStorageFake()
 	c.runner = &fake.NodeRunnerFake{}
 
 	// setup init members

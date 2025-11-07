@@ -18,7 +18,7 @@ func newLogList(entries ...paxos.LogEntry) []paxos.LogEntry {
 }
 
 func TestLogStorageFake(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	entry1 := paxos.NewCmdLogEntry(
 		2,
@@ -49,7 +49,7 @@ func TestLogStorageFake(t *testing.T) {
 }
 
 func TestLogStorageFake_Membership(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	members := []paxos.MemberInfo{
 		{
@@ -128,7 +128,7 @@ func newMembershipLog(pos paxos.LogPos, term paxos.TermNum, nodes ...paxos.NodeI
 }
 
 func TestLogStorageFake_MarkCommitted(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	term := paxos.TermNum{
 		Num:    21,
@@ -227,7 +227,7 @@ func TestLogStorageFake_MarkCommitted(t *testing.T) {
 }
 
 func TestLogStorageFake_Add_Committed_Entries__With_Disconnected_Prev_Pointer(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	term := paxos.TermNum{
 		Num:    21,
@@ -271,7 +271,7 @@ func TestLogStorageFake_Add_Committed_Entries__With_Disconnected_Prev_Pointer(t 
 }
 
 func TestLogStorageFake_SetTerm(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	term := paxos.TermNum{
 		Num:    21,
@@ -283,7 +283,7 @@ func TestLogStorageFake_SetTerm(t *testing.T) {
 }
 
 func TestLogStorageFake_GetEntriesWithPos(t *testing.T) {
-	s := &LogStorageFake{}
+	s := NewLogStorageFake()
 
 	term := paxos.TermNum{
 		Num:    21,

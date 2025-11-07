@@ -215,7 +215,7 @@ func (s *simulationTestCase) initNodeState(
 		},
 	}
 
-	state.log = &fake.LogStorageFake{}
+	state.log = fake.NewLogStorageFake()
 
 	if _, ok := initNodeSet[id]; ok {
 		state.log.UpsertEntries([]LogEntry{initMembersEntry}, nil)

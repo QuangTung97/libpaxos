@@ -66,10 +66,10 @@ func (r *runnerFakeTest) acceptorFunc(ctx async.Context, nodeID paxos.NodeID, te
 }
 
 func (r *runnerFakeTest) fetchFollowerFunc(
-	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int,
+	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum,
 ) {
 	r.ctxList = append(r.ctxList, ctx)
-	r.actions.add("start-fetch-follower:%s,%d,retry=%d", nodeID.String()[:4], term.Num, retryCount)
+	r.actions.add("start-fetch-follower:%s,%d", nodeID.String()[:4], term.Num)
 	r.rt.AddNext(ctx, func(ctx async.Context) {
 		r.actions.add("fetch-follower-action01:%s,%d", nodeID.String()[:4], term.Num)
 	})
@@ -86,11 +86,10 @@ func (r *runnerFakeTest) stateMachineFunc(
 }
 
 func (r *runnerFakeTest) startElectionFunc(
-	ctx async.Context, termValue paxos.TermValue,
-	nodeID paxos.NodeID, retryCount int,
+	ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID,
 ) {
 	r.ctxList = append(r.ctxList, ctx)
-	r.actions.add("start-election:%v,term=%d,retry=%d", nodeID.String()[:4], termValue, retryCount)
+	r.actions.add("start-election:%v,term=%d", nodeID.String()[:4], termValue)
 	r.rt.AddNext(ctx, func(ctx async.Context) {
 		r.actions.add("election-action01:%d", termValue)
 	})
@@ -198,8 +197,8 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	r.rt.RunNext()
 	r.rt.RunNext()
 	assert.Equal(t, []string{
-		"start-fetch-follower:6401,20,retry=1",
-		"start-fetch-follower:6402,20,retry=1",
+		"start-fetch-follower:6401,20",
+		"start-fetch-follower:6402,20",
 	}, r.actions.getList())
 
 	// run again with same set of values
@@ -230,21 +229,21 @@ func TestRunnerFake_FetchingFollowerInfoRunners__Increase_Retry(t *testing.T) {
 	r.rt.RunNext()
 	r.rt.RunNext()
 	assert.Equal(t, []string{
-		"start-fetch-follower:6401,20,retry=1",
-		"start-fetch-follower:6402,20,retry=1",
+		"start-fetch-follower:6401,20",
+		"start-fetch-follower:6402,20",
 	}, r.actions.getList())
 
-	// run again with retry = 2
-	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2), 2)
+	// run again with new term
+	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, newNodeSet(nodeID1, nodeID2), 2)
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
 		"fetch-follower-action01:6401,20",
 		"fetch-follower-action01:6402,20",
-		"start-fetch-follower:6401,20,retry=2",
-		"start-fetch-follower:6402,20,retry=2",
-		"fetch-follower-action01:6401,20",
-		"fetch-follower-action01:6402,20",
+		"start-fetch-follower:6401,21",
+		"start-fetch-follower:6402,21",
+		"fetch-follower-action01:6401,21",
+		"fetch-follower-action01:6402,21",
 	}, r.actions.getList())
 }
 
@@ -311,7 +310,7 @@ func TestRunnerFake_StartElectionRunner(t *testing.T) {
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
-		"start-election:6404,term=22,retry=2",
+		"start-election:6404,term=22",
 		"election-action01:22",
 	}, r.actions.getList())
 
@@ -321,13 +320,13 @@ func TestRunnerFake_StartElectionRunner(t *testing.T) {
 	runAllActions(r.rt)
 	assert.Equal(t, []string{}, r.actions.getList())
 
-	// start different retry
-	ok = r.runner.StartElectionRunner(22, true, nodeID4, 3)
+	// start different term value
+	ok = r.runner.StartElectionRunner(23, true, nodeID4, 3)
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
-		"start-election:6404,term=22,retry=3",
-		"election-action01:22",
+		"start-election:6404,term=23",
+		"election-action01:23",
 	}, r.actions.getList())
 	assert.Equal(t, 2, len(r.ctxList))
 	assert.Equal(t, context.Canceled, r.ctxList[0].Err())
