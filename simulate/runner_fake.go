@@ -71,6 +71,14 @@ func NewRunnerFake(
 	}
 }
 
+func buildVoteDetail(from, to paxos.NodeID) string {
+	return fmt.Sprintf("vote[%s=>%s]", nodeString(from), nodeString(to))
+}
+
+func buildAcceptDetail(from, to paxos.NodeID) string {
+	return fmt.Sprintf("accept[%s=>%s]", nodeString(from), nodeString(to))
+}
+
 func (r *RunnerFake) StartVoteRequestRunners(
 	term paxos.TermNum, nodes map[paxos.NodeID]struct{},
 ) bool {
@@ -93,7 +101,8 @@ func (r *RunnerFake) StartVoteRequestRunners(
 			continue
 		}
 
-		ctx := r.rt.NewThreadDetail("vote-"+nodeString(id), func(ctx async.Context) {
+		detail := buildVoteDetail(r.currentNodeID, id)
+		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 			r.voteRunnerFunc(ctx, id, term)
 		})
 
@@ -129,7 +138,8 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 			continue
 		}
 
-		ctx := r.rt.NewThreadDetail("accept-"+nodeString(id), func(ctx async.Context) {
+		detail := buildAcceptDetail(r.currentNodeID, id)
+		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 			r.acceptorRunnerFunc(ctx, id, term)
 		})
 
@@ -141,6 +151,10 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 	}
 
 	return changed
+}
+
+func buildStateMachineDetail(id paxos.NodeID) string {
+	return fmt.Sprintf("state-machine[%s]", nodeString(id))
 }
 
 func (r *RunnerFake) StartStateMachine(
@@ -162,12 +176,16 @@ func (r *RunnerFake) StartStateMachine(
 		return true
 	}
 
-	detail := "state-machine-" + nodeString(r.currentNodeID)
+	detail := buildStateMachineDetail(r.currentNodeID)
 	r.stateMachineCtx = r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 		r.stateMachineFunc(ctx, term, info)
 	})
 
 	return true
+}
+
+func buildFetchDetail(from, to paxos.NodeID) string {
+	return fmt.Sprintf("fetch[%s=>%s]", nodeString(from), nodeString(to))
 }
 
 func (r *RunnerFake) StartFetchingFollowerInfoRunners(
@@ -192,7 +210,7 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 			continue
 		}
 
-		detail := fmt.Sprintf("fetch[%s=>%s]", nodeString(r.currentNodeID), nodeString(id))
+		detail := buildFetchDetail(r.currentNodeID, id)
 		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 			r.fetchFollowerRunnerFunc(ctx, id, term, generation)
 		})
@@ -206,6 +224,10 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 	}
 
 	return changed
+}
+
+func buildStartElectionDetail(from, to paxos.NodeID) string {
+	return fmt.Sprintf("start-election[%s=>%s]", nodeString(from), nodeString(to))
 }
 
 func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool {
@@ -223,7 +245,8 @@ func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool 
 		return true
 	}
 
-	r.electionCtx = r.rt.NewThreadDetail("election-"+nodeString(newInfo.Chosen), func(ctx async.Context) {
+	detail := buildStartElectionDetail(r.currentNodeID, newInfo.Chosen)
+	r.electionCtx = r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 		r.startElectionFunc(ctx, newInfo.Chosen, newInfo.MaxTermValue)
 	})
 

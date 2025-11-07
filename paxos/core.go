@@ -96,6 +96,7 @@ func NewCoreLogic(
 		tickRandomJitter:    tickRandomJitter,
 	}
 
+	// TODO dependency injection
 	c.sendAcceptWaiter = async.NewKeyWaiter[NodeID](&c.mut)
 	c.bufferLimitWaiter = async.NewKeyWaiter[NodeID](&c.mut)
 

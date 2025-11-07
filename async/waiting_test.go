@@ -58,7 +58,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 			})
 		})
 		assert.Equal(t, []string{}, actions.getList())
-		assert.Equal(t, []string{"thread01::start"}, rt.GetQueueDetails())
+		assert.Equal(t, []string{"thread01::init"}, rt.GetQueueDetails())
 
 		assert.Equal(t, true, rt.RunNext())
 		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.getList())
@@ -101,7 +101,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		// broadcast
 		w.Broadcast()
-		assert.Equal(t, []string{"thread01::start::wait[key01]"}, rt.GetQueueDetails())
+		assert.Equal(t, []string{"thread01::after-wait[key01]"}, rt.GetQueueDetails())
 		// run
 		assert.Equal(t, true, rt.RunNext())
 		assert.Equal(t, []string{"wait:2"}, actions.getList())

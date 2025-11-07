@@ -116,7 +116,7 @@ func (w *simulateKeyWaiter[T]) Run(
 			return
 		}
 
-		detailStr := ctx.getStartThreadDetail() + fmt.Sprintf("::wait[%s]", w.detailFunc(key))
+		detailStr := ctx.threadDetail + fmt.Sprintf("::after-wait[%s]", w.detailFunc(key))
 		w.waitMap[key] = append(w.waitMap[key], newNextActionInfo(ctx, detailStr, actionCallback))
 		ctx.broadcastSet[w] = struct{}{}
 	}

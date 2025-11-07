@@ -40,7 +40,8 @@ func NewSimulation(
 }
 
 type NodeState struct {
-	sim *Simulation
+	currentID paxos.NodeID
+	sim       *Simulation
 
 	persistent *fake.PersistentStateFake
 	log        *fake.LogStorageFake
@@ -55,7 +56,8 @@ func NewNodeState(
 	withInitMember bool, initNodes []paxos.NodeID,
 ) *NodeState {
 	s := &NodeState{
-		sim: sim,
+		currentID: id,
+		sim:       sim,
 	}
 
 	s.persistent = &fake.PersistentStateFake{
@@ -118,6 +120,13 @@ func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, ter
 func (s *NodeState) fetchFollowerRunnerFunc(
 	ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, generation paxos.FollowerGeneration,
 ) {
+	destState := s.sim.stateMap[nodeID]
+	info := destState.core.GetChoosingLeaderInfo()
+
+	rt := s.sim.runtime
+	rt.AddNextDetail(ctx, buildFetchDetail(s.currentID, nodeID)+"::handle", func(ctx async.Context) {
+		_ = s.core.HandleChoosingLeaderInfo(nodeID, term, generation, info)
+	})
 }
 
 func (s *NodeState) stateMachineFunc(
@@ -128,11 +137,27 @@ func (s *NodeState) stateMachineFunc(
 func (s *NodeState) startElectionFunc(
 	ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue,
 ) {
+	destState := s.sim.stateMap[chosen]
+	rt := s.sim.runtime
+
+	detail := buildStartElectionDetail(s.currentID, chosen) + "::handle"
+	rt.AddNextDetail(ctx, detail, func(ctx async.Context) {
+		_, _ = destState.core.StartElection(termValue)
+	})
 }
 
 func (s *Simulation) printAllActions() {
 	fmt.Println("============================================================")
 	for index, detail := range s.runtime.GetQueueDetails() {
-		fmt.Printf("(%02d) %s\n", index+1, detail)
+		fmt.Printf("(%02d) %s\n", index, detail)
 	}
+}
+
+func (s *Simulation) runActionIndex(index int) {
+	s.runtime.RunRandomAction(func(n int) int {
+		if index >= n {
+			panic("Invalid action")
+		}
+		return index
+	})
 }

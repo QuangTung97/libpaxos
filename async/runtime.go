@@ -1,7 +1,5 @@
 package async
 
-import "slices"
-
 type AddNextFunc func(ctx Context, callback func(ctx Context))
 
 func SimpleAddNextFunc(ctx Context, callback func(ctx Context)) {
@@ -163,7 +161,6 @@ func (r *SimulateRuntime) GetQueueDetails() []string {
 	for _, action := range r.activeQueue {
 		result = append(result, action.detail)
 	}
-	slices.Sort(result)
 	return result
 }
 

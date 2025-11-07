@@ -70,7 +70,7 @@ func newSimulateContext(detail string, startCallback func(ctx Context)) *simulat
 var _ Context = &simulateContext{}
 
 func (c *simulateContext) getStartThreadDetail() string {
-	return c.threadDetail + "::start"
+	return c.threadDetail + "::init"
 }
 
 func (c *simulateContext) getSequenceActionMap() map[SequenceID]*sequenceActionState {
