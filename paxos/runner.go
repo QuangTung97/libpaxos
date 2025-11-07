@@ -13,8 +13,8 @@ type NodeRunner interface {
 	StartStateMachine(term TermNum, info StateMachineRunnerInfo) bool
 
 	// StartFetchingFollowerInfoRunners add fast leader switch
-	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}, retryCount int) bool
-	StartElectionRunner(termValue TermValue, started bool, chosen NodeID, retryCount int) bool
+	StartFetchingFollowerInfoRunners(term TermNum, nodes map[NodeID]struct{}) bool
+	StartElectionRunner(info ElectionRunnerInfo) bool
 }
 
 type StateMachineRunnerInfo struct {
@@ -23,11 +23,18 @@ type StateMachineRunnerInfo struct {
 	AcceptCommand bool
 }
 
+type ElectionRunnerInfo struct {
+	Term         TermNum
+	Started      bool
+	MaxTermValue TermValue
+	Chosen       NodeID
+}
+
 type nodeTermInfo struct {
-	nodeID     NodeID
-	term       TermNum
-	retryCount int
-	info       StateMachineRunnerInfo
+	nodeID       NodeID
+	term         TermNum
+	info         StateMachineRunnerInfo
+	maxTermValue TermValue
 }
 
 func (i nodeTermInfo) getNodeID() NodeID {
@@ -100,7 +107,7 @@ func NewNodeRunner(
 
 	r.startElection = key_runner.New(nodeTermInfo.getNodeID, func(ctx async.Context, val nodeTermInfo) {
 		loopWithSleep(ctx, func(ctx async.Context) error {
-			return startElectionFunc(ctx, val.nodeID, val.term.Num)
+			return startElectionFunc(ctx, val.nodeID, val.maxTermValue)
 		})
 	})
 
@@ -161,30 +168,25 @@ func (r *nodeRunnerImpl) StartStateMachine(term TermNum, info StateMachineRunner
 }
 
 func (r *nodeRunnerImpl) StartFetchingFollowerInfoRunners(
-	term TermNum, nodes map[NodeID]struct{}, retryCount int,
+	term TermNum, nodes map[NodeID]struct{},
 ) bool {
 	infos := make([]nodeTermInfo, 0, len(nodes))
 	for id := range nodes {
 		infos = append(infos, nodeTermInfo{
-			nodeID:     id,
-			term:       term,
-			retryCount: retryCount,
+			nodeID: id,
+			term:   term,
 		})
 	}
 	return r.fetchFollower.Upsert(infos)
 }
 
-func (r *nodeRunnerImpl) StartElectionRunner(
-	termValue TermValue, started bool, chosen NodeID, retryCount int,
-) bool {
-	if started {
+func (r *nodeRunnerImpl) StartElectionRunner(info ElectionRunnerInfo) bool {
+	if info.Started {
 		infos := []nodeTermInfo{
 			{
-				nodeID: chosen,
-				term: TermNum{
-					Num: termValue,
-				},
-				retryCount: retryCount,
+				nodeID:       info.Chosen,
+				term:         info.Term,
+				maxTermValue: info.MaxTermValue,
 			},
 		}
 		return r.startElection.Upsert(infos)

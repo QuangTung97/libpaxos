@@ -72,6 +72,6 @@ func (s *NodeState) stateMachineFunc(
 }
 
 func (s *NodeState) startElectionFunc(
-	ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID,
+	ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue,
 ) {
 }

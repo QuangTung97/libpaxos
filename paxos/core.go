@@ -121,8 +121,6 @@ type coreLogicImpl struct {
 	candidate *candidateStateInfo
 	leader    *leaderStateInfo
 
-	followerRetryCount int
-
 	persistent PersistentState
 	log        LeaderLogGetter
 	runner     NodeRunner
@@ -796,7 +794,6 @@ func (c *coreLogicImpl) updateFollowerCheckOtherStatus(
 
 	c.follower.checkStatus = followerCheckOtherStatusRunning
 	c.follower.fastSwitchLeader = fastSwitchLeader
-	c.followerRetryCount++
 
 	commitInfo := c.log.GetCommittedInfo()
 	c.follower.members = commitInfo.Members
@@ -867,8 +864,8 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 	}
 
 	if c.state != StateFollower {
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil, 0))
-		wrap(c.runner.StartElectionRunner(0, false, NodeID{}, 0))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil))
+		wrap(c.runner.StartElectionRunner(ElectionRunnerInfo{Term: term}))
 		return
 	}
 
@@ -880,9 +877,9 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 				delete(allMembers, id)
 			}
 		}
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, allMembers, c.followerRetryCount))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, allMembers))
 	} else {
-		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil, 0))
+		wrap(c.runner.StartFetchingFollowerInfoRunners(term, nil))
 	}
 
 	if c.follower.checkStatus == followerCheckOtherStatusStartingNewElection {
@@ -910,11 +907,15 @@ func (c *coreLogicImpl) updateFetchingFollowerInfoRunners() (updatedResult bool)
 			}
 		}
 
-		wrap(c.runner.StartElectionRunner(
-			c.follower.lastTermVal, true, lastNode, c.followerRetryCount,
-		))
+		electionInfo := ElectionRunnerInfo{
+			Term:         term,
+			Started:      true,
+			MaxTermValue: c.follower.lastTermVal,
+			Chosen:       lastNode,
+		}
+		wrap(c.runner.StartElectionRunner(electionInfo))
 	} else {
-		wrap(c.runner.StartElectionRunner(0, false, NodeID{}, 0))
+		wrap(c.runner.StartElectionRunner(ElectionRunnerInfo{Term: term}))
 	}
 
 	return

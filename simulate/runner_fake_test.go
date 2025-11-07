@@ -86,10 +86,10 @@ func (r *runnerFakeTest) stateMachineFunc(
 }
 
 func (r *runnerFakeTest) startElectionFunc(
-	ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID,
+	ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue,
 ) {
 	r.ctxList = append(r.ctxList, ctx)
-	r.actions.add("start-election:%v,term=%d", nodeID.String()[:4], termValue)
+	r.actions.add("start-election:%v,term=%d", chosen.String()[:4], termValue)
 	r.rt.AddNext(ctx, func(ctx async.Context) {
 		r.actions.add("election-action01:%d", termValue)
 	})
@@ -190,7 +190,7 @@ func TestRunnerFake_VoteRequestRunners(t *testing.T) {
 func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	r := newRunnerFakeTest()
 
-	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2), 1)
+	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []string{}, r.actions.getList())
 
@@ -202,7 +202,7 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	}, r.actions.getList())
 
 	// run again with same set of values
-	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2), 1)
+	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, false, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -211,7 +211,7 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 	}, r.actions.getList())
 
 	// run again with empty nodes
-	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(), 1)
+	ok = r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet())
 	assert.Equal(t, true, ok)
 
 	assert.Equal(t, 2, len(r.ctxList))
@@ -222,7 +222,7 @@ func TestRunnerFake_FetchingFollowerInfoRunners(t *testing.T) {
 func TestRunnerFake_FetchingFollowerInfoRunners__Increase_Retry(t *testing.T) {
 	r := newRunnerFakeTest()
 
-	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2), 1)
+	ok := r.runner.StartFetchingFollowerInfoRunners(initTerm, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	assert.Equal(t, []string{}, r.actions.getList())
 
@@ -234,7 +234,7 @@ func TestRunnerFake_FetchingFollowerInfoRunners__Increase_Retry(t *testing.T) {
 	}, r.actions.getList())
 
 	// run again with new term
-	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, newNodeSet(nodeID1, nodeID2), 2)
+	ok = r.runner.StartFetchingFollowerInfoRunners(testTerm01, newNodeSet(nodeID1, nodeID2))
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -306,7 +306,13 @@ func TestRunnerFake_StartElectionRunner(t *testing.T) {
 	r := newRunnerFakeTest()
 
 	// start
-	ok := r.runner.StartElectionRunner(22, true, nodeID4, 2)
+	info := paxos.ElectionRunnerInfo{
+		Term:         initTerm,
+		Started:      true,
+		MaxTermValue: 22,
+		Chosen:       nodeID4,
+	}
+	ok := r.runner.StartElectionRunner(info)
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -315,13 +321,15 @@ func TestRunnerFake_StartElectionRunner(t *testing.T) {
 	}, r.actions.getList())
 
 	// start same params
-	ok = r.runner.StartElectionRunner(22, true, nodeID4, 2)
+	ok = r.runner.StartElectionRunner(info)
 	assert.Equal(t, false, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{}, r.actions.getList())
 
 	// start different term value
-	ok = r.runner.StartElectionRunner(23, true, nodeID4, 3)
+	newInfo := info
+	newInfo.MaxTermValue++
+	ok = r.runner.StartElectionRunner(newInfo)
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -333,7 +341,7 @@ func TestRunnerFake_StartElectionRunner(t *testing.T) {
 	assert.Equal(t, nil, r.ctxList[1].Err())
 
 	// stop
-	ok = r.runner.StartElectionRunner(22, false, nodeID4, 3)
+	ok = r.runner.StartElectionRunner(paxos.ElectionRunnerInfo{Term: initTerm})
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{}, r.actions.getList())

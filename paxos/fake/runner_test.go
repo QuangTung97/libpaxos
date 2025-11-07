@@ -117,45 +117,53 @@ func TestNodeRunnerFake_StartFetchingFollowerInfoRunners(t *testing.T) {
 		nodeID3: {},
 	}
 
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, nodes, 1))
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, nodes))
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, runner.FetchFollowers)
 	assert.Equal(t, term, runner.FetchFollowerTerm)
-	assert.Equal(t, 1, runner.FetchRetryCount)
 
-	// increase retry
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, nodes, 2))
+	// new term
+	newTerm := term
+	newTerm.Num++
+
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, nodes))
 	assert.Equal(t, []NodeID{nodeID1, nodeID2, nodeID3}, runner.FetchFollowers)
-	assert.Equal(t, term, runner.FetchFollowerTerm)
-	assert.Equal(t, 2, runner.FetchRetryCount)
+	assert.Equal(t, newTerm, runner.FetchFollowerTerm)
 
-	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(term, nodes, 2))
+	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, nodes))
 
 	// stop
-	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(term, nil, 3))
+	assert.Equal(t, true, runner.StartFetchingFollowerInfoRunners(newTerm, nil))
 	assert.Equal(t, []NodeID{}, runner.FetchFollowers)
-	assert.Equal(t, term, runner.FetchFollowerTerm)
-	assert.Equal(t, 3, runner.FetchRetryCount)
-
-	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(TermNum{}, nil, 3))
+	assert.Equal(t, newTerm, runner.FetchFollowerTerm)
+	assert.Equal(t, false, runner.StartFetchingFollowerInfoRunners(newTerm, nil))
 }
 
 func TestNodeRunnerFake_StartElectionRunner(t *testing.T) {
 	runner := &NodeRunnerFake{}
 
-	assert.Equal(t, true, runner.StartElectionRunner(21, true, nodeID1, 3))
-	assert.Equal(t, true, runner.ElectionStarted)
-	assert.Equal(t, TermValue(21), runner.ElectionTerm)
-	assert.Equal(t, nodeID1, runner.ElectionChosen)
-	assert.Equal(t, 3, runner.ElectionRetryCount)
+	term := TermNum{
+		Num:    21,
+		NodeID: nodeID1,
+	}
 
-	assert.Equal(t, false, runner.StartElectionRunner(21, true, nodeID1, 3))
+	info := ElectionRunnerInfo{
+		Term:         term,
+		Started:      true,
+		MaxTermValue: 22,
+		Chosen:       nodeID1,
+	}
+	assert.Equal(t, true, runner.StartElectionRunner(info))
+	assert.Equal(t, info, runner.ElectionInfo)
+
+	// start again
+	assert.Equal(t, false, runner.StartElectionRunner(info))
 
 	// stop
-	assert.Equal(t, true, runner.StartElectionRunner(21, false, nodeID1, 3))
-	assert.Equal(t, false, runner.ElectionStarted)
-	assert.Equal(t, TermValue(21), runner.ElectionTerm)
-	assert.Equal(t, nodeID1, runner.ElectionChosen)
-	assert.Equal(t, 3, runner.ElectionRetryCount)
+	assert.Equal(t, true, runner.StartElectionRunner(ElectionRunnerInfo{Term: term}))
+	assert.Equal(t, ElectionRunnerInfo{
+		Term: term,
+	}, runner.ElectionInfo)
 
-	assert.Equal(t, false, runner.StartElectionRunner(0, false, NodeID{}, 0))
+	// stop again
+	assert.Equal(t, false, runner.StartElectionRunner(ElectionRunnerInfo{Term: term}))
 }

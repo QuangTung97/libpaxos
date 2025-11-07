@@ -1331,8 +1331,8 @@ func runTestThreeNodesElectALeader(t *testing.T) {
 func (s *simulationTestCase) stopRemainingRunners() {
 	for _, state := range s.nodeMap {
 		state.runner.StartVoteRequestRunners(TermNum{}, nil)
-		state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil, 0)
-		state.runner.StartElectionRunner(0, false, NodeID{}, 0)
+		state.runner.StartFetchingFollowerInfoRunners(TermNum{}, nil)
+		state.runner.StartElectionRunner(ElectionRunnerInfo{})
 	}
 }
 

@@ -279,7 +279,7 @@ func TestNodeRunner__Fetching_Followers(t *testing.T) {
 			nodeID2: {},
 			nodeID3: {},
 		}
-		r.StartFetchingFollowerInfoRunners(currentTerm, nodes, 1)
+		r.StartFetchingFollowerInfoRunners(currentTerm, nodes)
 
 		synctest.Wait()
 
@@ -325,20 +325,29 @@ func TestNodeRunner__Start_Election_Runner(t *testing.T) {
 			},
 		)
 
-		r.StartElectionRunner(21, true, nodeID1, 1)
+		info := ElectionRunnerInfo{
+			Term:         testCreatedTerm,
+			Started:      true,
+			MaxTermValue: 22,
+			Chosen:       nodeID1,
+		}
+
+		r.StartElectionRunner(info)
 		synctest.Wait()
 		assert.Equal(t, map[NodeID]TermValue{
-			nodeID1: 21,
+			nodeID1: 22,
 		}, runningSet)
 		assert.Equal(t, int64(1), runCount.Load())
 
-		// start again same retry count
-		r.StartElectionRunner(21, true, nodeID1, 1)
+		// start again same params
+		r.StartElectionRunner(info)
 		synctest.Wait()
 		assert.Equal(t, int64(1), runCount.Load())
 
-		// start again different retry count
-		r.StartElectionRunner(21, true, nodeID1, 2)
+		// start again different term value
+		newInfo := info
+		newInfo.Term.Num++
+		r.StartElectionRunner(newInfo)
 		synctest.Wait()
 		assert.Equal(t, int64(2), runCount.Load())
 
@@ -378,7 +387,13 @@ func TestNodeRunner__Start_Election_Runner__Start_Then_Stop(t *testing.T) {
 			},
 		)
 
-		r.StartElectionRunner(21, true, nodeID1, 1)
+		info := ElectionRunnerInfo{
+			Term:         testCreatedTerm,
+			Started:      true,
+			MaxTermValue: 21,
+			Chosen:       nodeID1,
+		}
+		r.StartElectionRunner(info)
 		synctest.Wait()
 		assert.Equal(t, map[NodeID]TermValue{
 			nodeID1: 21,
@@ -386,7 +401,7 @@ func TestNodeRunner__Start_Election_Runner__Start_Then_Stop(t *testing.T) {
 		assert.Equal(t, int64(1), runCount.Load())
 
 		// stop
-		r.StartElectionRunner(0, false, NodeID{}, 0)
+		r.StartElectionRunner(ElectionRunnerInfo{Term: testCreatedTerm})
 		synctest.Wait()
 		assert.Equal(t, map[NodeID]TermValue{}, runningSet)
 		assert.Equal(t, int64(1), runCount.Load())
