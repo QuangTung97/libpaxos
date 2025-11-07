@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -14,21 +15,23 @@ import (
 )
 
 type actionListTest struct {
-	actions []string
+	actionValues []string
 }
 
 func newActionListTest() *actionListTest {
 	return &actionListTest{
-		actions: make([]string, 0),
+		actionValues: make([]string, 0),
 	}
 }
 
 func (a *actionListTest) add(format string, args ...any) {
-	a.actions = append(a.actions, fmt.Sprintf(format, args...))
+	a.actionValues = append(a.actionValues, fmt.Sprintf(format, args...))
 }
 
-func (a *actionListTest) clear() {
-	a.actions = a.actions[:0]
+func (a *actionListTest) getList() []string {
+	result := slices.Clone(a.actionValues)
+	a.actionValues = a.actionValues[:0]
+	return result
 }
 
 func runAllActions(rt *SimulateRuntime) {
@@ -52,21 +55,21 @@ func TestSimulateKeyWaiter(t *testing.T) {
 				return WaitStatusSuccess, nil
 			})
 		})
-		assert.Equal(t, []string{}, actions.actions)
+		assert.Equal(t, []string{}, actions.getList())
 
 		assert.Equal(t, true, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.getList())
 
 		// do nothing
 		assert.Equal(t, false, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+		assert.Equal(t, []string{}, actions.getList())
 
 		// broadcast
 		w.Broadcast()
 
 		// do nothing
 		assert.Equal(t, false, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+		assert.Equal(t, []string{}, actions.getList())
 	})
 
 	t.Run("with waiting", func(t *testing.T) {
@@ -86,20 +89,20 @@ func TestSimulateKeyWaiter(t *testing.T) {
 				return WaitStatusWaiting, nil
 			})
 		})
-		assert.Equal(t, []string{}, actions.actions)
+		assert.Equal(t, []string{}, actions.getList())
 
 		assert.Equal(t, true, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.getList())
 
 		// broadcast
 		w.Broadcast()
 		assert.Equal(t, true, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1", "wait:2"}, actions.actions)
+		assert.Equal(t, []string{"wait:2"}, actions.getList())
 
 		// broadcast again
 		w.Broadcast()
 		assert.Equal(t, false, rt.RunNext())
-		assert.Equal(t, []string{"new-thread", "wait:1", "wait:2"}, actions.actions)
+		assert.Equal(t, []string{}, actions.getList())
 	})
 
 	t.Run("with waiting, 2 keys", func(t *testing.T) {
@@ -127,7 +130,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 			"wait key01",
 			"new-thread02",
 			"wait key02",
-		}, actions.actions)
+		}, actions.getList())
 
 		// check num waiting
 		assert.Equal(t, 2, w.NumWaitKeys())
@@ -136,12 +139,8 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		w.Signal("key01")
 		runAllActions(rt)
 		assert.Equal(t, []string{
-			"new-thread01",
 			"wait key01",
-			"new-thread02",
-			"wait key02",
-			"wait key01",
-		}, actions.actions)
+		}, actions.getList())
 	})
 
 	t.Run("with cancel", func(t *testing.T) {
@@ -165,15 +164,14 @@ func TestSimulateKeyWaiter(t *testing.T) {
 			})
 		})
 		runAllActions(rt)
-		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.actions)
+		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.getList())
 
 		// cancel context
 		ctx.Cancel()
 		assert.Equal(t, context.Canceled, ctx.Err())
 
-		actions.clear()
 		runAllActions(rt)
-		assert.Equal(t, []string{"wait error: context canceled"}, actions.actions)
+		assert.Equal(t, []string{"wait error: context canceled"}, actions.getList())
 	})
 }
 

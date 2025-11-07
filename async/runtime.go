@@ -13,7 +13,7 @@ func NewSimulateRuntime() *SimulateRuntime {
 }
 
 type SimulateRuntime struct {
-	activeQueue []nextActionInfo // TODO use real queue
+	activeQueue []nextActionInfo
 	lastSeqID   SequenceID
 }
 
@@ -93,16 +93,34 @@ func (r *SimulateRuntime) doAddNext(ctx *simulateContext, callback func(ctx Cont
 }
 
 func (r *SimulateRuntime) RunNext() bool {
-	for len(r.activeQueue) > 0 {
+	return r.doRunWithChooseFunc(func() nextActionInfo {
 		action := r.activeQueue[0]
 		r.activeQueue = r.activeQueue[1:]
+		return action
+	})
+}
 
+func (r *SimulateRuntime) RunRandomAction(randFunc func(n int) int) bool {
+	return r.doRunWithChooseFunc(func() nextActionInfo {
+		index := randFunc(len(r.activeQueue))
+		action := r.activeQueue[index]
+
+		lastIndex := len(r.activeQueue) - 1
+		r.activeQueue[index] = r.activeQueue[lastIndex]
+		r.activeQueue = r.activeQueue[:lastIndex]
+
+		return action
+	})
+}
+
+func (r *SimulateRuntime) doRunWithChooseFunc(chooseFunc func() nextActionInfo) bool {
+	for len(r.activeQueue) > 0 {
+		action := chooseFunc()
 		if action.generation == action.ctx.generation {
 			action.callback(action.ctx)
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -116,6 +134,10 @@ func (r *SimulateRuntime) RestartThread(inputCtx Context) {
 func (r *SimulateRuntime) NewSequence() SequenceID {
 	r.lastSeqID++
 	return r.lastSeqID
+}
+
+func (r *SimulateRuntime) GetQueueSize() int {
+	return len(r.activeQueue)
 }
 
 func AssertTrue(b bool) {

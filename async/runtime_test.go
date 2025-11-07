@@ -88,33 +88,30 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 	assert.Equal(t, []string{
 		"new thread 01",
 		"new thread 02",
-	}, actions.actions)
+	}, actions.getList())
 
 	// restart
-	actions.clear()
 	rt.RestartThread(ctx)
 	rt.RunNext()
 	rt.RunNext()
 	assert.Equal(t, []string{
 		"action 02",
 		"new thread 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	// run all
-	actions.clear()
 	runAllActions(rt)
 	assert.Equal(t, []string{
 		"action 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	// restart again
-	actions.clear()
 	rt.RestartThread(ctx)
 	runAllActions(rt)
 	assert.Equal(t, []string{
 		"new thread 01",
 		"action 01",
-	}, actions.actions)
+	}, actions.getList())
 }
 
 func TestSimulateRuntime_Sequence(t *testing.T) {
@@ -135,30 +132,27 @@ func TestSimulateRuntime_Sequence(t *testing.T) {
 			actions.add("action 03")
 		})
 	})
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 
 	rt.RunNext()
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 	assert.Equal(t, []string{
 		"new thread 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	rt.RunNext()
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 	assert.Equal(t, []string{
-		"new thread 01",
 		"action 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	// run all
 	runAllActions(rt)
-	assert.Equal(t, 0, len(rt.activeQueue))
+	assert.Equal(t, 0, rt.GetQueueSize())
 	assert.Equal(t, []string{
-		"new thread 01",
-		"action 01",
 		"action 02",
 		"action 03",
-	}, actions.actions)
+	}, actions.getList())
 
 	// check size of active seq map
 	assert.Equal(t, 0, len(ctx.(*simulateContext).internalSeqMap))
@@ -182,41 +176,70 @@ func TestSimulateRuntime_Sequence__And_Restart_Thread(t *testing.T) {
 			actions.add("action 03")
 		})
 	})
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 
 	rt.RunNext()
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 	assert.Equal(t, []string{
 		"new thread 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	rt.RunNext()
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 	assert.Equal(t, []string{
-		"new thread 01",
 		"action 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	// restart
 	rt.RestartThread(ctx)
 	rt.RunNext()
-	assert.Equal(t, 1, len(rt.activeQueue))
+	assert.Equal(t, 1, rt.GetQueueSize())
 	assert.Equal(t, []string{
 		"new thread 01",
-		"action 01",
-		"new thread 01",
-	}, actions.actions)
+	}, actions.getList())
 
 	runAllActions(rt)
 	assert.Equal(t, []string{
-		"new thread 01",
-		"action 01",
-		"new thread 01",
 		"action 01",
 		"action 02",
 		"action 03",
-	}, actions.actions)
+	}, actions.getList())
 
 	// check size of active seq map
 	assert.Equal(t, 0, len(ctx.(*simulateContext).internalSeqMap))
+}
+
+func TestSimulateRuntime_RandomAction(t *testing.T) {
+	rt := NewSimulateRuntime()
+	actions := newActionListTest()
+
+	rt.NewThread(func(ctx Context) {
+		actions.add("action01")
+	})
+	rt.NewThread(func(ctx Context) {
+		actions.add("action02")
+	})
+	rt.NewThread(func(ctx Context) {
+		actions.add("action03")
+	})
+
+	var inputNum int
+	rt.RunRandomAction(func(n int) int {
+		inputNum = n
+		return 1
+	})
+	assert.Equal(t, 3, inputNum)
+	assert.Equal(t, []string{"action02"}, actions.getList())
+
+	// run again
+	rt.RunRandomAction(func(n int) int {
+		inputNum = n
+		return 0
+	})
+	assert.Equal(t, 2, inputNum)
+	assert.Equal(t, []string{"action01"}, actions.getList())
+
+	// run all
+	runAllActions(rt)
+	assert.Equal(t, []string{"action03"}, actions.getList())
 }
