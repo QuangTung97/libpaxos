@@ -73,6 +73,7 @@ func NewCoreLogic(
 	log LeaderLogGetter,
 	runner NodeRunner,
 	nowFunc func() TimestampMilli,
+	initKeyWaiterFunc func(mut *sync.Mutex) async.KeyWaiter[NodeID],
 	addNextFunc async.AddNextFunc,
 	maxBufferLen LogPos,
 	withCheckInv bool,
@@ -96,9 +97,8 @@ func NewCoreLogic(
 		tickRandomJitter:    tickRandomJitter,
 	}
 
-	// TODO dependency injection
-	c.sendAcceptWaiter = async.NewKeyWaiter[NodeID](&c.mut)
-	c.bufferLimitWaiter = async.NewKeyWaiter[NodeID](&c.mut)
+	c.sendAcceptWaiter = initKeyWaiterFunc(&c.mut)
+	c.bufferLimitWaiter = initKeyWaiterFunc(&c.mut)
 
 	c.updateFollowerCheckOtherStatus(false, false)
 	c.updateAllRunners()

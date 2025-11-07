@@ -236,6 +236,7 @@ func (s *simulationTestCase) initNodeState(
 		func() TimestampMilli {
 			return TimestampMilli(s.now.Load())
 		},
+		async.NewKeyWaiter[NodeID],
 		async.SimpleAddNextFunc,
 		LogPos(conf.maxBufferLen),
 		true,

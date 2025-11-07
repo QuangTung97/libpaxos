@@ -2,6 +2,7 @@ package simulate
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/QuangTung97/libpaxos/async"
 	"github.com/QuangTung97/libpaxos/paxos"
@@ -95,6 +96,11 @@ func NewNodeState(
 		func() paxos.TimestampMilli {
 			return sim.now
 		},
+		func(mut *sync.Mutex) async.KeyWaiter[paxos.NodeID] {
+			return async.NewSimulateKeyWaiter[paxos.NodeID](s.sim.runtime, func(key paxos.NodeID) string {
+				return key.String()[:4]
+			})
+		},
 		sim.runtime.AddNext,
 		5,
 		true,
@@ -120,36 +126,82 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 	destState := s.sim.stateMap[nodeID]
 	rt := s.sim.runtime
 
-	detail := buildVoteDetail(s.currentID, nodeID) + "::handle-request"
-	respDetail := buildVoteDetail(s.currentID, nodeID) + "::handle-response"
+	detailKey := buildVoteDetail(s.currentID, nodeID)
+	seqID := rt.NewSequence()
 
-	rt.AddNextDetail(ctx, detail, func(ctx async.Context) {
+	// TODO follower recv term
+
+	rt.AddNextDetail(ctx, detailKey+"::handle-request", func(ctx async.Context) {
 		getFunc, err := destState.acceptor.HandleRequestVoteAsync(input)
 		if err != nil {
 			return
 		}
 
 		var callback func(ctx async.Context)
-
 		callback = func(ctx async.Context) {
 			output, isFinal := getFunc()
 
-			// TODO using sequence
-			rt.AddNextDetail(ctx, respDetail, func(ctx async.Context) {
+			rt.SequenceAddNextDetail(ctx, seqID, detailKey+"::handle-response", func(ctx async.Context) {
 				_ = s.core.HandleVoteResponse(ctx, nodeID, output)
 			})
 
 			if isFinal {
 				return
 			}
-			rt.AddNextDetail(ctx, detail, callback)
-		}
 
+			rt.AddNextDetail(ctx, detailKey+"::get-next", callback)
+		}
 		callback(ctx)
 	})
 }
 
 func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+	rt := s.sim.runtime
+	destState := s.sim.stateMap[nodeID]
+
+	reqSeqID := rt.NewSequence()
+	respSeqID := rt.NewSequence()
+
+	detailKey := buildAcceptDetail(s.currentID, nodeID)
+
+	var getCallback func(ctx async.Context)
+	fromPos := paxos.LogPos(0)
+	lastCommitted := paxos.LogPos(0)
+
+	getRespCallback := func(input paxos.AcceptEntriesInput, err error) {
+		if err != nil {
+			return
+		}
+
+		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::follower-recv", func(ctx async.Context) {
+			destState.core.FollowerReceiveTermNum(input.Term)
+		})
+
+		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::handle-request", func(ctx async.Context) {
+			output, err := destState.acceptor.AcceptEntries(input)
+			if err != nil {
+				return
+			}
+
+			rt.SequenceAddNextDetail(ctx, respSeqID, detailKey+"::handle-response", func(ctx async.Context) {
+				_ = s.core.HandleAcceptEntriesResponse(nodeID, output)
+			})
+		})
+
+		fromPos = input.NextPos
+		lastCommitted = input.Committed
+		rt.AddNextDetail(ctx, detailKey+"::get-next", getCallback)
+	}
+
+	getCallback = func(ctx async.Context) {
+		s.core.GetAcceptEntriesRequestAsync(
+			ctx, term, nodeID,
+			fromPos, lastCommitted,
+			getRespCallback,
+		)
+	}
+
+	getCallback(ctx)
 }
 
 func (s *NodeState) fetchFollowerRunnerFunc(

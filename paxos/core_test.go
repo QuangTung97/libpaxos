@@ -105,6 +105,7 @@ func newCoreLogicTestWithConfig(t *testing.T, config coreLogicTestConfig) *coreL
 		func() TimestampMilli {
 			return TimestampMilli(c.now.Load())
 		},
+		async.NewKeyWaiter[NodeID],
 		async.SimpleAddNextFunc,
 		config.maxBufferLen,
 		true,
