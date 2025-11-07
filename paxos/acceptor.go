@@ -12,6 +12,8 @@ type AcceptorLogic interface {
 	StateMachineLogGetter
 
 	HandleRequestVote(input RequestVoteInput) (iter.Seq[RequestVoteOutput], error)
+	HandleRequestVoteAsync(input RequestVoteInput) (func() (RequestVoteOutput, bool), error)
+
 	AcceptEntries(input AcceptEntriesInput) (AcceptEntriesOutput, error)
 
 	GetNeedReplicatedPos(
@@ -70,25 +72,36 @@ func (s *acceptorLogicImpl) validateNodeID(toNodeID NodeID) error {
 func (s *acceptorLogicImpl) HandleRequestVote(
 	input RequestVoteInput,
 ) (iter.Seq[RequestVoteOutput], error) {
-	if err := s.validateNodeID(input.ToNode); err != nil {
+	getFunc, err := s.HandleRequestVoteAsync(input)
+	if err != nil {
 		return nil, err
 	}
 
 	return func(yield func(RequestVoteOutput) bool) {
-		fromPos := input.FromPos
-
 		for {
-			output, newFromPos, isFinal := s.buildVoteResponse(input.Term, fromPos)
-
-			ok := yield(output)
-			if !ok {
+			output, isFinal := getFunc()
+			if !yield(output) {
 				return
 			}
 			if isFinal {
 				return
 			}
-			fromPos = newFromPos
 		}
+	}, nil
+}
+
+func (s *acceptorLogicImpl) HandleRequestVoteAsync(
+	input RequestVoteInput,
+) (func() (RequestVoteOutput, bool), error) {
+	if err := s.validateNodeID(input.ToNode); err != nil {
+		return nil, err
+	}
+
+	fromPos := input.FromPos
+	return func() (output RequestVoteOutput, hasNext bool) {
+		output, newFromPos, isFinal := s.buildVoteResponse(input.Term, fromPos)
+		fromPos = newFromPos
+		return output, isFinal
 	}, nil
 }
 

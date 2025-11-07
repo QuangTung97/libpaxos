@@ -112,6 +112,41 @@ func NewNodeState(
 }
 
 func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+	input, err := s.core.GetVoteRequest(term, nodeID)
+	if err != nil {
+		return
+	}
+
+	destState := s.sim.stateMap[nodeID]
+	rt := s.sim.runtime
+
+	detail := buildVoteDetail(s.currentID, nodeID) + "::handle-request"
+	respDetail := buildVoteDetail(s.currentID, nodeID) + "::handle-response"
+
+	rt.AddNextDetail(ctx, detail, func(ctx async.Context) {
+		getFunc, err := destState.acceptor.HandleRequestVoteAsync(input)
+		if err != nil {
+			return
+		}
+
+		var callback func(ctx async.Context)
+
+		callback = func(ctx async.Context) {
+			output, isFinal := getFunc()
+
+			// TODO using sequence
+			rt.AddNextDetail(ctx, respDetail, func(ctx async.Context) {
+				_ = s.core.HandleVoteResponse(ctx, nodeID, output)
+			})
+
+			if isFinal {
+				return
+			}
+			rt.AddNextDetail(ctx, detail, callback)
+		}
+
+		callback(ctx)
+	})
 }
 
 func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
