@@ -1,6 +1,7 @@
 package simulate
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/QuangTung97/libpaxos/async"
@@ -8,6 +9,8 @@ import (
 )
 
 type RunnerFake struct {
+	currentNodeID paxos.NodeID
+
 	rt *async.SimulateRuntime
 
 	voteRunnerFunc          func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
@@ -40,6 +43,7 @@ type basicRunnerInfo struct {
 var _ paxos.NodeRunner = &RunnerFake{}
 
 func NewRunnerFake(
+	currentNodeID paxos.NodeID,
 	rt *async.SimulateRuntime,
 	voteRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	acceptorRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
@@ -51,6 +55,8 @@ func NewRunnerFake(
 	startElectionFunc func(ctx async.Context, chosen paxos.NodeID, termValue paxos.TermValue),
 ) *RunnerFake {
 	return &RunnerFake{
+		currentNodeID: currentNodeID,
+
 		rt: rt,
 
 		voteRunnerFunc:          voteRunnerFunc,
@@ -87,7 +93,7 @@ func (r *RunnerFake) StartVoteRequestRunners(
 			continue
 		}
 
-		ctx := r.rt.NewThread(func(ctx async.Context) {
+		ctx := r.rt.NewThreadDetail("vote-"+nodeString(id), func(ctx async.Context) {
 			r.voteRunnerFunc(ctx, id, term)
 		})
 
@@ -123,7 +129,7 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 			continue
 		}
 
-		ctx := r.rt.NewThread(func(ctx async.Context) {
+		ctx := r.rt.NewThreadDetail("accept-"+nodeString(id), func(ctx async.Context) {
 			r.acceptorRunnerFunc(ctx, id, term)
 		})
 
@@ -156,7 +162,8 @@ func (r *RunnerFake) StartStateMachine(
 		return true
 	}
 
-	r.stateMachineCtx = r.rt.NewThread(func(ctx async.Context) {
+	detail := "state-machine-" + nodeString(r.currentNodeID)
+	r.stateMachineCtx = r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 		r.stateMachineFunc(ctx, term, info)
 	})
 
@@ -185,7 +192,8 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 			continue
 		}
 
-		ctx := r.rt.NewThread(func(ctx async.Context) {
+		detail := fmt.Sprintf("fetch[%s=>%s]", nodeString(r.currentNodeID), nodeString(id))
+		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
 			r.fetchFollowerRunnerFunc(ctx, id, term, generation)
 		})
 
@@ -215,7 +223,7 @@ func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool 
 		return true
 	}
 
-	r.electionCtx = r.rt.NewThread(func(ctx async.Context) {
+	r.electionCtx = r.rt.NewThreadDetail("election-"+nodeString(newInfo.Chosen), func(ctx async.Context) {
 		r.startElectionFunc(ctx, newInfo.Chosen, newInfo.MaxTermValue)
 	})
 
@@ -229,4 +237,8 @@ func nodesToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {
 	}
 	slices.SortFunc(result, paxos.CompareNodeID)
 	return result
+}
+
+func nodeString(id paxos.NodeID) string {
+	return id.String()[:4]
 }

@@ -50,6 +50,7 @@ type threadGeneration int64
 type simulateContext struct {
 	generation threadGeneration
 
+	threadDetail  string
 	startCallback func(ctx Context)
 	cancelErr     error
 	broadcastSet  map[Broadcaster]struct{}
@@ -57,15 +58,20 @@ type simulateContext struct {
 	internalSeqMap map[SequenceID]*sequenceActionState
 }
 
-func newSimulateContext(startCallback func(ctx Context)) *simulateContext {
+func newSimulateContext(detail string, startCallback func(ctx Context)) *simulateContext {
 	return &simulateContext{
 		generation:    1,
+		threadDetail:  detail,
 		startCallback: startCallback,
 		broadcastSet:  map[Broadcaster]struct{}{},
 	}
 }
 
 var _ Context = &simulateContext{}
+
+func (c *simulateContext) getStartThreadDetail() string {
+	return c.threadDetail + "::start"
+}
 
 func (c *simulateContext) getSequenceActionMap() map[SequenceID]*sequenceActionState {
 	if c.internalSeqMap == nil {

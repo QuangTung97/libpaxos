@@ -38,6 +38,7 @@ func newRunnerFakeTest() *runnerFakeTest {
 	r.actions = newActionListTest()
 
 	r.runner = NewRunnerFake(
+		nodeID1,
 		r.rt,
 		r.voteFunc,
 		r.acceptorFunc,

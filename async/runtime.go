@@ -1,5 +1,7 @@
 package async
 
+import "slices"
+
 type AddNextFunc func(ctx Context, callback func(ctx Context))
 
 func SimpleAddNextFunc(ctx Context, callback func(ctx Context)) {
@@ -20,13 +22,15 @@ type SimulateRuntime struct {
 type nextActionInfo struct {
 	ctx        *simulateContext
 	generation threadGeneration
+	detail     string
 	callback   func(ctx Context)
 }
 
-func newNextActionInfo(ctx *simulateContext, callback func(ctx Context)) nextActionInfo {
+func newNextActionInfo(ctx *simulateContext, detail string, callback func(ctx Context)) nextActionInfo {
 	return nextActionInfo{
 		ctx:        ctx,
 		generation: ctx.generation,
+		detail:     detail,
 		callback:   callback,
 	}
 }
@@ -38,17 +42,31 @@ type sequenceActionState struct {
 }
 
 func (r *SimulateRuntime) NewThread(callback func(ctx Context)) Context {
-	ctx := newSimulateContext(callback)
-	r.doAddNext(ctx, callback)
+	return r.NewThreadDetail("", callback)
+}
+
+func (r *SimulateRuntime) NewThreadDetail(threadDetail string, callback func(ctx Context)) Context {
+	ctx := newSimulateContext(threadDetail, callback)
+	r.doAddNext(ctx, ctx.getStartThreadDetail(), callback)
 	return ctx
 }
 
 func (r *SimulateRuntime) AddNext(ctx Context, callback func(ctx Context)) {
-	r.doAddNext(ctx.(*simulateContext), callback)
+	r.AddNextDetail(ctx, "", callback)
+}
+
+func (r *SimulateRuntime) AddNextDetail(ctx Context, detail string, callback func(ctx Context)) {
+	r.doAddNext(ctx.(*simulateContext), detail, callback)
 }
 
 func (r *SimulateRuntime) SequenceAddNext(
 	inputCtx Context, seqID SequenceID, callback func(ctx Context),
+) {
+	r.SequenceAddNextDetail(inputCtx, seqID, "", callback)
+}
+
+func (r *SimulateRuntime) SequenceAddNextDetail(
+	inputCtx Context, seqID SequenceID, detail string, callback func(ctx Context),
 ) {
 	AssertTrue(seqID > 0)
 	ctx := inputCtx.(*simulateContext)
@@ -63,7 +81,7 @@ func (r *SimulateRuntime) SequenceAddNext(
 		seqMap[seqID] = state
 	}
 
-	state.pendingActions = append(state.pendingActions, newNextActionInfo(ctx, callback))
+	state.pendingActions = append(state.pendingActions, newNextActionInfo(ctx, detail, callback))
 	r.startIfNotRunning(ctx, state)
 }
 
@@ -76,7 +94,7 @@ func (r *SimulateRuntime) startIfNotRunning(threadCtx *simulateContext, state *s
 	action := state.pendingActions[0]
 	state.pendingActions = state.pendingActions[1:]
 
-	r.doAddNext(action.ctx, func(ctx Context) {
+	r.doAddNext(action.ctx, action.detail, func(ctx Context) {
 		action.callback(ctx)
 		state.isRunning = false
 
@@ -88,8 +106,8 @@ func (r *SimulateRuntime) startIfNotRunning(threadCtx *simulateContext, state *s
 	})
 }
 
-func (r *SimulateRuntime) doAddNext(ctx *simulateContext, callback func(ctx Context)) {
-	r.activeQueue = append(r.activeQueue, newNextActionInfo(ctx, callback))
+func (r *SimulateRuntime) doAddNext(ctx *simulateContext, detail string, callback func(ctx Context)) {
+	r.activeQueue = append(r.activeQueue, newNextActionInfo(ctx, detail, callback))
 }
 
 func (r *SimulateRuntime) RunNext() bool {
@@ -128,7 +146,7 @@ func (r *SimulateRuntime) RestartThread(inputCtx Context) {
 	ctx := inputCtx.(*simulateContext)
 	ctx.generation++
 	ctx.internalSeqMap = nil
-	r.doAddNext(ctx, ctx.startCallback)
+	r.doAddNext(ctx, ctx.threadDetail, ctx.startCallback)
 }
 
 func (r *SimulateRuntime) NewSequence() SequenceID {
@@ -138,6 +156,15 @@ func (r *SimulateRuntime) NewSequence() SequenceID {
 
 func (r *SimulateRuntime) GetQueueSize() int {
 	return len(r.activeQueue)
+}
+
+func (r *SimulateRuntime) GetQueueDetails() []string {
+	result := make([]string, 0, len(r.activeQueue))
+	for _, action := range r.activeQueue {
+		result = append(result, action.detail)
+	}
+	slices.Sort(result)
+	return result
 }
 
 func AssertTrue(b bool) {

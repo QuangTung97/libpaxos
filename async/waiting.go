@@ -1,6 +1,7 @@
 package async
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/QuangTung97/libpaxos/cond"
@@ -83,16 +84,20 @@ func (w *realKeyWaiter[T]) NumWaitKeys() int {
 // Simulate Waiter
 // ================================================================
 
-func NewSimulateKeyWaiter[T comparable](rt *SimulateRuntime) KeyWaiter[T] {
+func NewSimulateKeyWaiter[T comparable](
+	rt *SimulateRuntime, detailFunc func(key T) string,
+) KeyWaiter[T] {
 	return &simulateKeyWaiter[T]{
-		rt:      rt,
-		waitMap: map[T][]nextActionInfo{},
+		rt:         rt,
+		waitMap:    map[T][]nextActionInfo{},
+		detailFunc: detailFunc,
 	}
 }
 
 type simulateKeyWaiter[T comparable] struct {
-	rt      *SimulateRuntime
-	waitMap map[T][]nextActionInfo
+	rt         *SimulateRuntime
+	waitMap    map[T][]nextActionInfo
+	detailFunc func(key T) string
 }
 
 func (w *simulateKeyWaiter[T]) Run(
@@ -111,7 +116,8 @@ func (w *simulateKeyWaiter[T]) Run(
 			return
 		}
 
-		w.waitMap[key] = append(w.waitMap[key], newNextActionInfo(ctx, actionCallback))
+		detailStr := ctx.getStartThreadDetail() + fmt.Sprintf("::wait[%s]", w.detailFunc(key))
+		w.waitMap[key] = append(w.waitMap[key], newNextActionInfo(ctx, detailStr, actionCallback))
 		ctx.broadcastSet[w] = struct{}{}
 	}
 
@@ -121,7 +127,7 @@ func (w *simulateKeyWaiter[T]) Run(
 func (w *simulateKeyWaiter[T]) Signal(key T) {
 	list := w.waitMap[key]
 	for _, action := range list {
-		w.rt.AddNext(action.ctx, action.callback)
+		w.rt.AddNextDetail(action.ctx, action.detail, action.callback)
 	}
 	delete(w.waitMap, key)
 }

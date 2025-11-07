@@ -42,12 +42,14 @@ func runAllActions(rt *SimulateRuntime) {
 func TestSimulateKeyWaiter(t *testing.T) {
 	t.Run("simple success", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt)
+		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
+			return key
+		})
 
 		actions := newActionListTest()
 		count := 0
 
-		rt.NewThread(func(ctx Context) {
+		rt.NewThreadDetail("thread01", func(ctx Context) {
 			actions.add("new-thread")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
@@ -56,6 +58,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 			})
 		})
 		assert.Equal(t, []string{}, actions.getList())
+		assert.Equal(t, []string{"thread01::start"}, rt.GetQueueDetails())
 
 		assert.Equal(t, true, rt.RunNext())
 		assert.Equal(t, []string{"new-thread", "wait:1"}, actions.getList())
@@ -74,11 +77,13 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt)
+		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
+			return key
+		})
 
 		actions := newActionListTest()
 		count := 0
-		rt.NewThread(func(ctx Context) {
+		rt.NewThreadDetail("thread01", func(ctx Context) {
 			actions.add("new-thread")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
@@ -96,6 +101,8 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		// broadcast
 		w.Broadcast()
+		assert.Equal(t, []string{"thread01::start::wait[key01]"}, rt.GetQueueDetails())
+		// run
 		assert.Equal(t, true, rt.RunNext())
 		assert.Equal(t, []string{"wait:2"}, actions.getList())
 
@@ -107,7 +114,9 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting, 2 keys", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt)
+		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
+			return key
+		})
 
 		actions := newActionListTest()
 		rt.NewThread(func(ctx Context) {
@@ -145,7 +154,9 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with cancel", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt)
+		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
+			return key
+		})
 
 		actions := newActionListTest()
 		count := 0
