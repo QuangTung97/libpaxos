@@ -10,7 +10,7 @@ import (
 	"github.com/QuangTung97/libpaxos/paxos"
 )
 
-var newTestTerm01 = paxos.TermNum{
+var testTerm01 = paxos.TermNum{
 	Num:    21,
 	NodeID: nodeID2,
 }
@@ -43,6 +43,7 @@ func newRunnerFakeTest() *runnerFakeTest {
 		r.acceptorFunc,
 		r.fetchFollowerFunc,
 		r.stateMachineFunc,
+		r.startElectionFunc,
 	)
 
 	return r
@@ -84,6 +85,17 @@ func (r *runnerFakeTest) stateMachineFunc(
 	})
 }
 
+func (r *runnerFakeTest) startElectionFunc(
+	ctx async.Context, termValue paxos.TermValue,
+	nodeID paxos.NodeID, retryCount int,
+) {
+	r.ctxList = append(r.ctxList, ctx)
+	r.actions.add("start-election:%v,term=%d,retry=%d", nodeID.String()[:4], termValue, retryCount)
+	r.rt.AddNext(ctx, func(ctx async.Context) {
+		r.actions.add("election-action01:%d", termValue)
+	})
+}
+
 func TestRunnerFake_AcceptRequestRunners(t *testing.T) {
 	r := newRunnerFakeTest()
 
@@ -114,6 +126,25 @@ func TestRunnerFake_AcceptRequestRunners(t *testing.T) {
 	assert.Equal(t, 2, len(r.ctxList))
 	assert.Equal(t, context.Canceled, r.ctxList[0].Err())
 	assert.Equal(t, context.Canceled, r.ctxList[1].Err())
+}
+
+func TestRunnerFake_AcceptRequestRunners__Different_Term(t *testing.T) {
+	r := newRunnerFakeTest()
+
+	ok := r.runner.StartAcceptRequestRunners(initTerm, newNodeSet(nodeID1))
+	assert.Equal(t, true, ok)
+	assert.Equal(t, []string{}, r.actions.getList())
+
+	// run again with term changed
+	ok = r.runner.StartAcceptRequestRunners(testTerm01, newNodeSet(nodeID1))
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-accept:6401,20",
+		"start-accept:6401,21",
+		"accept-action01:6401,20",
+		"accept-action01:6401,21",
+	}, r.actions.getList())
 }
 
 func TestRunnerFake_AcceptRequestRunners__Empty(t *testing.T) {
@@ -245,7 +276,7 @@ func TestRunnerFake_StartStateMachine(t *testing.T) {
 	}, r.actions.getList())
 
 	// with different term
-	ok = r.runner.StartStateMachine(newTestTerm01, info)
+	ok = r.runner.StartStateMachine(testTerm01, info)
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{
@@ -254,7 +285,7 @@ func TestRunnerFake_StartStateMachine(t *testing.T) {
 	}, r.actions.getList())
 
 	// with different info, stop
-	ok = r.runner.StartStateMachine(newTestTerm01, paxos.StateMachineRunnerInfo{})
+	ok = r.runner.StartStateMachine(testTerm01, paxos.StateMachineRunnerInfo{})
 	assert.Equal(t, true, ok)
 	runAllActions(r.rt)
 	assert.Equal(t, []string{}, r.actions.getList())
@@ -270,4 +301,44 @@ func TestRunnerFake_StartStateMachine(t *testing.T) {
 		"start-state-machine:20,running=true",
 		"state-machine-action01:20",
 	}, r.actions.getList())
+}
+
+func TestRunnerFake_StartElectionRunner(t *testing.T) {
+	r := newRunnerFakeTest()
+
+	// start
+	ok := r.runner.StartElectionRunner(22, true, nodeID4, 2)
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-election:6404,term=22,retry=2",
+		"election-action01:22",
+	}, r.actions.getList())
+
+	// start same params
+	ok = r.runner.StartElectionRunner(22, true, nodeID4, 2)
+	assert.Equal(t, false, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{}, r.actions.getList())
+
+	// start different retry
+	ok = r.runner.StartElectionRunner(22, true, nodeID4, 3)
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{
+		"start-election:6404,term=22,retry=3",
+		"election-action01:22",
+	}, r.actions.getList())
+	assert.Equal(t, 2, len(r.ctxList))
+	assert.Equal(t, context.Canceled, r.ctxList[0].Err())
+	assert.Equal(t, nil, r.ctxList[1].Err())
+
+	// stop
+	ok = r.runner.StartElectionRunner(22, false, nodeID4, 3)
+	assert.Equal(t, true, ok)
+	runAllActions(r.rt)
+	assert.Equal(t, []string{}, r.actions.getList())
+	assert.Equal(t, 2, len(r.ctxList))
+	assert.Equal(t, context.Canceled, r.ctxList[0].Err())
+	assert.Equal(t, context.Canceled, r.ctxList[1].Err())
 }

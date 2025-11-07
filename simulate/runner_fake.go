@@ -14,6 +14,7 @@ type RunnerFake struct {
 	acceptorRunnerFunc      func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum)
 	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int)
 	stateMachineFunc        func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo)
+	startElectionFunc       func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID, retryCount int)
 
 	voteMap          map[paxos.NodeID]basicRunnerInfo
 	acceptorMap      map[paxos.NodeID]basicRunnerInfo
@@ -22,6 +23,9 @@ type RunnerFake struct {
 	stateMachineTerm paxos.TermNum
 	stateMachineInfo paxos.StateMachineRunnerInfo
 	stateMachineCtx  async.Context
+
+	electionCtx  async.Context
+	electionInfo electionInfo
 }
 
 type basicRunnerInfo struct {
@@ -35,6 +39,13 @@ type fetchFollowerInfo struct {
 	retry int
 }
 
+type electionInfo struct {
+	started    bool
+	termValue  paxos.TermValue
+	nodeID     paxos.NodeID
+	retryCount int
+}
+
 var _ paxos.NodeRunner = &RunnerFake{}
 
 func NewRunnerFake(
@@ -43,6 +54,7 @@ func NewRunnerFake(
 	acceptorRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum),
 	fetchFollowerRunnerFunc func(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum, retryCount int),
 	stateMachineFunc func(ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo),
+	startElectionFunc func(ctx async.Context, termValue paxos.TermValue, nodeID paxos.NodeID, retryCount int),
 ) *RunnerFake {
 	return &RunnerFake{
 		rt: rt,
@@ -51,6 +63,7 @@ func NewRunnerFake(
 		acceptorRunnerFunc:      acceptorRunnerFunc,
 		fetchFollowerRunnerFunc: fetchFollowerRunnerFunc,
 		stateMachineFunc:        stateMachineFunc,
+		startElectionFunc:       startElectionFunc,
 
 		voteMap:          map[paxos.NodeID]basicRunnerInfo{},
 		acceptorMap:      map[paxos.NodeID]basicRunnerInfo{},
@@ -133,24 +146,17 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 func (r *RunnerFake) StartStateMachine(
 	term paxos.TermNum, info paxos.StateMachineRunnerInfo,
 ) bool {
-	changed := false
-	if term != r.stateMachineTerm {
-		changed = true
-	} else if info != r.stateMachineInfo {
-		changed = true
-	}
-
-	if !changed {
+	if term == r.stateMachineTerm && info == r.stateMachineInfo {
 		return false
 	}
+
+	r.stateMachineTerm = term
+	r.stateMachineInfo = info
 
 	if r.stateMachineCtx != nil {
 		r.stateMachineCtx.Cancel()
 		r.stateMachineCtx = nil
 	}
-
-	r.stateMachineTerm = term
-	r.stateMachineInfo = info
 
 	if !info.Running {
 		return true
@@ -203,7 +209,32 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 func (r *RunnerFake) StartElectionRunner(
 	termValue paxos.TermValue, started bool, chosen paxos.NodeID, retryCount int,
 ) bool {
-	return false
+	newInfo := electionInfo{
+		started:    started,
+		termValue:  termValue,
+		nodeID:     chosen,
+		retryCount: retryCount,
+	}
+
+	if r.electionInfo == newInfo {
+		return false
+	}
+
+	r.electionInfo = newInfo
+	if r.electionCtx != nil {
+		r.electionCtx.Cancel()
+		r.electionCtx = nil
+	}
+
+	if !started {
+		return true
+	}
+
+	r.electionCtx = r.rt.NewThread(func(ctx async.Context) {
+		r.startElectionFunc(ctx, termValue, chosen, retryCount)
+	})
+
+	return true
 }
 
 func nodesToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {
