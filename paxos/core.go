@@ -38,6 +38,8 @@ type CoreLogic interface {
 
 	InsertCommand(ctx async.Context, term TermNum, cmdDataList ...[]byte) error
 
+	InsertCommandAsync(ctx async.Context, term TermNum, cmdDataList [][]byte, callback func(err error))
+
 	CheckTimeout()
 
 	ChangeMembership(ctx async.Context, term TermNum, newNodes []NodeID) error
@@ -1026,6 +1028,15 @@ func (c *coreLogicImpl) InsertCommand(
 	ctx async.Context, term TermNum, cmdList ...[]byte,
 ) error {
 	var outputErr error
+	c.InsertCommandAsync(ctx, term, cmdList, func(err error) {
+		outputErr = err
+	})
+	return outputErr
+}
+
+func (c *coreLogicImpl) InsertCommandAsync(
+	ctx async.Context, term TermNum, cmdList [][]byte, callback func(err error),
+) {
 	state := insertCmdState{
 		cmdList: cmdList,
 	}
@@ -1033,20 +1044,24 @@ func (c *coreLogicImpl) InsertCommand(
 	c.bufferLimitWaiter.Run(ctx, c.persistent.GetNodeID(),
 		func(ctx async.Context, err error) (async.WaitStatus, error) {
 			if err != nil {
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
 			status, err := c.doInsertCommandCallback(term, &state)
 			if err != nil {
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
-			return status, nil
+			if status != async.WaitStatusSuccess {
+				return status, nil
+			}
+
+			callback(nil)
+			return async.WaitStatusSuccess, nil
 		},
 	)
-	return outputErr
 }
 
 type insertCmdState struct {

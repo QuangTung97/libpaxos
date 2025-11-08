@@ -2,6 +2,7 @@ package simulate
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,19 +37,37 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 	runAllActions(s.runtime)
 	state := s.getLeader()
 
-	cmdSeq := s.runtime.NewSequence()
 	s.runtime.NewThreadDetail("setup-cmd", func(ctx async.Context) {
 		term := state.persistent.GetLastTerm()
-		for i := range 20 {
-			s.runtime.SequenceAddNextDetail(ctx, cmdSeq, "cmd::request", func(ctx async.Context) {
-				_ = state.core.InsertCommand(ctx, term, []byte(fmt.Sprintf("cmd-test:%02d", i)))
-			})
+		cmdIndex := 0
+
+		var insertCallback func(ctx async.Context)
+
+		insertCallback = func(ctx async.Context) {
+			nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))
+			state.core.InsertCommandAsync(
+				ctx, term, [][]byte{nextCmd},
+				func(err error) {
+					cmdIndex++
+					if cmdIndex >= 20 {
+						return
+					}
+
+					s.runtime.AddNextDetail(ctx, "cmd::request", insertCallback)
+				},
+			)
 		}
+
+		s.runtime.AddNextDetail(ctx, "cmd::request", insertCallback)
 	})
 
 	runAllActions(s.runtime)
 
-	// check logs
+	state1 := s.stateMap[nodeID1]
+	state2 := s.stateMap[nodeID1]
+	state3 := s.stateMap[nodeID1]
+
+	// check committed info
 	assert.Equal(t, paxos.CommittedInfo{
 		Members: []paxos.MemberInfo{
 			{Nodes: []paxos.NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
@@ -61,5 +80,28 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 				NodeID: nodeID2,
 			},
 		},
-	}, s.stateMap[nodeID1].log.GetCommittedInfo())
+	}, state1.log.GetCommittedInfo())
+
+	// check log equal
+	assert.Equal(t, true, slices.EqualFunc(
+		state1.log.GetEntries(1, 100),
+		state2.log.GetEntries(1, 100),
+		paxos.LogEntryEqual,
+	))
+	assert.Equal(t, true, slices.EqualFunc(
+		state2.log.GetEntries(1, 100),
+		state3.log.GetEntries(1, 100),
+		paxos.LogEntryEqual,
+	))
+
+	// check log values
+	entries := state1.log.GetEntries(1, 100)
+	assert.Equal(t, 21, len(entries))
+	for _, entry := range entries {
+		assert.Equal(t, false, entry.Term.IsFinite)
+	}
+	for index, entry := range entries[1:] {
+		assert.Equal(t, paxos.LogTypeCmd, entry.Type)
+		assert.Equal(t, fmt.Sprintf("cmd-test:%02d", index), string(entry.CmdData))
+	}
 }
