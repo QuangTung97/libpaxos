@@ -243,3 +243,30 @@ func TestSimulateRuntime_RandomAction(t *testing.T) {
 	runAllActions(rt)
 	assert.Equal(t, []string{"action03"}, actions.getList())
 }
+
+func TestSimulateRuntime__Remove_All_Canceled(t *testing.T) {
+	rt := NewSimulateRuntime()
+
+	ctx := rt.NewThreadDetail("thread01", func(ctx Context) {
+		rt.AddNextDetail(ctx, "sub01", func(ctx Context) {
+		})
+	})
+	rt.NewThreadDetail("thread02", func(ctx Context) {
+	})
+
+	assert.Equal(t, []string{
+		"thread01::init",
+		"thread02::init",
+	}, rt.GetQueueDetails())
+
+	ctx.Cancel()
+	assert.Equal(t, []string{
+		"thread01::init:<canceled>",
+		"thread02::init",
+	}, rt.GetQueueDetails())
+
+	rt.RemoveAllCanceled()
+	assert.Equal(t, []string{
+		"thread02::init",
+	}, rt.GetQueueDetails())
+}

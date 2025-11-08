@@ -159,9 +159,24 @@ func (r *SimulateRuntime) GetQueueSize() int {
 func (r *SimulateRuntime) GetQueueDetails() []string {
 	result := make([]string, 0, len(r.activeQueue))
 	for _, action := range r.activeQueue {
-		result = append(result, action.detail)
+		status := ""
+		if action.ctx.cancelErr != nil {
+			status = ":<canceled>"
+		}
+		result = append(result, action.detail+status)
 	}
 	return result
+}
+
+func (r *SimulateRuntime) RemoveAllCanceled() {
+	newActions := make([]nextActionInfo, 0, len(r.activeQueue))
+	for _, action := range r.activeQueue {
+		if action.ctx.cancelErr != nil {
+			continue
+		}
+		newActions = append(newActions, action)
+	}
+	r.activeQueue = newActions
 }
 
 func AssertTrue(b bool) {

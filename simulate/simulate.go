@@ -129,9 +129,7 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 	detailKey := buildVoteDetail(s.currentID, nodeID)
 	seqID := rt.NewSequence()
 
-	// TODO follower recv term
-
-	rt.AddNextDetail(ctx, detailKey+"::handle-request", func(ctx async.Context) {
+	handleRequestFunc := func(ctx async.Context) {
 		getFunc, err := destState.acceptor.HandleRequestVoteAsync(input)
 		if err != nil {
 			return
@@ -152,6 +150,11 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 			rt.AddNextDetail(ctx, detailKey+"::get-next", callback)
 		}
 		callback(ctx)
+	}
+
+	rt.AddNextDetail(ctx, detailKey+"::follower-recv", func(ctx async.Context) {
+		s.core.FollowerReceiveTermNum(input.Term)
+		rt.AddNextDetail(ctx, detailKey+"::handle-request", handleRequestFunc)
 	})
 }
 
