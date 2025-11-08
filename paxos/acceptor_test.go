@@ -57,7 +57,11 @@ func (s *acceptorLogicTest) putMembers() {
 }
 
 func (s *acceptorLogicTest) initLogic(limit int) {
-	s.logic = NewAcceptorLogic(nodeID2, s.log, limit)
+	s.logic = NewAcceptorLogic(
+		nodeID2, s.log,
+		async.NewKeyWaiter[NodeID],
+		limit,
+	)
 }
 
 func (s *acceptorLogicTest) doHandleVote(term TermNum, fromPos LogPos) []RequestVoteOutput {

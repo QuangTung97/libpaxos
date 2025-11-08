@@ -89,6 +89,12 @@ func NewNodeState(
 		s.startElectionFunc,
 	)
 
+	initKeyWaiterFunc := func(mut *sync.Mutex) async.KeyWaiter[paxos.NodeID] {
+		return async.NewSimulateKeyWaiter[paxos.NodeID](s.sim.runtime, func(key paxos.NodeID) string {
+			return key.String()[:4]
+		})
+	}
+
 	s.core = paxos.NewCoreLogic(
 		s.persistent,
 		s.log,
@@ -96,11 +102,7 @@ func NewNodeState(
 		func() paxos.TimestampMilli {
 			return sim.now
 		},
-		func(mut *sync.Mutex) async.KeyWaiter[paxos.NodeID] {
-			return async.NewSimulateKeyWaiter[paxos.NodeID](s.sim.runtime, func(key paxos.NodeID) string {
-				return key.String()[:4]
-			})
-		},
+		initKeyWaiterFunc,
 		sim.runtime.AddNext,
 		5,
 		true,
@@ -111,6 +113,7 @@ func NewNodeState(
 	s.acceptor = paxos.NewAcceptorLogic(
 		id,
 		s.log,
+		initKeyWaiterFunc,
 		3,
 	)
 
@@ -160,6 +163,19 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 
 func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
 	rt := s.sim.runtime
+	detailKey := buildAcceptDetail(s.currentID, nodeID)
+
+	rt.AddNextDetail(ctx, detailKey+"::setup-accept", func(ctx async.Context) {
+		s.doSendAcceptRequest(ctx, nodeID, term)
+	})
+
+	rt.AddNextDetail(ctx, detailKey+"::setup-replicate", func(ctx async.Context) {
+		s.doSendReplicateRequest(ctx, nodeID, term)
+	})
+}
+
+func (s *NodeState) doSendAcceptRequest(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+	rt := s.sim.runtime
 	destState := s.sim.stateMap[nodeID]
 
 	reqSeqID := rt.NewSequence()
@@ -205,6 +221,51 @@ func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, ter
 	}
 
 	getCallback(ctx)
+}
+
+func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
+	destState := s.sim.stateMap[nodeID]
+	rt := s.sim.runtime
+	detailKey := buildAcceptDetail(s.currentID, nodeID)
+
+	requestSeqID := rt.NewSequence()
+	responseSeqID := rt.NewSequence()
+
+	fromPos := paxos.LogPos(0)
+	lastReplicated := paxos.LogPos(0)
+
+	var rootCallback func(ctx async.Context)
+
+	asyncCallback := func(input paxos.NeedReplicatedInput, err error) {
+		if err != nil {
+			return
+		}
+
+		fromPos = input.NextPos
+		lastReplicated = input.FullyReplicated
+
+		rt.SequenceAddNextDetail(ctx, requestSeqID, detailKey+"::get-pos-list", func(ctx async.Context) {
+			acceptInput, err := s.core.GetNeedReplicatedLogEntries(input)
+			if err != nil {
+				return
+			}
+
+			rt.SequenceAddNextDetail(ctx, responseSeqID, detailKey+"::replicate-accept", func(ctx async.Context) {
+				_, _ = s.acceptor.AcceptEntries(acceptInput)
+			})
+		})
+
+		rt.AddNextDetail(ctx, detailKey+"::acceptor-get-need-replicate", rootCallback)
+	}
+
+	rootCallback = func(ctx async.Context) {
+		destState.acceptor.GetNeedReplicatedPosAsync(
+			ctx, term,
+			fromPos, lastReplicated,
+			asyncCallback,
+		)
+	}
+	rootCallback(ctx)
 }
 
 func (s *NodeState) fetchFollowerRunnerFunc(

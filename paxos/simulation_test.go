@@ -224,6 +224,7 @@ func (s *simulationTestCase) initNodeState(
 	state.acceptor = NewAcceptorLogic(
 		id,
 		state.log,
+		async.NewKeyWaiter[NodeID],
 		conf.acceptorLimit,
 	)
 

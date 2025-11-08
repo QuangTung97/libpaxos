@@ -49,6 +49,7 @@ type acceptorLogicImpl struct {
 func NewAcceptorLogic(
 	currentNode NodeID,
 	log LogStorage,
+	initKeyWaiter func(mut *sync.Mutex) async.KeyWaiter[NodeID],
 	limit int,
 ) AcceptorLogic {
 	s := &acceptorLogicImpl{
@@ -58,7 +59,7 @@ func NewAcceptorLogic(
 		log:           log,
 		lastCommitted: log.GetFullyReplicated(),
 	}
-	s.waiter = async.NewKeyWaiter[NodeID](&s.mut)
+	s.waiter = initKeyWaiter(&s.mut)
 	return s
 }
 
