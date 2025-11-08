@@ -21,6 +21,8 @@ type CoreLogic interface {
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(ctx async.Context, fromNode NodeID, output RequestVoteOutput) error
 
+	// TODO add async HandleVoteResponse
+
 	GetAcceptEntriesRequest(
 		ctx async.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
@@ -43,6 +45,8 @@ type CoreLogic interface {
 	CheckTimeout()
 
 	ChangeMembership(ctx async.Context, term TermNum, newNodes []NodeID) error
+
+	ChangeMembershipAsync(ctx async.Context, term TermNum, newNodes []NodeID, callback func(err error))
 
 	GetNeedReplicatedLogEntries(input NeedReplicatedInput) (AcceptEntriesInput, error)
 
@@ -1169,24 +1173,38 @@ func (c *coreLogicImpl) broadcastAllAcceptors() {
 
 func (c *coreLogicImpl) ChangeMembership(ctx async.Context, term TermNum, newNodes []NodeID) error {
 	var outputErr error
+	c.ChangeMembershipAsync(ctx, term, newNodes, func(err error) {
+		outputErr = err
+	})
+	return outputErr
+}
+
+func (c *coreLogicImpl) ChangeMembershipAsync(
+	ctx async.Context, term TermNum, newNodes []NodeID,
+	callback func(err error),
+) {
 	c.bufferLimitWaiter.Run(
 		ctx, c.persistent.GetNodeID(),
 		func(ctx async.Context, err error) (async.WaitStatus, error) {
 			if err != nil {
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
 			status, err := c.doChangeMembershipCallback(term, newNodes)
 			if err != nil {
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
-			return status, nil
+			if status != async.WaitStatusSuccess {
+				return status, nil
+			}
+
+			callback(nil)
+			return async.WaitStatusSuccess, nil
 		},
 	)
-	return outputErr
 }
 
 func (c *coreLogicImpl) doChangeMembershipCallback(

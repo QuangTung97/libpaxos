@@ -143,6 +143,7 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 			output, isFinal := getFunc()
 
 			rt.SequenceAddNextDetail(ctx, seqID, detailKey+"::handle-response", func(ctx async.Context) {
+				// TODO use async instead
 				_ = s.core.HandleVoteResponse(ctx, nodeID, output)
 			})
 
