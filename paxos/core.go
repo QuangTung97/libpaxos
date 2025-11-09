@@ -1574,7 +1574,13 @@ func (c *coreLogicImpl) doGetCommittedEntriesWithWaitFromMemCallback(
 		memMinPos = c.leader.logBuffer.GetFrontPos()
 	}
 
-	posList := make([]LogPos, 0, maxPos-memMinPos+1)
+	initCap := maxPos - memMinPos + 1
+	if maxPos < memMinPos {
+		// TODO testing
+		initCap = 0
+	}
+
+	posList := make([]LogPos, 0, initCap)
 	for pos := memMinPos; pos <= maxPos; pos++ {
 		posList = append(posList, pos)
 	}
@@ -1679,6 +1685,7 @@ func (c *coreLogicImpl) internalCheckInvariant() {
 
 		// check fully replicated always greater than or equal min buffer pos
 		AssertTrue(c.log.GetCommittedInfo().FullyReplicated+1 >= c.leader.logBuffer.GetFrontPos())
+		AssertTrue(c.leader.logBuffer.GetFrontPos() <= c.leader.lastCommitted+1)
 
 		// Can not be enabled because sometimes the fullyReplicated pos can be > last committed
 		// AssertTrue(c.leader.lastCommitted >= c.log.GetCommittedInfo().FullyReplicated)

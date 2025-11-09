@@ -60,6 +60,8 @@ type NodeState struct {
 
 	core     paxos.CoreLogic
 	acceptor paxos.AcceptorLogic
+
+	stateLog []paxos.LogEntry
 }
 
 func NewNodeState(
@@ -312,6 +314,46 @@ func (s *NodeState) fetchFollowerRunnerFunc(
 func (s *NodeState) stateMachineFunc(
 	ctx async.Context, term paxos.TermNum, info paxos.StateMachineRunnerInfo,
 ) {
+	if !info.Running {
+		return
+	}
+
+	var getter paxos.StateMachineLogGetter
+	if info.IsLeader {
+		getter = s.core
+	} else {
+		getter = s.acceptor
+	}
+
+	rt := s.sim.runtime
+	detailKey := buildStateMachineDetail(s.currentID)
+
+	var callback func(ctx async.Context)
+	handleFunc := func(output paxos.GetCommittedEntriesOutput, err error) {
+		if err != nil {
+			return
+		}
+
+		for _, entry := range output.Entries {
+			lastPos := paxos.LogPos(len(s.stateLog))
+			if entry.Pos <= lastPos {
+				continue
+			}
+			s.stateLog = append(s.stateLog, entry)
+		}
+
+		rt.AddNext(ctx, detailKey+"::get-next", callback)
+	}
+
+	callback = func(ctx async.Context) {
+		fromPos := paxos.LogPos(len(s.stateLog) + 1)
+		getter.GetCommittedEntriesWithWaitAsync(
+			ctx, term, fromPos, 3,
+			handleFunc,
+		)
+	}
+
+	callback(ctx)
 }
 
 func (s *NodeState) startElectionFunc(

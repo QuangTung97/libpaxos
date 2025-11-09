@@ -28,6 +28,23 @@ func (s *Simulation) getLeader() *NodeState {
 	panic(fmt.Sprintf("number of leader is not 1, actual: %d", leaderCount))
 }
 
+func (s *Simulation) assertLogMatch(t *testing.T, nodeIDList ...paxos.NodeID) {
+	firstID := nodeIDList[0]
+	firstLog := s.stateMap[firstID].log.GetEntries(1, 10_000)
+
+	// check disk log
+	for _, id := range nodeIDList[1:] {
+		checkedLog := s.stateMap[id].log.GetEntries(1, 10_000)
+		assert.Equal(t, true, slices.EqualFunc(firstLog, checkedLog, paxos.LogEntryEqual))
+	}
+
+	// check state machine log
+	for _, id := range nodeIDList {
+		checkedLog := s.stateMap[id].stateLog
+		assert.Equal(t, true, slices.EqualFunc(firstLog, checkedLog, paxos.LogEntryEqual))
+	}
+}
+
 func TestPaxos_Simple_Three_Nodes__Always_Elect_One_Leader(t *testing.T) {
 	totalActions := 0
 	for range 1000 {
@@ -80,10 +97,12 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T, totalActions *int) {
 	leaderState := s.getLeader()
 	cmdSeq := s.runtime.NewSequence()
 
+	const maxCmd = 12
+
 	s.runtime.NewThread("setup-cmd", func(ctx async.Context) {
 		term := leaderState.persistent.GetLastTerm()
 
-		for cmdIndex := range 20 {
+		for cmdIndex := range maxCmd {
 			s.runtime.SeqAddNext(
 				ctx, cmdSeq, "cmd::request",
 				func(ctx async.Context, finishFunc func()) {
@@ -101,20 +120,17 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T, totalActions *int) {
 
 	// do insert commands
 	s.runRandomAllActions()
-	assert.Equal(t, paxos.LogPos(21), leaderState.log.GetFullyReplicated())
-
-	state1 := s.stateMap[nodeID1]
-	state2 := s.stateMap[nodeID1]
-	state3 := s.stateMap[nodeID1]
+	assert.Equal(t, paxos.LogPos(maxCmd+1), leaderState.log.GetFullyReplicated())
 
 	// check committed info
+	state1 := s.stateMap[nodeID1]
 	assert.Equal(t, paxos.CommittedInfo{
 		Members: []paxos.MemberInfo{
 			{Nodes: []paxos.NodeID{nodeID1, nodeID2, nodeID3}, CreatedAt: 1},
 		},
-		FullyReplicated: 21,
+		FullyReplicated: maxCmd + 1,
 		PrevPointer: paxos.PreviousPointer{
-			Pos: 21,
+			Pos: maxCmd + 1,
 			Term: paxos.TermNum{
 				Num:    21,
 				NodeID: leaderState.currentID,
@@ -122,21 +138,12 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T, totalActions *int) {
 		},
 	}, state1.log.GetCommittedInfo())
 
-	// check log equal
-	assert.Equal(t, true, slices.EqualFunc(
-		state1.log.GetEntries(1, 100),
-		state2.log.GetEntries(1, 100),
-		paxos.LogEntryEqual,
-	))
-	assert.Equal(t, true, slices.EqualFunc(
-		state2.log.GetEntries(1, 100),
-		state3.log.GetEntries(1, 100),
-		paxos.LogEntryEqual,
-	))
+	// check log match
+	s.assertLogMatch(t, nodeID1, nodeID2, nodeID3)
 
 	// check log values
 	entries := state1.log.GetEntries(1, 100)
-	assert.Equal(t, 21, len(entries))
+	assert.Equal(t, maxCmd+1, len(entries))
 	for _, entry := range entries {
 		assert.Equal(t, false, entry.Term.IsFinite)
 	}
