@@ -28,7 +28,6 @@ func NewSimulation(
 	s := &Simulation{}
 
 	seed := time.Now().UnixNano()
-	seed = 1762652166494296174 // TODO
 	fmt.Println("SEED:", seed)
 	s.randObj = rand.New(rand.NewSource(seed))
 
@@ -279,7 +278,7 @@ func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeI
 
 			rt.SeqAddNext(ctx, responseSeqID, detailKey+"::replicate-accept",
 				func(ctx async.Context, finish func()) {
-					_, _ = s.acceptor.AcceptEntries(acceptInput)
+					_, _ = destState.acceptor.AcceptEntries(acceptInput)
 					finish()
 				},
 			)

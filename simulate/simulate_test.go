@@ -29,12 +29,17 @@ func (s *Simulation) getLeader() *NodeState {
 }
 
 func TestPaxos_Simple_Three_Nodes__Replicate_Cmd(t *testing.T) {
-	for range 1000 { // TODO
-		doTestPaxosSingleThreeNodesReplicateCmd(t)
+	totalActions := 0
+	for range 1000 {
+		doTestPaxosSingleThreeNodesReplicateCmd(t, &totalActions)
+		if t.Failed() {
+			return
+		}
 	}
+	fmt.Println("TOTAL ACTIONS:", totalActions)
 }
 
-func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T) {
+func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T, totalActions *int) {
 	s := NewSimulation(
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
@@ -65,6 +70,7 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T) {
 
 	// do insert commands
 	s.runRandomAllActions()
+	assert.Equal(t, paxos.LogPos(21), leaderState.log.GetFullyReplicated())
 
 	state1 := s.stateMap[nodeID1]
 	state2 := s.stateMap[nodeID1]
@@ -107,4 +113,6 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T) {
 		assert.Equal(t, paxos.LogTypeCmd, entry.Type)
 		assert.Equal(t, fmt.Sprintf("cmd-test:%02d", index), string(entry.CmdData))
 	}
+
+	*totalActions += s.numTotalActions
 }
