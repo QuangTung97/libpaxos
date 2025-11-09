@@ -84,13 +84,15 @@ func (r *RunnerFake) StartVoteRequestRunners(
 ) bool {
 	var changed bool
 
-	for id, oldState := range r.voteMap {
+	for _, id := range nodesToSlice(r.voteMap) {
 		_, ok := nodes[id]
 		if ok {
 			continue
 		}
 
+		oldState := r.voteMap[id]
 		oldState.ctx.Cancel()
+
 		delete(r.voteMap, id)
 		changed = true
 	}
@@ -121,13 +123,15 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 ) bool {
 	var changed bool
 
-	for id, oldState := range r.acceptorMap {
+	for _, id := range nodesToSlice(r.acceptorMap) {
 		_, ok := nodes[id]
 		if ok {
 			continue
 		}
 
+		oldState := r.acceptorMap[id]
 		oldState.ctx.Cancel()
+
 		delete(r.acceptorMap, id)
 		changed = true
 	}
@@ -193,13 +197,15 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 ) bool {
 	var changed bool
 
-	for id, oldState := range r.fetchFollowerMap {
+	for _, id := range nodesToSlice(r.fetchFollowerMap) {
 		_, ok := nodes[id]
 		if ok {
 			continue
 		}
 
+		oldState := r.fetchFollowerMap[id]
 		oldState.ctx.Cancel()
+
 		delete(r.fetchFollowerMap, id)
 		changed = true
 	}
@@ -253,7 +259,7 @@ func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool 
 	return true
 }
 
-func nodesToSlice(nodes map[paxos.NodeID]struct{}) []paxos.NodeID {
+func nodesToSlice[T any](nodes map[paxos.NodeID]T) []paxos.NodeID {
 	result := make([]paxos.NodeID, 0, len(nodes))
 	for id := range nodes {
 		result = append(result, id)

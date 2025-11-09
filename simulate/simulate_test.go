@@ -28,18 +28,18 @@ func (s *Simulation) getLeader() *NodeState {
 	return current
 }
 
-func TestPaxos_Simple_Three_Nodes(t *testing.T) {
-	for range 1000 {
-		doTestPaxosSingleThreeNodes(t)
+func TestPaxos_Simple_Three_Nodes__Replicate_Cmd(t *testing.T) {
+	for range 1000 { // TODO
+		doTestPaxosSingleThreeNodesReplicateCmd(t)
 	}
 }
 
-func doTestPaxosSingleThreeNodes(t *testing.T) {
+func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T) {
 	s := NewSimulation(
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
 	)
-	s.runRandomAllActions() // elect a leader
+	runAllActions(s.runtime)
 
 	leaderState := s.getLeader()
 	cmdSeq := s.runtime.NewSequence()

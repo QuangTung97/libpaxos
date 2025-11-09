@@ -12,7 +12,8 @@ import (
 )
 
 type Simulation struct {
-	randObj *rand.Rand
+	randObj         *rand.Rand
+	numTotalActions int
 
 	runtime *async.SimulateRuntime
 	now     paxos.TimestampMilli
@@ -27,6 +28,7 @@ func NewSimulation(
 	s := &Simulation{}
 
 	seed := time.Now().UnixNano()
+	seed = 1762652166494296174 // TODO
 	fmt.Println("SEED:", seed)
 	s.randObj = rand.New(rand.NewSource(seed))
 
@@ -346,5 +348,6 @@ func (s *Simulation) runRandomAllActions() {
 		if ok := s.runSingleRandomAction(); !ok {
 			return
 		}
+		s.numTotalActions++
 	}
 }
