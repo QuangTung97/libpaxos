@@ -259,6 +259,40 @@ func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool 
 	return true
 }
 
+func (r *RunnerFake) getAllContexts() []async.Context {
+	result := make([]async.Context, 0, 6)
+	for _, id := range nodesToSlice(r.voteMap) {
+		ctx := r.voteMap[id].ctx
+		if ctx != nil {
+			result = append(result, ctx)
+		}
+	}
+
+	for _, id := range nodesToSlice(r.acceptorMap) {
+		ctx := r.acceptorMap[id].ctx
+		if ctx != nil {
+			result = append(result, ctx)
+		}
+	}
+
+	for _, id := range nodesToSlice(r.fetchFollowerMap) {
+		ctx := r.fetchFollowerMap[id].ctx
+		if ctx != nil {
+			result = append(result, ctx)
+		}
+	}
+
+	if r.stateMachineCtx != nil {
+		result = append(result, r.stateMachineCtx)
+	}
+
+	if r.electionCtx != nil {
+		result = append(result, r.electionCtx)
+	}
+
+	return result
+}
+
 func nodesToSlice[T any](nodes map[paxos.NodeID]T) []paxos.NodeID {
 	result := make([]paxos.NodeID, 0, len(nodes))
 	for id := range nodes {

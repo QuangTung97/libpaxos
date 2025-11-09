@@ -34,6 +34,7 @@ func NewSimulation(
 
 	seed := time.Now().UnixNano()
 	fmt.Println("SEED:", seed)
+	seed = 1762684140434223368 // TODO
 	s.randObj = rand.New(rand.NewSource(seed))
 
 	s.runtime = async.NewSimulateRuntime()

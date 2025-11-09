@@ -359,3 +359,62 @@ func (s *Simulation) doTimeoutMultiTimes(maxNumTimes int) {
 		}
 	})
 }
+
+func TestPaxos_With_Membership_Changes__And_Timeout__And_Restart(t *testing.T) {
+	totalActions := 0
+	for range 1000 {
+		doTestPaxosWithMembershipChangesAndTimeoutAndRestart(t, &totalActions)
+		if t.Failed() {
+			return
+		}
+	}
+	fmt.Println("TOTAL ACTIONS:", totalActions)
+}
+
+func (s *Simulation) doRestartMultiTimes(maxNumTimes int) {
+	s.runtime.NewThread("setup-restart", func(ctx async.Context) {
+		seqNum := s.runtime.NewSequence()
+
+		for range maxNumTimes {
+			s.runtime.SeqAddNext(
+				ctx, seqNum, "system::restart",
+				func(ctx async.Context, finishFunc func()) {
+					index := s.randObj.Intn(len(s.allNodes))
+					nodeID := s.allNodes[index]
+					state := s.stateMap[nodeID]
+
+					ctxList := state.runner.getAllContexts()
+					index = s.randObj.Intn(len(ctxList))
+					ctxList[index].Cancel()
+				},
+			)
+		}
+	})
+}
+
+func doTestPaxosWithMembershipChangesAndTimeoutAndRestart(t *testing.T, totalActions *int) {
+	s := NewSimulation(
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3, nodeID4, nodeID5, nodeID6},
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
+	)
+	s.runRandomAllActions()
+
+	// setup random actions
+	s.doInsertCommands()
+	s.doChangeMembershipMultiTimes(4)
+	s.doTimeoutMultiTimes(8)
+	s.doRestartMultiTimes(6)
+
+	// do execute random actions
+	s.runRandomAllActions()
+
+	lastLeader := s.findLastLeader()
+	committed := lastLeader.log.GetCommittedInfo()
+	assert.Equal(t, 1, len(committed.Members))
+	assert.Equal(t, paxos.LogPos(1), committed.Members[0].CreatedAt)
+
+	memberNodes := committed.Members[0].Nodes
+	s.assertLogMatch(t, memberNodes...)
+
+	*totalActions += s.numTotalActions
+}
