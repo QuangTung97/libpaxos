@@ -120,7 +120,7 @@ func NewNodeState(
 		},
 		initKeyWaiterFunc,
 		sim.runtime.AddNext,
-		5,
+		paxos.LogPos(s.sim.randObj.Intn(3)+3),
 		true,
 		5000,
 		0,
@@ -130,7 +130,7 @@ func NewNodeState(
 		id,
 		s.log,
 		initKeyWaiterFunc,
-		3,
+		s.sim.randObj.Intn(3)+2,
 	)
 
 	return s
@@ -318,6 +318,8 @@ func (s *NodeState) stateMachineFunc(
 		return
 	}
 
+	getLimit := s.sim.randObj.Intn(3) + 2
+
 	var getter paxos.StateMachineLogGetter
 	if info.IsLeader {
 		getter = s.core
@@ -348,7 +350,7 @@ func (s *NodeState) stateMachineFunc(
 	callback = func(ctx async.Context) {
 		fromPos := paxos.LogPos(len(s.stateLog) + 1)
 		getter.GetCommittedEntriesWithWaitAsync(
-			ctx, term, fromPos, 3,
+			ctx, term, fromPos, getLimit,
 			handleFunc,
 		)
 	}
