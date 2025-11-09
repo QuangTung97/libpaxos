@@ -2,7 +2,9 @@ package simulate
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/QuangTung97/libpaxos/async"
 	"github.com/QuangTung97/libpaxos/paxos"
@@ -10,6 +12,8 @@ import (
 )
 
 type Simulation struct {
+	randObj *rand.Rand
+
 	runtime *async.SimulateRuntime
 	now     paxos.TimestampMilli
 
@@ -21,6 +25,11 @@ func NewSimulation(
 	initNodes []paxos.NodeID,
 ) *Simulation {
 	s := &Simulation{}
+
+	seed := time.Now().UnixNano()
+	fmt.Println("SEED:", seed)
+	s.randObj = rand.New(rand.NewSource(seed))
+
 	s.runtime = async.NewSimulateRuntime()
 	s.now = 100_000
 
@@ -326,4 +335,16 @@ func (s *Simulation) runActionIndex(index int) {
 		}
 		return index
 	})
+}
+
+func (s *Simulation) runSingleRandomAction() bool {
+	return s.runtime.RunRandomAction(s.randObj.Intn)
+}
+
+func (s *Simulation) runRandomAllActions() {
+	for {
+		if ok := s.runSingleRandomAction(); !ok {
+			return
+		}
+	}
 }

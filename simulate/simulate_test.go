@@ -29,25 +29,30 @@ func (s *Simulation) getLeader() *NodeState {
 }
 
 func TestPaxos_Simple_Three_Nodes(t *testing.T) {
+	for range 1000 {
+		doTestPaxosSingleThreeNodes(t)
+	}
+}
+
+func doTestPaxosSingleThreeNodes(t *testing.T) {
 	s := NewSimulation(
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
 		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
 	)
+	s.runRandomAllActions() // elect a leader
 
-	runAllActions(s.runtime)
-	state := s.getLeader()
-
+	leaderState := s.getLeader()
 	cmdSeq := s.runtime.NewSequence()
 
 	s.runtime.NewThread("setup-cmd", func(ctx async.Context) {
-		term := state.persistent.GetLastTerm()
+		term := leaderState.persistent.GetLastTerm()
 
 		for cmdIndex := range 20 {
 			s.runtime.SeqAddNext(
 				ctx, cmdSeq, "cmd::request",
 				func(ctx async.Context, finishFunc func()) {
 					nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))
-					state.core.InsertCommandAsync(
+					leaderState.core.InsertCommandAsync(
 						ctx, term, [][]byte{nextCmd},
 						func(err error) {
 							finishFunc()
@@ -58,7 +63,8 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 		}
 	})
 
-	runAllActions(s.runtime)
+	// do insert commands
+	s.runRandomAllActions()
 
 	state1 := s.stateMap[nodeID1]
 	state2 := s.stateMap[nodeID1]
@@ -74,7 +80,7 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 			Pos: 21,
 			Term: paxos.TermNum{
 				Num:    21,
-				NodeID: nodeID2,
+				NodeID: leaderState.currentID,
 			},
 		},
 	}, state1.log.GetCommittedInfo())
