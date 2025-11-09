@@ -127,7 +127,7 @@ func (w *simulateKeyWaiter[T]) Run(
 func (w *simulateKeyWaiter[T]) Signal(key T) {
 	list := w.waitMap[key]
 	for _, action := range list {
-		w.rt.AddNextDetail(action.ctx, action.detail, action.callback)
+		w.rt.AddNext(action.ctx, action.detail, action.callback)
 	}
 	delete(w.waitMap, key)
 }

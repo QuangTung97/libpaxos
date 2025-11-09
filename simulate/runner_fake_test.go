@@ -53,7 +53,7 @@ func newRunnerFakeTest() *runnerFakeTest {
 func (r *runnerFakeTest) voteFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
 	r.ctxList = append(r.ctxList, ctx)
 	r.actions.add("start-vote:%s,%d", nodeID.String()[:4], term.Num)
-	r.rt.AddNext(ctx, func(ctx async.Context) {
+	r.rt.AddNext(ctx, "sub-action", func(ctx async.Context) {
 		r.actions.add("vote-action01:%s,%d", nodeID.String()[:4], term.Num)
 	})
 }
@@ -61,7 +61,7 @@ func (r *runnerFakeTest) voteFunc(ctx async.Context, nodeID paxos.NodeID, term p
 func (r *runnerFakeTest) acceptorFunc(ctx async.Context, nodeID paxos.NodeID, term paxos.TermNum) {
 	r.ctxList = append(r.ctxList, ctx)
 	r.actions.add("start-accept:%s,%d", nodeID.String()[:4], term.Num)
-	r.rt.AddNext(ctx, func(ctx async.Context) {
+	r.rt.AddNext(ctx, "sub-action", func(ctx async.Context) {
 		r.actions.add("accept-action01:%s,%d", nodeID.String()[:4], term.Num)
 	})
 }
@@ -71,7 +71,7 @@ func (r *runnerFakeTest) fetchFollowerFunc(
 ) {
 	r.ctxList = append(r.ctxList, ctx)
 	r.actions.add("start-fetch-follower:%s,term=%d,gen=%d", nodeID.String()[:4], term.Num, gen)
-	r.rt.AddNext(ctx, func(ctx async.Context) {
+	r.rt.AddNext(ctx, "sub-action", func(ctx async.Context) {
 		r.actions.add("fetch-follower-action01:%s,%d", nodeID.String()[:4], term.Num)
 	})
 }
@@ -81,7 +81,7 @@ func (r *runnerFakeTest) stateMachineFunc(
 ) {
 	r.ctxList = append(r.ctxList, ctx)
 	r.actions.add("start-state-machine:%d,running=%v", term.Num, info.Running)
-	r.rt.AddNext(ctx, func(ctx async.Context) {
+	r.rt.AddNext(ctx, "sub-action", func(ctx async.Context) {
 		r.actions.add("state-machine-action01:%d", term.Num)
 	})
 }
@@ -91,7 +91,7 @@ func (r *runnerFakeTest) startElectionFunc(
 ) {
 	r.ctxList = append(r.ctxList, ctx)
 	r.actions.add("start-election:%v,term=%d", chosen.String()[:4], termValue)
-	r.rt.AddNext(ctx, func(ctx async.Context) {
+	r.rt.AddNext(ctx, "sub-action", func(ctx async.Context) {
 		r.actions.add("election-action01:%d", termValue)
 	})
 }

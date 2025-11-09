@@ -53,12 +53,12 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 						return
 					}
 
-					s.runtime.AddNextDetail(ctx, "cmd::request", insertCallback)
+					s.runtime.AddNext(ctx, "cmd::request", insertCallback)
 				},
 			)
 		}
 
-		s.runtime.AddNextDetail(ctx, "cmd::request", insertCallback)
+		s.runtime.AddNext(ctx, "cmd::request", insertCallback)
 	})
 
 	runAllActions(s.runtime)

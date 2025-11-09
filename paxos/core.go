@@ -1498,7 +1498,7 @@ func (c *coreLogicImpl) GetCommittedEntriesWithWaitAsync(
 				return
 			}
 
-			c.addNextFunc(ctx, func(ctx async.Context) {
+			c.addNextFunc(ctx, "", func(ctx async.Context) {
 				getRemainingFromDisk(output)
 			})
 		},

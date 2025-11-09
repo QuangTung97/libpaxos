@@ -15,7 +15,7 @@ func TestAssertTrue(t *testing.T) {
 func TestSimpleAddNextFunc(t *testing.T) {
 	ctx := NewContext()
 	var calls int
-	SimpleAddNextFunc(ctx, func(ctx Context) {
+	SimpleAddNextFunc(ctx, "", func(ctx Context) {
 		calls++
 	})
 	assert.Equal(t, 1, calls)
@@ -30,10 +30,10 @@ func TestSimulateRuntime(t *testing.T) {
 	ctx := rt.NewThread(func(ctx Context) {
 		actions = append(actions, "new-thread")
 
-		rt.AddNext(ctx, func(ctx Context) {
+		rt.AddNext(ctx, "action01", func(ctx Context) {
 			actions = append(actions, "next-action")
 
-			rt.AddNext(ctx, func(ctx Context) {
+			rt.AddNext(ctx, "action02", func(ctx Context) {
 				actions = append(actions, "sub-action")
 			})
 		})
@@ -71,14 +71,14 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 
 	ctx := rt.NewThread(func(ctx Context) {
 		actions.add("new thread 01")
-		rt.AddNext(ctx, func(ctx Context) {
+		rt.AddNext(ctx, "action01", func(ctx Context) {
 			actions.add("action 01")
 		})
 	})
 
 	rt.NewThread(func(ctx Context) {
 		actions.add("new thread 02")
-		rt.AddNext(ctx, func(ctx Context) {
+		rt.AddNext(ctx, "action02", func(ctx Context) {
 			actions.add("action 02")
 		})
 	})
@@ -248,7 +248,7 @@ func TestSimulateRuntime__Remove_All_Canceled(t *testing.T) {
 	rt := NewSimulateRuntime()
 
 	ctx := rt.NewThreadDetail("thread01", func(ctx Context) {
-		rt.AddNextDetail(ctx, "sub01", func(ctx Context) {
+		rt.AddNext(ctx, "sub01", func(ctx Context) {
 		})
 	})
 	rt.NewThreadDetail("thread02", func(ctx Context) {

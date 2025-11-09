@@ -1,8 +1,8 @@
 package async
 
-type AddNextFunc func(ctx Context, callback func(ctx Context))
+type AddNextFunc func(ctx Context, detail string, callback func(ctx Context))
 
-func SimpleAddNextFunc(ctx Context, callback func(ctx Context)) {
+func SimpleAddNextFunc(ctx Context, detail string, callback func(ctx Context)) {
 	callback(ctx)
 }
 
@@ -49,11 +49,7 @@ func (r *SimulateRuntime) NewThreadDetail(threadDetail string, callback func(ctx
 	return ctx
 }
 
-func (r *SimulateRuntime) AddNext(ctx Context, callback func(ctx Context)) {
-	r.AddNextDetail(ctx, "", callback)
-}
-
-func (r *SimulateRuntime) AddNextDetail(ctx Context, detail string, callback func(ctx Context)) {
+func (r *SimulateRuntime) AddNext(ctx Context, detail string, callback func(ctx Context)) {
 	r.doAddNext(ctx.(*simulateContext), detail, callback)
 }
 

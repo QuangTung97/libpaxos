@@ -151,14 +151,14 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 				return
 			}
 
-			rt.AddNextDetail(ctx, detailKey+"::get-next", callback)
+			rt.AddNext(ctx, detailKey+"::get-next", callback)
 		}
 		callback(ctx)
 	}
 
-	rt.AddNextDetail(ctx, detailKey+"::follower-recv", func(ctx async.Context) {
+	rt.AddNext(ctx, detailKey+"::follower-recv", func(ctx async.Context) {
 		s.core.FollowerReceiveTermNum(input.Term)
-		rt.AddNextDetail(ctx, detailKey+"::handle-request", handleRequestFunc)
+		rt.AddNext(ctx, detailKey+"::handle-request", handleRequestFunc)
 	})
 }
 
@@ -166,11 +166,11 @@ func (s *NodeState) acceptRunnerFunc(ctx async.Context, nodeID paxos.NodeID, ter
 	rt := s.sim.runtime
 	detailKey := buildAcceptDetail(s.currentID, nodeID)
 
-	rt.AddNextDetail(ctx, detailKey+"::setup-accept", func(ctx async.Context) {
+	rt.AddNext(ctx, detailKey+"::setup-accept", func(ctx async.Context) {
 		s.doSendAcceptRequest(ctx, nodeID, term)
 	})
 
-	rt.AddNextDetail(ctx, detailKey+"::setup-replicate", func(ctx async.Context) {
+	rt.AddNext(ctx, detailKey+"::setup-replicate", func(ctx async.Context) {
 		s.doSendReplicateRequest(ctx, nodeID, term)
 	})
 }
@@ -210,7 +210,7 @@ func (s *NodeState) doSendAcceptRequest(ctx async.Context, nodeID paxos.NodeID, 
 
 		fromPos = input.NextPos
 		lastCommitted = input.Committed
-		rt.AddNextDetail(ctx, detailKey+"::get-next", getCallback)
+		rt.AddNext(ctx, detailKey+"::get-next", getCallback)
 	}
 
 	getCallback = func(ctx async.Context) {
@@ -256,7 +256,7 @@ func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeI
 			})
 		})
 
-		rt.AddNextDetail(ctx, detailKey+"::acceptor-get-need-replicate", rootCallback)
+		rt.AddNext(ctx, detailKey+"::acceptor-get-need-replicate", rootCallback)
 	}
 
 	rootCallback = func(ctx async.Context) {
@@ -276,7 +276,7 @@ func (s *NodeState) fetchFollowerRunnerFunc(
 	info := destState.core.GetChoosingLeaderInfo()
 
 	rt := s.sim.runtime
-	rt.AddNextDetail(ctx, buildFetchDetail(s.currentID, nodeID)+"::handle", func(ctx async.Context) {
+	rt.AddNext(ctx, buildFetchDetail(s.currentID, nodeID)+"::handle", func(ctx async.Context) {
 		_ = s.core.HandleChoosingLeaderInfo(nodeID, term, generation, info)
 	})
 }
@@ -293,7 +293,7 @@ func (s *NodeState) startElectionFunc(
 	rt := s.sim.runtime
 
 	detail := buildStartElectionDetail(s.currentID, chosen) + "::handle"
-	rt.AddNextDetail(ctx, detail, func(ctx async.Context) {
+	rt.AddNext(ctx, detail, func(ctx async.Context) {
 		_, _ = destState.core.StartElection(termValue)
 	})
 }
