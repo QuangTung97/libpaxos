@@ -2,7 +2,7 @@ package async
 
 type AddNextFunc func(ctx Context, detail string, callback func(ctx Context))
 
-func SimpleAddNextFunc(ctx Context, detail string, callback func(ctx Context)) {
+func SimpleAddNextFunc(ctx Context, _ string, callback func(ctx Context)) {
 	callback(ctx)
 }
 
@@ -39,11 +39,7 @@ type sequenceActionState struct {
 	pendingActions []nextActionInfo // TODO use real queue
 }
 
-func (r *SimulateRuntime) NewThread(callback func(ctx Context)) Context {
-	return r.NewThreadDetail("", callback)
-}
-
-func (r *SimulateRuntime) NewThreadDetail(threadDetail string, callback func(ctx Context)) Context {
+func (r *SimulateRuntime) NewThread(threadDetail string, callback func(ctx Context)) Context {
 	ctx := newSimulateContext(threadDetail, callback)
 	r.doAddNext(ctx, ctx.getStartThreadDetail(), callback)
 	return ctx

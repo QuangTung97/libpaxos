@@ -27,7 +27,7 @@ func TestSimulateRuntime(t *testing.T) {
 	var _ AddNextFunc = rt.AddNext
 
 	var actions []string
-	ctx := rt.NewThread(func(ctx Context) {
+	ctx := rt.NewThread("thread01", func(ctx Context) {
 		actions = append(actions, "new-thread")
 
 		rt.AddNext(ctx, "action01", func(ctx Context) {
@@ -69,14 +69,14 @@ func TestSimulateRuntime__Restart_Thread(t *testing.T) {
 	rt := NewSimulateRuntime()
 	actions := newActionListTest()
 
-	ctx := rt.NewThread(func(ctx Context) {
+	ctx := rt.NewThread("thread01", func(ctx Context) {
 		actions.add("new thread 01")
 		rt.AddNext(ctx, "action01", func(ctx Context) {
 			actions.add("action 01")
 		})
 	})
 
-	rt.NewThread(func(ctx Context) {
+	rt.NewThread("thread02", func(ctx Context) {
 		actions.add("new thread 02")
 		rt.AddNext(ctx, "action02", func(ctx Context) {
 			actions.add("action 02")
@@ -118,7 +118,7 @@ func TestSimulateRuntime_Sequence(t *testing.T) {
 	rt := NewSimulateRuntime()
 	actions := newActionListTest()
 
-	ctx := rt.NewThread(func(ctx Context) {
+	ctx := rt.NewThread("thread01", func(ctx Context) {
 		actions.add("new thread 01")
 		seqID := rt.NewSequence()
 
@@ -162,7 +162,7 @@ func TestSimulateRuntime_Sequence__And_Restart_Thread(t *testing.T) {
 	rt := NewSimulateRuntime()
 	actions := newActionListTest()
 
-	ctx := rt.NewThread(func(ctx Context) {
+	ctx := rt.NewThread("thread01", func(ctx Context) {
 		actions.add("new thread 01")
 		seqID := rt.NewSequence()
 
@@ -213,13 +213,13 @@ func TestSimulateRuntime_RandomAction(t *testing.T) {
 	rt := NewSimulateRuntime()
 	actions := newActionListTest()
 
-	rt.NewThread(func(ctx Context) {
+	rt.NewThread("thread01", func(ctx Context) {
 		actions.add("action01")
 	})
-	rt.NewThread(func(ctx Context) {
+	rt.NewThread("thread02", func(ctx Context) {
 		actions.add("action02")
 	})
-	rt.NewThread(func(ctx Context) {
+	rt.NewThread("thread03", func(ctx Context) {
 		actions.add("action03")
 	})
 
@@ -247,11 +247,11 @@ func TestSimulateRuntime_RandomAction(t *testing.T) {
 func TestSimulateRuntime__Remove_All_Canceled(t *testing.T) {
 	rt := NewSimulateRuntime()
 
-	ctx := rt.NewThreadDetail("thread01", func(ctx Context) {
+	ctx := rt.NewThread("thread01", func(ctx Context) {
 		rt.AddNext(ctx, "sub01", func(ctx Context) {
 		})
 	})
-	rt.NewThreadDetail("thread02", func(ctx Context) {
+	rt.NewThread("thread02", func(ctx Context) {
 	})
 
 	assert.Equal(t, []string{

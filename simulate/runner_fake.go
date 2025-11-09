@@ -102,7 +102,7 @@ func (r *RunnerFake) StartVoteRequestRunners(
 		}
 
 		detail := buildVoteDetail(r.currentNodeID, id)
-		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
+		ctx := r.rt.NewThread(detail, func(ctx async.Context) {
 			r.voteRunnerFunc(ctx, id, term)
 		})
 
@@ -139,7 +139,7 @@ func (r *RunnerFake) StartAcceptRequestRunners(
 		}
 
 		detail := buildAcceptDetail(r.currentNodeID, id)
-		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
+		ctx := r.rt.NewThread(detail, func(ctx async.Context) {
 			r.acceptorRunnerFunc(ctx, id, term)
 		})
 
@@ -177,7 +177,7 @@ func (r *RunnerFake) StartStateMachine(
 	}
 
 	detail := buildStateMachineDetail(r.currentNodeID)
-	r.stateMachineCtx = r.rt.NewThreadDetail(detail, func(ctx async.Context) {
+	r.stateMachineCtx = r.rt.NewThread(detail, func(ctx async.Context) {
 		r.stateMachineFunc(ctx, term, info)
 	})
 
@@ -211,7 +211,7 @@ func (r *RunnerFake) StartFetchingFollowerInfoRunners(
 		}
 
 		detail := buildFetchDetail(r.currentNodeID, id)
-		ctx := r.rt.NewThreadDetail(detail, func(ctx async.Context) {
+		ctx := r.rt.NewThread(detail, func(ctx async.Context) {
 			r.fetchFollowerRunnerFunc(ctx, id, term, generation)
 		})
 
@@ -246,7 +246,7 @@ func (r *RunnerFake) StartElectionRunner(newInfo paxos.ElectionRunnerInfo) bool 
 	}
 
 	detail := buildStartElectionDetail(r.currentNodeID, newInfo.Chosen)
-	r.electionCtx = r.rt.NewThreadDetail(detail, func(ctx async.Context) {
+	r.electionCtx = r.rt.NewThread(detail, func(ctx async.Context) {
 		r.startElectionFunc(ctx, newInfo.Chosen, newInfo.MaxTermValue)
 	})
 

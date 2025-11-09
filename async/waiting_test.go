@@ -49,7 +49,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		actions := newActionListTest()
 		count := 0
 
-		rt.NewThreadDetail("thread01", func(ctx Context) {
+		rt.NewThread("thread01", func(ctx Context) {
 			actions.add("new-thread")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
@@ -83,7 +83,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 		actions := newActionListTest()
 		count := 0
-		rt.NewThreadDetail("thread01", func(ctx Context) {
+		rt.NewThread("thread01", func(ctx Context) {
 			actions.add("new-thread")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				count++
@@ -119,14 +119,14 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		})
 
 		actions := newActionListTest()
-		rt.NewThread(func(ctx Context) {
+		rt.NewThread("thread01", func(ctx Context) {
 			actions.add("new-thread01")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				actions.add("wait key01")
 				return WaitStatusWaiting, nil
 			})
 		})
-		rt.NewThread(func(ctx Context) {
+		rt.NewThread("thread02", func(ctx Context) {
 			actions.add("new-thread02")
 			w.Run(ctx, "key02", func(ctx Context, err error) (WaitStatus, error) {
 				actions.add("wait key02")
@@ -161,7 +161,7 @@ func TestSimulateKeyWaiter(t *testing.T) {
 		actions := newActionListTest()
 		count := 0
 
-		ctx := rt.NewThread(func(ctx Context) {
+		ctx := rt.NewThread("thread01", func(ctx Context) {
 			actions.add("new-thread")
 			w.Run(ctx, "key01", func(ctx Context, err error) (WaitStatus, error) {
 				if err != nil {

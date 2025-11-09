@@ -37,7 +37,7 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 	runAllActions(s.runtime)
 	state := s.getLeader()
 
-	s.runtime.NewThreadDetail("setup-cmd", func(ctx async.Context) {
+	s.runtime.NewThread("setup-cmd", func(ctx async.Context) {
 		term := state.persistent.GetLastTerm()
 		cmdIndex := 0
 
