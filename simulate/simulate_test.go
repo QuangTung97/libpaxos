@@ -43,7 +43,7 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 		term := state.persistent.GetLastTerm()
 
 		for cmdIndex := range 20 {
-			s.runtime.SequenceAddNextDetail(
+			s.runtime.SeqAddNext(
 				ctx, cmdSeq, "cmd::request",
 				func(ctx async.Context, finishFunc func()) {
 					nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))

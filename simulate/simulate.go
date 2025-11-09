@@ -142,7 +142,7 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 		callback = func(ctx async.Context) {
 			output, isFinal := getFunc()
 
-			rt.SequenceAddNextDetail(ctx, seqID, detailKey+"::handle-response",
+			rt.SeqAddNext(ctx, seqID, detailKey+"::handle-response",
 				func(ctx async.Context, finishFunc func()) {
 					s.core.HandleVoteResponseAsync(ctx, nodeID, output, func(err error) {
 						finishFunc()
@@ -196,12 +196,12 @@ func (s *NodeState) doSendAcceptRequest(ctx async.Context, nodeID paxos.NodeID, 
 			return
 		}
 
-		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::follower-recv", func(ctx async.Context, finish func()) {
+		rt.SeqAddNext(ctx, reqSeqID, detailKey+"::follower-recv", func(ctx async.Context, finish func()) {
 			destState.core.FollowerReceiveTermNum(input.Term)
 			finish()
 		})
 
-		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::handle-request", func(ctx async.Context, finish func()) {
+		rt.SeqAddNext(ctx, reqSeqID, detailKey+"::handle-request", func(ctx async.Context, finish func()) {
 			defer finish()
 
 			output, err := destState.acceptor.AcceptEntries(input)
@@ -209,7 +209,7 @@ func (s *NodeState) doSendAcceptRequest(ctx async.Context, nodeID paxos.NodeID, 
 				return
 			}
 
-			rt.SequenceAddNextDetail(ctx, respSeqID, detailKey+"::handle-response",
+			rt.SeqAddNext(ctx, respSeqID, detailKey+"::handle-response",
 				func(ctx async.Context, finish func()) {
 					_ = s.core.HandleAcceptEntriesResponse(nodeID, output)
 					finish()
@@ -254,7 +254,7 @@ func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeI
 		fromPos = input.NextPos
 		lastReplicated = input.FullyReplicated
 
-		rt.SequenceAddNextDetail(ctx, requestSeqID, detailKey+"::get-pos-list", func(ctx async.Context, finish func()) {
+		rt.SeqAddNext(ctx, requestSeqID, detailKey+"::get-pos-list", func(ctx async.Context, finish func()) {
 			defer finish()
 
 			acceptInput, err := s.core.GetNeedReplicatedLogEntries(input)
@@ -262,7 +262,7 @@ func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeI
 				return
 			}
 
-			rt.SequenceAddNextDetail(ctx, responseSeqID, detailKey+"::replicate-accept",
+			rt.SeqAddNext(ctx, responseSeqID, detailKey+"::replicate-accept",
 				func(ctx async.Context, finish func()) {
 					_, _ = s.acceptor.AcceptEntries(acceptInput)
 					finish()

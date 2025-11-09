@@ -49,17 +49,7 @@ func (r *SimulateRuntime) AddNext(ctx Context, detail string, callback func(ctx 
 	r.doAddNext(ctx.(*simulateContext), detail, callback)
 }
 
-// TODO remove
-func (r *SimulateRuntime) SequenceAddNext(
-	inputCtx Context, seqID SequenceID, callback func(ctx Context),
-) {
-	r.SequenceAddNextDetail(inputCtx, seqID, "", func(ctx Context, finishFunc func()) {
-		callback(ctx)
-		finishFunc()
-	})
-}
-
-func (r *SimulateRuntime) SequenceAddNextDetail(
+func (r *SimulateRuntime) SeqAddNext(
 	inputCtx Context, seqID SequenceID, detail string,
 	callback func(ctx Context, finishFunc func()),
 ) {

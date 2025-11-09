@@ -122,14 +122,17 @@ func TestSimulateRuntime_Sequence(t *testing.T) {
 		actions.add("new thread 01")
 		seqID := rt.NewSequence()
 
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action01", func(ctx Context, finish func()) {
 			actions.add("action 01")
+			finish()
 		})
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action02", func(ctx Context, finish func()) {
 			actions.add("action 02")
+			finish()
 		})
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action03", func(ctx Context, finish func()) {
 			actions.add("action 03")
+			finish()
 		})
 	})
 	assert.Equal(t, 1, rt.GetQueueSize())
@@ -166,14 +169,17 @@ func TestSimulateRuntime_Sequence__And_Restart_Thread(t *testing.T) {
 		actions.add("new thread 01")
 		seqID := rt.NewSequence()
 
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action01", func(ctx Context, finish func()) {
 			actions.add("action 01")
+			finish()
 		})
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action02", func(ctx Context, finish func()) {
 			actions.add("action 02")
+			finish()
 		})
-		rt.SequenceAddNext(ctx, seqID, func(ctx Context) {
+		rt.SeqAddNext(ctx, seqID, "action03", func(ctx Context, finish func()) {
 			actions.add("action 03")
+			finish()
 		})
 	})
 	assert.Equal(t, 1, rt.GetQueueSize())
