@@ -142,10 +142,13 @@ func (s *NodeState) voteRunnerFunc(ctx async.Context, nodeID paxos.NodeID, term 
 		callback = func(ctx async.Context) {
 			output, isFinal := getFunc()
 
-			rt.SequenceAddNextDetail(ctx, seqID, detailKey+"::handle-response", func(ctx async.Context) {
-				// TODO use async instead
-				_ = s.core.HandleVoteResponse(ctx, nodeID, output)
-			})
+			rt.SequenceAddNextDetail(ctx, seqID, detailKey+"::handle-response",
+				func(ctx async.Context, finishFunc func()) {
+					s.core.HandleVoteResponseAsync(ctx, nodeID, output, func(err error) {
+						finishFunc()
+					})
+				},
+			)
 
 			if isFinal {
 				return
@@ -193,19 +196,25 @@ func (s *NodeState) doSendAcceptRequest(ctx async.Context, nodeID paxos.NodeID, 
 			return
 		}
 
-		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::follower-recv", func(ctx async.Context) {
+		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::follower-recv", func(ctx async.Context, finish func()) {
 			destState.core.FollowerReceiveTermNum(input.Term)
+			finish()
 		})
 
-		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::handle-request", func(ctx async.Context) {
+		rt.SequenceAddNextDetail(ctx, reqSeqID, detailKey+"::handle-request", func(ctx async.Context, finish func()) {
+			defer finish()
+
 			output, err := destState.acceptor.AcceptEntries(input)
 			if err != nil {
 				return
 			}
 
-			rt.SequenceAddNextDetail(ctx, respSeqID, detailKey+"::handle-response", func(ctx async.Context) {
-				_ = s.core.HandleAcceptEntriesResponse(nodeID, output)
-			})
+			rt.SequenceAddNextDetail(ctx, respSeqID, detailKey+"::handle-response",
+				func(ctx async.Context, finish func()) {
+					_ = s.core.HandleAcceptEntriesResponse(nodeID, output)
+					finish()
+				},
+			)
 		})
 
 		fromPos = input.NextPos
@@ -245,15 +254,20 @@ func (s *NodeState) doSendReplicateRequest(ctx async.Context, nodeID paxos.NodeI
 		fromPos = input.NextPos
 		lastReplicated = input.FullyReplicated
 
-		rt.SequenceAddNextDetail(ctx, requestSeqID, detailKey+"::get-pos-list", func(ctx async.Context) {
+		rt.SequenceAddNextDetail(ctx, requestSeqID, detailKey+"::get-pos-list", func(ctx async.Context, finish func()) {
+			defer finish()
+
 			acceptInput, err := s.core.GetNeedReplicatedLogEntries(input)
 			if err != nil {
 				return
 			}
 
-			rt.SequenceAddNextDetail(ctx, responseSeqID, detailKey+"::replicate-accept", func(ctx async.Context) {
-				_, _ = s.acceptor.AcceptEntries(acceptInput)
-			})
+			rt.SequenceAddNextDetail(ctx, responseSeqID, detailKey+"::replicate-accept",
+				func(ctx async.Context, finish func()) {
+					_, _ = s.acceptor.AcceptEntries(acceptInput)
+					finish()
+				},
+			)
 		})
 
 		rt.AddNext(ctx, detailKey+"::acceptor-get-need-replicate", rootCallback)

@@ -20,14 +20,12 @@ type CoreLogic interface {
 
 	GetVoteRequest(term TermNum, toNode NodeID) (RequestVoteInput, error)
 	HandleVoteResponse(ctx async.Context, fromNode NodeID, output RequestVoteOutput) error
-
-	// TODO add async HandleVoteResponse
+	HandleVoteResponseAsync(ctx async.Context, fromNode NodeID, output RequestVoteOutput, callback func(err error))
 
 	GetAcceptEntriesRequest(
 		ctx async.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
 	) (AcceptEntriesInput, error)
-
 	GetAcceptEntriesRequestAsync(
 		ctx async.Context, term TermNum, toNode NodeID,
 		fromPos LogPos, lastCommittedSent LogPos,
@@ -39,7 +37,6 @@ type CoreLogic interface {
 	HandleAcceptEntriesResponse(fromNode NodeID, output AcceptEntriesOutput) error
 
 	InsertCommand(ctx async.Context, term TermNum, cmdDataList ...[]byte) error
-
 	InsertCommandAsync(ctx async.Context, term TermNum, cmdDataList [][]byte, callback func(err error))
 
 	CheckTimeout()
@@ -358,25 +355,39 @@ func (c *coreLogicImpl) HandleVoteResponse(
 	ctx async.Context, id NodeID, output RequestVoteOutput,
 ) error {
 	var outputErr error
+	c.HandleVoteResponseAsync(ctx, id, output, func(err error) {
+		outputErr = err
+	})
+	return outputErr
+}
+
+func (c *coreLogicImpl) HandleVoteResponseAsync(
+	ctx async.Context, id NodeID, output RequestVoteOutput,
+	callback func(err error),
+) {
 	c.bufferLimitWaiter.Run(
 		ctx, id,
 		func(ctx async.Context, err error) (async.WaitStatus, error) {
 			if err != nil {
 				// TODO testing
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
 			status, err := c.doHandleVoteResponseCallback(id, &output)
 			if err != nil {
-				outputErr = err
+				callback(err)
 				return 0, err
 			}
 
-			return status, nil
+			if status != async.WaitStatusSuccess {
+				return status, nil
+			}
+
+			callback(nil)
+			return async.WaitStatusSuccess, nil
 		},
 	)
-	return outputErr
 }
 
 func (c *coreLogicImpl) doHandleVoteResponseCallback(

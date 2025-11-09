@@ -37,28 +37,25 @@ func TestPaxos_Simple_Three_Nodes(t *testing.T) {
 	runAllActions(s.runtime)
 	state := s.getLeader()
 
+	cmdSeq := s.runtime.NewSequence()
+
 	s.runtime.NewThread("setup-cmd", func(ctx async.Context) {
 		term := state.persistent.GetLastTerm()
-		cmdIndex := 0
 
-		var insertCallback func(ctx async.Context)
-
-		insertCallback = func(ctx async.Context) {
-			nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))
-			state.core.InsertCommandAsync(
-				ctx, term, [][]byte{nextCmd},
-				func(err error) {
-					cmdIndex++
-					if cmdIndex >= 20 {
-						return
-					}
-
-					s.runtime.AddNext(ctx, "cmd::request", insertCallback)
+		for cmdIndex := range 20 {
+			s.runtime.SequenceAddNextDetail(
+				ctx, cmdSeq, "cmd::request",
+				func(ctx async.Context, finishFunc func()) {
+					nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))
+					state.core.InsertCommandAsync(
+						ctx, term, [][]byte{nextCmd},
+						func(err error) {
+							finishFunc()
+						},
+					)
 				},
 			)
 		}
-
-		s.runtime.AddNext(ctx, "cmd::request", insertCallback)
 	})
 
 	runAllActions(s.runtime)

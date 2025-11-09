@@ -49,19 +49,24 @@ func (r *SimulateRuntime) AddNext(ctx Context, detail string, callback func(ctx 
 	r.doAddNext(ctx.(*simulateContext), detail, callback)
 }
 
+// TODO remove
 func (r *SimulateRuntime) SequenceAddNext(
 	inputCtx Context, seqID SequenceID, callback func(ctx Context),
 ) {
-	r.SequenceAddNextDetail(inputCtx, seqID, "", callback)
+	r.SequenceAddNextDetail(inputCtx, seqID, "", func(ctx Context, finishFunc func()) {
+		callback(ctx)
+		finishFunc()
+	})
 }
 
 func (r *SimulateRuntime) SequenceAddNextDetail(
-	inputCtx Context, seqID SequenceID, detail string, callback func(ctx Context),
+	inputCtx Context, seqID SequenceID, detail string,
+	callback func(ctx Context, finishFunc func()),
 ) {
 	AssertTrue(seqID > 0)
-	ctx := inputCtx.(*simulateContext)
+	threadCtx := inputCtx.(*simulateContext)
 
-	seqMap := ctx.getSequenceActionMap()
+	seqMap := threadCtx.getSequenceActionMap()
 
 	state, ok := seqMap[seqID]
 	if !ok {
@@ -71,11 +76,17 @@ func (r *SimulateRuntime) SequenceAddNextDetail(
 		seqMap[seqID] = state
 	}
 
-	state.pendingActions = append(state.pendingActions, newNextActionInfo(ctx, detail, callback))
-	r.startIfNotRunning(ctx, state)
+	actionInfo := newNextActionInfo(threadCtx, detail, func(ctx Context) {
+		callback(ctx, func() {
+			r.finishSequenceAction(threadCtx, state)
+		})
+	})
+	state.pendingActions = append(state.pendingActions, actionInfo)
+
+	r.startIfNotRunning(state)
 }
 
-func (r *SimulateRuntime) startIfNotRunning(threadCtx *simulateContext, state *sequenceActionState) {
+func (r *SimulateRuntime) startIfNotRunning(state *sequenceActionState) {
 	if state.isRunning {
 		return
 	}
@@ -86,14 +97,16 @@ func (r *SimulateRuntime) startIfNotRunning(threadCtx *simulateContext, state *s
 
 	r.doAddNext(action.ctx, action.detail, func(ctx Context) {
 		action.callback(ctx)
-		state.isRunning = false
-
-		if len(state.pendingActions) == 0 {
-			delete(threadCtx.getSequenceActionMap(), state.seqID)
-		} else {
-			r.startIfNotRunning(threadCtx, state)
-		}
 	})
+}
+
+func (r *SimulateRuntime) finishSequenceAction(threadCtx *simulateContext, state *sequenceActionState) {
+	state.isRunning = false
+	if len(state.pendingActions) == 0 {
+		delete(threadCtx.getSequenceActionMap(), state.seqID)
+	} else {
+		r.startIfNotRunning(state)
+	}
 }
 
 func (r *SimulateRuntime) doAddNext(ctx *simulateContext, detail string, callback func(ctx Context)) {
