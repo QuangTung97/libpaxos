@@ -14,6 +14,7 @@ import (
 func (s *Simulation) getLeader() *NodeState {
 	leaderCount := 0
 	var current *NodeState
+
 	for _, state := range s.stateMap {
 		if state.core.GetState() == paxos.StateLeader {
 			leaderCount++
@@ -21,11 +22,41 @@ func (s *Simulation) getLeader() *NodeState {
 		}
 	}
 
-	if leaderCount != 1 {
-		panic(fmt.Sprintf("number of leader is not 1, actual: %d", leaderCount))
+	if leaderCount == 1 {
+		return current
+	}
+	panic(fmt.Sprintf("number of leader is not 1, actual: %d", leaderCount))
+}
+
+func TestPaxos_Simple_Three_Nodes__Always_Elect_One_Leader(t *testing.T) {
+	totalActions := 0
+	for range 1000 {
+		doTestPaxosSingleThreeNodesElectALeader(t, &totalActions)
+		if t.Failed() {
+			return
+		}
+	}
+	fmt.Println("TOTAL ACTIONS:", totalActions)
+}
+
+func doTestPaxosSingleThreeNodesElectALeader(t *testing.T, totalActions *int) {
+	s := NewSimulation(
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
+	)
+
+	s.runRandomAllActions()
+
+	leaderState := s.getLeader()
+	assert.Equal(t, paxos.StateLeader, leaderState.core.GetState())
+
+	for id, state := range s.stateMap {
+		if id != leaderState.currentID {
+			assert.Equal(t, paxos.StateFollower, state.core.GetState())
+		}
 	}
 
-	return current
+	*totalActions += s.numTotalActions
 }
 
 func TestPaxos_Simple_Three_Nodes__Replicate_Cmd(t *testing.T) {
