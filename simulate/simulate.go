@@ -3,6 +3,7 @@ package simulate
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -15,6 +16,8 @@ type Simulation struct {
 	randObj         *rand.Rand
 	numTotalActions int
 
+	allNodes []paxos.NodeID
+
 	runtime *async.SimulateRuntime
 	now     paxos.TimestampMilli
 
@@ -25,7 +28,9 @@ func NewSimulation(
 	allNodes []paxos.NodeID,
 	initNodes []paxos.NodeID,
 ) *Simulation {
-	s := &Simulation{}
+	s := &Simulation{
+		allNodes: slices.Clone(allNodes),
+	}
 
 	seed := time.Now().UnixNano()
 	fmt.Println("SEED:", seed)

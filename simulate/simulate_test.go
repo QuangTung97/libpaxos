@@ -28,9 +28,14 @@ func (s *Simulation) getLeader() *NodeState {
 	panic(fmt.Sprintf("number of leader is not 1, actual: %d", leaderCount))
 }
 
-func (s *Simulation) assertLogMatch(t *testing.T, nodeIDList ...paxos.NodeID) {
+func (s *Simulation) assertLogMatch(t *testing.T, nodeIDList ...paxos.NodeID) int {
 	firstID := nodeIDList[0]
 	firstLog := s.stateMap[firstID].log.GetEntries(1, 10_000)
+
+	// check all entries is committed
+	for _, entry := range firstLog {
+		assert.Equal(t, false, entry.Term.IsFinite)
+	}
 
 	// check disk log
 	for _, id := range nodeIDList[1:] {
@@ -43,6 +48,8 @@ func (s *Simulation) assertLogMatch(t *testing.T, nodeIDList ...paxos.NodeID) {
 		checkedLog := s.stateMap[id].stateLog
 		assert.Equal(t, true, slices.EqualFunc(firstLog, checkedLog, paxos.LogEntryEqual))
 	}
+
+	return len(firstLog)
 }
 
 func TestPaxos_Simple_Three_Nodes__Always_Elect_One_Leader(t *testing.T) {
@@ -151,6 +158,149 @@ func doTestPaxosSingleThreeNodesReplicateCmd(t *testing.T, totalActions *int) {
 		assert.Equal(t, paxos.LogTypeCmd, entry.Type)
 		assert.Equal(t, fmt.Sprintf("cmd-test:%02d", index), string(entry.CmdData))
 	}
+
+	*totalActions += s.numTotalActions
+}
+
+func TestPaxos_With_Membership_Changes(t *testing.T) {
+	totalActions := 0
+	for range 1000 {
+		doTestPaxosWithMembershipChanges(t, &totalActions)
+		if t.Failed() {
+			return
+		}
+	}
+	fmt.Println("TOTAL ACTIONS:", totalActions)
+}
+
+func (s *Simulation) getRandomLeader() (*NodeState, bool) {
+	var possibleStates []*NodeState
+	for _, state := range s.stateMap {
+		if state.core.GetState() == paxos.StateLeader {
+			possibleStates = append(possibleStates, state)
+		}
+	}
+
+	if possibleStates == nil {
+		return nil, false
+	}
+
+	index := s.randObj.Intn(len(possibleStates))
+	return possibleStates[index], true
+}
+
+func (s *Simulation) doInsertCommands() {
+	const maxCmd = 12
+	s.runtime.NewThread("setup-cmd", func(ctx async.Context) {
+		cmdSeq := s.runtime.NewSequence()
+		for cmdIndex := range maxCmd {
+			s.runtime.SeqAddNext(
+				ctx, cmdSeq, "cmd::request",
+				func(ctx async.Context, finishFunc func()) {
+					leaderState, ok := s.getRandomLeader()
+					if !ok {
+						finishFunc()
+						return
+					}
+
+					term := leaderState.persistent.GetLastTerm()
+
+					nextCmd := []byte(fmt.Sprintf("cmd-test:%02d", cmdIndex))
+
+					leaderState.core.InsertCommandAsync(
+						ctx, term, [][]byte{nextCmd},
+						func(err error) {
+							finishFunc()
+						},
+					)
+				},
+			)
+		}
+	})
+}
+func (s *Simulation) chooseNewRandomMembers() []paxos.NodeID {
+	tmpNodes := slices.Clone(s.allNodes)
+	s.randObj.Shuffle(len(tmpNodes), func(i, j int) {
+		tmpNodes[i], tmpNodes[j] = tmpNodes[j], tmpNodes[i]
+	})
+
+	maxNodes := min(len(tmpNodes), 5)
+	newSize := 1 + s.randObj.Intn(maxNodes)
+
+	result := slices.Clone(tmpNodes[:newSize])
+	slices.SortFunc(result, paxos.CompareNodeID)
+	return result
+}
+
+func (s *Simulation) doChangeMembershipMultiTimes(maxNumTimes int) {
+	s.runtime.NewThread("setup-member-update", func(ctx async.Context) {
+		changeSeq := s.runtime.NewSequence()
+
+		for range maxNumTimes {
+			s.runtime.SeqAddNext(
+				ctx, changeSeq, "cmd::request",
+				func(ctx async.Context, finishFunc func()) {
+					leaderState, ok := s.getRandomLeader()
+					if !ok {
+						finishFunc()
+						return
+					}
+
+					term := leaderState.persistent.GetLastTerm()
+					newMembers := s.chooseNewRandomMembers()
+
+					leaderState.core.ChangeMembershipAsync(
+						ctx, term, newMembers,
+						func(err error) {
+							finishFunc()
+						},
+					)
+				},
+			)
+		}
+	})
+}
+
+func (s *Simulation) findLastLeader() *NodeState {
+	var maxTerm paxos.TermNum
+	var result *NodeState
+
+	for _, state := range s.stateMap {
+		if state.core.GetState() != paxos.StateLeader {
+			continue
+		}
+
+		term := state.persistent.GetLastTerm()
+		if paxos.CompareTermNum(term, maxTerm) > 0 {
+			term = maxTerm
+			result = state
+		}
+	}
+
+	return result
+}
+
+func doTestPaxosWithMembershipChanges(t *testing.T, totalActions *int) {
+	s := NewSimulation(
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3, nodeID4, nodeID5, nodeID6},
+		[]paxos.NodeID{nodeID1, nodeID2, nodeID3},
+	)
+	s.runRandomAllActions()
+
+	// setup random actions
+	s.doInsertCommands()
+	s.doChangeMembershipMultiTimes(4)
+
+	// do execute random actions
+	s.runRandomAllActions()
+
+	lastLeader := s.findLastLeader()
+	committed := lastLeader.log.GetCommittedInfo()
+	assert.Equal(t, 1, len(committed.Members))
+	assert.Equal(t, paxos.LogPos(1), committed.Members[0].CreatedAt)
+
+	memberNodes := committed.Members[0].Nodes
+	s.assertLogMatch(t, memberNodes...)
 
 	*totalActions += s.numTotalActions
 }
