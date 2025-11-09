@@ -385,7 +385,7 @@ func (s *Simulation) doRestartMultiTimes(maxNumTimes int) {
 
 					ctxList := state.runner.getAllContexts()
 					index = s.randObj.Intn(len(ctxList))
-					ctxList[index].Cancel()
+					s.runtime.RestartThread(ctxList[index])
 				},
 			)
 		}
@@ -403,7 +403,7 @@ func doTestPaxosWithMembershipChangesAndTimeoutAndRestart(t *testing.T, totalAct
 	s.doInsertCommands()
 	s.doChangeMembershipMultiTimes(4)
 	s.doTimeoutMultiTimes(8)
-	s.doRestartMultiTimes(6)
+	s.doRestartMultiTimes(8)
 
 	// do execute random actions
 	s.runRandomAllActions()
