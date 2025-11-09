@@ -2,6 +2,7 @@ package async
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/QuangTung97/libpaxos/cond"
@@ -85,19 +86,23 @@ func (w *realKeyWaiter[T]) NumWaitKeys() int {
 // ================================================================
 
 func NewSimulateKeyWaiter[T comparable](
-	rt *SimulateRuntime, detailFunc func(key T) string,
+	rt *SimulateRuntime,
+	detailFunc func(key T) string,
+	compareFunc func(a, b T) int,
 ) KeyWaiter[T] {
 	return &simulateKeyWaiter[T]{
-		rt:         rt,
-		waitMap:    map[T][]nextActionInfo{},
-		detailFunc: detailFunc,
+		rt:          rt,
+		waitMap:     map[T][]nextActionInfo{},
+		detailFunc:  detailFunc,
+		compareFunc: compareFunc,
 	}
 }
 
 type simulateKeyWaiter[T comparable] struct {
-	rt         *SimulateRuntime
-	waitMap    map[T][]nextActionInfo
-	detailFunc func(key T) string
+	rt          *SimulateRuntime
+	waitMap     map[T][]nextActionInfo
+	detailFunc  func(key T) string
+	compareFunc func(a, b T) int
 }
 
 func (w *simulateKeyWaiter[T]) Run(
@@ -133,7 +138,14 @@ func (w *simulateKeyWaiter[T]) Signal(key T) {
 }
 
 func (w *simulateKeyWaiter[T]) Broadcast() {
+	keyList := make([]T, 0, len(w.waitMap))
 	for key := range w.waitMap {
+		keyList = append(keyList, key)
+	}
+
+	slices.SortFunc(keyList, w.compareFunc)
+
+	for _, key := range keyList {
 		w.Signal(key)
 	}
 }

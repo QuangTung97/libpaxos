@@ -1,6 +1,7 @@
 package async
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -42,9 +43,12 @@ func runAllActions(rt *SimulateRuntime) {
 func TestSimulateKeyWaiter(t *testing.T) {
 	t.Run("simple success", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
-			return key
-		})
+		w := NewSimulateKeyWaiter[string](rt,
+			func(key string) string {
+				return key
+			},
+			cmp.Compare[string],
+		)
 
 		actions := newActionListTest()
 		count := 0
@@ -77,9 +81,12 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
-			return key
-		})
+		w := NewSimulateKeyWaiter(rt,
+			func(key string) string {
+				return key
+			},
+			cmp.Compare[string],
+		)
 
 		actions := newActionListTest()
 		count := 0
@@ -114,9 +121,12 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with waiting, 2 keys", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
-			return key
-		})
+		w := NewSimulateKeyWaiter(rt,
+			func(key string) string {
+				return key
+			},
+			cmp.Compare[string],
+		)
 
 		actions := newActionListTest()
 		rt.NewThread("thread01", func(ctx Context) {
@@ -154,9 +164,12 @@ func TestSimulateKeyWaiter(t *testing.T) {
 
 	t.Run("with cancel", func(t *testing.T) {
 		rt := NewSimulateRuntime()
-		w := NewSimulateKeyWaiter[string](rt, func(key string) string {
-			return key
-		})
+		w := NewSimulateKeyWaiter(rt,
+			func(key string) string {
+				return key
+			},
+			cmp.Compare[string],
+		)
 
 		actions := newActionListTest()
 		count := 0

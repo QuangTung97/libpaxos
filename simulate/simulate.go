@@ -101,9 +101,13 @@ func NewNodeState(
 	)
 
 	initKeyWaiterFunc := func(mut *sync.Mutex) async.KeyWaiter[paxos.NodeID] {
-		return async.NewSimulateKeyWaiter[paxos.NodeID](s.sim.runtime, func(key paxos.NodeID) string {
-			return key.String()[:4]
-		})
+		return async.NewSimulateKeyWaiter(
+			s.sim.runtime,
+			func(key paxos.NodeID) string {
+				return key.String()[:4]
+			},
+			paxos.CompareNodeID,
+		)
 	}
 
 	s.core = paxos.NewCoreLogic(
