@@ -33,3 +33,29 @@ created by github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go in goro
         /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:28 +0xbc
 FAIL    github.com/QuangTung97/libpaxos/paxos   9.276s
 FAIL
+
+
+========================================================================================
+
+SEED: 1764495906315395834
+panic: Invariant failed on label: accept
+
+goroutine 106827 [running (durable), synctest bubble 623]:
+github.com/QuangTung97/libpaxos/paxos.(*coreLogicImpl).internalCheckInvariant(0xc0002740b0)
+        /home/quangtung/golang/libpaxos/paxos/core.go:1793 +0x3ec
+github.com/QuangTung97/libpaxos/paxos.(*coreLogicImpl).checkInvariantIfEnabled(...)
+        /home/quangtung/golang/libpaxos/paxos/core.go:212
+github.com/QuangTung97/libpaxos/paxos.(*coreLogicImpl).HandleAcceptEntriesResponse(0xc0002740b0, {0x64, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, ...}, ...)
+        /home/quangtung/golang/libpaxos/paxos/core.go:970 +0x1a5
+github.com/QuangTung97/libpaxos/paxos_test.(*simulationHandlers).acceptRequestHandler.func1.2({0x1, {0x15, {0x64, 0x2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, ...}}, ...})
+        /home/quangtung/golang/libpaxos/paxos/simulation_test.go:507 +0x5a
+github.com/QuangTung97/libpaxos/paxos_test.(*simulateConn[...]).doHandleResponse(0x94c380?, {0x766118?, 0xc0000b3008?}, {0x1, {0x15, {0x64, 0x2, 0x0, 0x0, 0x0, ...}}, ...}, ...)
+        /home/quangtung/golang/libpaxos/paxos/simulation_conn_test.go:127 +0xb4
+github.com/QuangTung97/libpaxos/paxos_test.newSimulateConn[...].func2()
+        /home/quangtung/golang/libpaxos/paxos/simulation_conn_test.go:79 +0x1d1
+github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go.func1()
+        /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:38 +0x4a
+created by github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go in goroutine 106806
+        /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:28 +0xbc
+FAIL    github.com/QuangTung97/libpaxos/paxos   8.213s
+FAIL
