@@ -59,3 +59,28 @@ created by github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go in goro
         /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:28 +0xbc
 FAIL    github.com/QuangTung97/libpaxos/paxos   8.213s
 FAIL
+
+
+========================================================================
+SEED: 1765001913778210142
+panic: Should be true here
+
+goroutine 100469 [running (durable), synctest bubble 599]:
+github.com/QuangTung97/libpaxos/paxos.AssertTrue(...)
+        /home/quangtung/golang/libpaxos/paxos/core.go:1904
+github.com/QuangTung97/libpaxos/paxos.(*acceptorLogicImpl).CheckInvariant(0xc0003a06e0)
+        /home/quangtung/golang/libpaxos/paxos/acceptor.go:454 +0x1f1
+github.com/QuangTung97/libpaxos/paxos_test.(*simulationHandlers).handleAcceptEntriesRequest(0x0?, {{0x64, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, ...}, ...}, ...)
+        /home/quangtung/golang/libpaxos/paxos/simulation_test.go:545 +0x154
+github.com/QuangTung97/libpaxos/paxos_test.(*simulationHandlers).acceptRequestHandler.func1.1({0xc000241f18?, 0xc0002cfce0?}, {{0x64, 0x6, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, ...}, ...})
+        /home/quangtung/golang/libpaxos/paxos/simulation_test.go:504 +0x45
+github.com/QuangTung97/libpaxos/paxos_test.(*simulateConn[...]).doHandleRequest(0x768c20, {0x766118, 0xc000298d38}, 0xc000576100, 0xc00044a400, {{0x64, 0x6, 0x0, 0x0, 0x0, ...}, ...})
+        /home/quangtung/golang/libpaxos/paxos/simulation_conn_test.go:102 +0x12c
+github.com/QuangTung97/libpaxos/paxos_test.newSimulateConn[...].func1()
+        /home/quangtung/golang/libpaxos/paxos/simulation_conn_test.go:64 +0x1c5
+github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go.func1()
+        /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:38 +0x4a
+created by github.com/QuangTung97/libpaxos/paxos/waiting.(*WaitGroup).Go in goroutine 100492
+        /home/quangtung/golang/libpaxos/paxos/waiting/wait_group.go:28 +0xbc
+FAIL    github.com/QuangTung97/libpaxos/paxos   7.732s
+
